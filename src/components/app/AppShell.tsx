@@ -709,7 +709,7 @@ export default function AppShell({
               whiteSpace: "nowrap",
               transition: "opacity 0.15s ease, max-width 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)"
             }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", fontFamily: "var(--font-sans)" }}>
+              <div className="muted" style={{ fontSize: 9.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
                 Data Trust Score
               </div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
@@ -758,8 +758,8 @@ export default function AppShell({
               always-visible 13-button strip; grouped into Factory Overview /
               Stations (live data only) / Uploaded Data. */}
           <div className="view-picker-container" style={{ display: "flex", flexDirection: "column", textAlign: "left", position: "relative" }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", marginBottom: 4, fontFamily: "var(--font-sans)" }}>
-              Active View
+            <span className="muted" style={{ fontSize: 9.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 2 }}>
+              View
             </span>
             <div
               onClick={(e) => { e.stopPropagation(); setShowViewMenu(!showViewMenu); }}
@@ -832,8 +832,8 @@ export default function AppShell({
 
           {/* D, W, M, FY Segmented Control */}
           <div style={{ display: "flex", flexDirection: "column", textAlign: "left" }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", marginBottom: 4, display: "flex", alignItems: "center", gap: 6, fontFamily: "var(--font-sans)" }}>
-              <span>Reporting Grain</span>
+            <span className="muted" style={{ fontSize: 9.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 2, display: "flex", alignItems: "center", gap: 6 }}>
+              <span>Grain</span>
               {suggestedGrain && (
                 <span style={{
                   fontSize: 8,
@@ -896,8 +896,8 @@ export default function AppShell({
 
           {/* Interactive Date Range Selector */}
           <div className="date-picker-container" style={{ display: "flex", flexDirection: "column", textAlign: "left", position: "relative" }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", marginBottom: 4, fontFamily: "var(--font-sans)" }}>
-              Reporting Range
+            <span className="muted" style={{ fontSize: 9.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 2 }}>
+              Date Range
             </span>
             <div 
               onClick={(e) => { e.stopPropagation(); setShowPicker(!showPicker); }}
