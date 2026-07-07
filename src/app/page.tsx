@@ -644,7 +644,7 @@ export default function Dashboard() {
 
               <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr" }}>
                 {/* Left Column: Summary */}
-                <div style={{ padding: 24, borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", justify_content: "space-between" }}>
+                <div style={{ padding: 24, borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
                   <div>
                     <h4 style={{ fontFamily: "var(--font-display)", fontSize: 14, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.02em", color: "var(--text-2)", marginBottom: 16, borderBottom: "1px solid var(--border)", paddingBottom: 6 }}>
                       I. Executive Summary & Quality Findings

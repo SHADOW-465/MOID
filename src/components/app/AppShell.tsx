@@ -476,9 +476,9 @@ export default function AppShell({
             <span style={{ 
               fontFamily: "var(--font-display)", 
               fontWeight: 800, 
-              fontSize: 24, 
+              fontSize: 20, 
               color: "var(--text)",
-              letterSpacing: "-0.03em"
+              letterSpacing: "-0.04em"
             }}>
               MO<span style={{ color: "var(--accent)" }}>!</span>D
             </span>
@@ -593,14 +593,14 @@ export default function AppShell({
                           : "transparent",
                         borderRadius: "var(--radius-sm)",
                         color: isActive
-                          ? "var(--text)"
+                          ? "var(--accent-text)"
                           : n.soon
                             ? "var(--text-3)"
                             : "var(--text-2)",
                         border: "none",
                         cursor: n.soon ? "default" : "pointer",
-                        fontSize: isAnalyticsChild ? 12.5 : 13.5,
-                        fontWeight: isActive ? 600 : 500,
+                        fontSize: isAnalyticsChild ? 12.5 : 13,
+                        fontWeight: isActive ? 600 : 400,
                         textAlign: "left",
                         transition: "padding 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), gap 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), background 0.15s ease",
                         position: "relative"

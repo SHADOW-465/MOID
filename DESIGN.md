@@ -1,43 +1,43 @@
 ---
 name: MO!D Design System
-description: Editorial design system for pharma manufacturing quality reports.
+description: Precision Slate design system for manufacturing quality analytics.
 colors:
-  primary: "#C8421C"
-  accent-hover: "#B03514"
-  accent-weak: "#FDF3F0"
-  neutral-bg: "#FAF8F5"
+  primary: "#2563EB"
+  accent-hover: "#1D4ED8"
+  accent-weak: "#EFF6FF"
+  neutral-bg: "#F8FAFC"
   neutral-surface: "#FFFFFF"
-  neutral-border: "#EAE3DA"
-  neutral-text: "#1C1917"
-  neutral-text-secondary: "#2E2A27"
-  neutral-text-muted: "#45403C"
+  neutral-border: "#E2E8F0"
+  neutral-text: "#0F172A"
+  neutral-text-secondary: "#475569"
+  neutral-text-muted: "#94A3B8"
 typography:
   display:
-    fontFamily: "Fraunces, Georgia, serif"
-    fontSize: "2.5rem"
+    fontFamily: "Inter, system-ui, sans-serif"
+    fontSize: "1.5rem"
     fontWeight: 700
-    lineHeight: 1.1
-    letterSpacing: "-0.02em"
+    lineHeight: 1.25
+    letterSpacing: "-0.025em"
   body:
-    fontFamily: "Inter Tight, -apple-system, sans-serif"
-    fontSize: "15px"
+    fontFamily: "Inter, system-ui, sans-serif"
+    fontSize: "14px"
     fontWeight: 400
     lineHeight: 1.55
   label:
-    fontFamily: "Inter Tight, -apple-system, sans-serif"
-    fontSize: "12px"
+    fontFamily: "Inter, system-ui, sans-serif"
+    fontSize: "11px"
     fontWeight: 600
     lineHeight: 1.2
-    letterSpacing: "0.04em"
+    letterSpacing: "0.05em"
   mono:
     fontFamily: "JetBrains Mono, monospace"
-    fontSize: "14px"
+    fontSize: "13px"
     fontWeight: 400
 rounded:
-  sm: "8px"
-  md: "12px"
-  lg: "16px"
-  xl: "20px"
+  sm: "6px"
+  md: "8px"
+  lg: "12px"
+  xl: "16px"
   pill: "9999px"
 spacing:
   xs: "4px"
@@ -50,114 +50,120 @@ spacing:
   giant: "64px"
 ---
 
-# Design System: MO!D
+# Design System: MO!D — Precision Slate
 
 ## 1. Overview
 
-**Creative North Star: "The Editorial Dossier"**
+**Creative North Star: "Precision Instrument"**
 
-MO!D's visual language rejects the typical high-tech, abstract SaaS visual patterns. Instead, it frames automated quality data within a highly structured, paper-like dossier or scientific journal format. The layout is clean, grid-aligned, and prioritizes data readability above all.
+MO!D's visual language draws from the best modern analytics SaaS tools — Linear, Vercel Dashboard, Grafana. The interface is cool-toned, tightly gridded, and built around data legibility. Every element exists to make quality data faster to read and act on.
 
-This system is optimized for high-density information displays. In stead of soft floating components and backdrop-blur overlays, it relies on crisp, flat lines, solid borders, and clear typographic hierarchy. This creates a sense of authority, precision, and permanence appropriate for a regulated medical manufacturing environment (ISO 13485).
+This system is optimized for high-density information in a regulated manufacturing environment. Cards have subtle shadows, borders are cool gray, and the single electric-blue accent drives the eye to actions and active states.
 
 **Key Characteristics:**
-- **Warm Paper Canvas**: A soft, high-readability background hue that prevents eye strain during long inspection reviews.
-- **Typographic Contrast**: Fraunces Display Serif is used for section headers to evoke journalistic prestige, while Inter Tight handles precise user interface details, and JetBrains Mono displays numerical datasets.
-- **Flat Outlined Containers**: Cards, lists, and tables are defined by thin outlined borders. Emojis and glassmorphism are completely banned.
-- **Direct Provenance Visuals**: Verification flows are drawn as physical ink bezier lines extending from metrics to their spreadsheet origins.
+- **Cool Gray Canvas**: `#F8FAFC` — a slightly cool, near-white background. Not warm. Reduces visual warmth to reinforce precision.
+- **Single Font Family**: Inter throughout — display titles, body, labels, all Inter. JetBrains Mono exclusively for numerical data.
+- **Electric Blue Accent**: `#2563EB` — clean, modern, trusted. Used for focus rings, active nav states, primary buttons, and key data highlights.
+- **Micro-Shadow Elevation**: Cards have a real but very subtle shadow (`shadow-2`). This creates depth without breaking the flat aesthetic.
+- **No Serif**: Fraunces has been removed. All headings are Inter 700-800.
 
 ---
 
 ## 2. Colors
 
-The color palette consists of warm, paper-inspired neutral tones, deep charcoal for typography, and a burnt orange accent to call out highlights or active states.
+### Primary Accent
+- **Electric Blue** (`#2563EB` / blue-600): Used for active states, primary buttons, focus rings, active nav items. Hover is `#1D4ED8`.
 
-### Primary
-- **Burnt Orange** (`#C8421C` / oklch(50% 0.22 35)): Used for active states, key data highlights, focus rings, and primary action buttons. Accent hover is `#B03514`.
+### Neutral Palette
+- **Cool Gray Page** (`#F8FAFC`): Default background — slightly cool, not warm paper.
+- **Clean Surface** (`#FFFFFF`): Cards, panels, input fields.
+- **Subtle Hover** (`#F1F5F9`): Hover rows, zebra stripes, nested tables.
+- **Deep Well** (`#E2E8F0`): Chip backgrounds, code areas.
+- **Standard Border** (`#E2E8F0`): All card and panel outlines.
+- **Strong Border** (`#CBD5E1`): Table headers, section dividers.
+- **Primary Text** (`#0F172A`): Near-black, slate-900.
+- **Secondary Text** (`#475569`): Slate-600, labels, secondary info.
+- **Muted Text** (`#94A3B8`): Slate-400, placeholder, eyebrows.
 
-### Neutral
-- **Warm Paper Background** (`#FAF8F5`): Default background tone for all pages.
-- **Clean Surface** (`#FFFFFF`): Background for cards, input fields, and panels.
-- **Crisp Border** (`#EAE3DA`): Used for standard outlines, grid lines, and dividers.
-- **Strong Border** (`#D6CBBF`): Used for solid dividers and table headers.
-- **Charcoal Ink** (`#1C1917`): Used for high-contrast primary text and body prose.
-- **Secondary Ink** (`#2E2A27`): Used for secondary captions and secondary button labels.
-- **Muted Ink** (`#45403C`): Used for labels, placeholder text, and secondary details.
+### Semantic Status Colors
+- **Positive**: `#059669` (emerald-600)
+- **Warning**: `#D97706` (amber-600)
+- **Critical**: `#DC2626` (red-600)
 
 ### Named Rules
-**The Accent Rarity Rule.** The burnt orange accent color is used on less than 10% of any given screen. Its purpose is to guide the GM's eye to deviations, actions, or selected states; overusing it dilutes its diagnostic value.
+**The Accent Rarity Rule.** Electric blue is used on less than 15% of any screen. Its purpose is to guide the user's eye to the active item, primary action, or focused input.
 
-**The Contrast Floor Rule.** All text elements must maintain a minimum contrast ratio of 4.5:1 against their backgrounds (using `--text-3` / `#45403C` as the absolute lightest body text color in light mode).
+**The Contrast Floor Rule.** All text must maintain ≥ 4.5:1 contrast. `--text-3 / #94A3B8` is the absolute minimum for muted labels.
 
 ---
 
 ## 3. Typography
 
-The type system pairs a classic editorial display serif with a modern, high-legibility sans-serif and a structured monospace face.
+**Single family:** Inter (system-ui fallback)
+**Data/numbers:** JetBrains Mono only
 
-**Display Font:** Fraunces (with Georgia, serif)
-**Body Font:** Inter Tight (with system-ui, sans-serif)
-**Label/Mono Font:** JetBrains Mono (with Courier New, monospace)
-
-### Hierarchy
-- **Display** (Bold, 2.5rem, 1.1): Used for main page titles and hero numerals.
-- **Headline** (Semi-bold, 2rem, 1.15): Used for primary section headers.
-- **Title** (Semi-bold, 1.25rem to 1.5rem, 1.3): Used for card titles and secondary group headers.
-- **Body** (Regular, 15px, 1.55): Used for standard prose, tables, and form labels. Line lengths are constrained to a maximum of 75ch.
-- **Label** (Semi-bold, 12px, 1.2, tracking 0.04em, uppercase): Used for eyebrows, table headers, and tiny auxiliary labels.
-- **Mono** (Regular, 14px): Used for raw data cell values, timestamps, and mathematical values.
+### Scale
+- **Display** (700, 2rem, -0.03em): Hero KPI numbers, page-level emphasis
+- **H1** (700, 1.5rem, -0.025em): Page titles
+- **H2** (600, 1.25rem, -0.02em): Section headers, card group headers
+- **H3** (600, 1.0625rem, -0.015em): Card titles
+- **Body** (400, 14px): Standard prose, table cells, form labels
+- **Small** (400, 13px): Secondary metadata, footnotes
+- **Label** (600, 11px, 0.05em, uppercase): Eyebrows, table column headers, section labels
+- **Mono** (400, 13px, tabular-nums): All numeric values, timestamps, IDs
 
 ### Named Rules
-**The Tabular Numbers Rule.** All tables, graphs, and numerical KPI outputs must use the monospace font with tabular numerals (`font-variant-numeric: tabular-nums`) to ensure vertical columns align perfectly.
+**The Tabular Numbers Rule.** All numeric columns, KPI values, timestamps, and IDs use JetBrains Mono with `font-variant-numeric: tabular-nums`. This ensures vertical alignment in dense tables.
 
 ---
 
 ## 4. Elevation
 
-The elevation system rejects drop shadows as a method of separation. It uses flat boundaries, subtle background tints, and crisp borders to establish depth.
+Cards use visible but subtle micro-shadows to create real depth hierarchy.
 
 ### Elevation Levels
-- **Level 0 (Canvas)**: Warm paper background (`#FAF8F5`).
-- **Level 1 (Surface)**: Cards and table blocks are rendered flat with a standard border (`1px solid #EAE3DA`) and no shadow.
-- **Level 2 (Active/Hover)**: Hover states on cards translate to a subtle outlined frame and a flat background shift (`#FFFFFF` to `#FAF8F5`) rather than a shadow lift.
-- **Level 3 (Overlay/Modal)**: Modal overlays use a dark semi-transparent backdrop (`rgba(28,25,23,0.4)`), and modal surfaces are outlined with a strong border.
+- **Level 0 (Canvas)**: `#F8FAFC` cool gray-white.
+- **Level 1 (Surface)**: Cards — `1px solid #E2E8F0` border + `shadow-2` (4px/8px spread).
+- **Level 2 (Hover)**: `background: #F1F5F9` + border: `#CBD5E1`. No shadow lift — background shift only.
+- **Level 3 (Overlay)**: `rgba(15,23,42,0.45)` backdrop, panel border `#CBD5E1`, `shadow-3`.
 
 ### Named Rules
-**The Flat Outline Rule.** Interfaces must stay flat. Do not use complex shadows or blurred card offsets. Depth is conveyed using hierarchical background tints (`--surface`, `--surface-2`, `--surface-3`) and outlined borders.
+**The Micro-Shadow Rule.** Cards use `shadow-2` — subtle and professional, not floating or heavy. Modals use `shadow-3`. No element uses more depth than needed.
 
 ---
 
 ## 5. Components
 
-Components are styled to look like physical elements of a ledger or folder.
-
 ### Buttons
-- **Shape**: Outlined corners with a standard border radius (`8px` / `--radius-sm`).
-- **Primary**: Solid burnt orange (`#C8421C`) background, white text. Transitions to hover color (`#B03514`) over 150ms.
-- **Secondary/Ghost**: Flat transparent background, outlined in `--border-strong`. Text uses `--text-2`. Hover shifts background to `--surface-2`.
+- **Primary**: `#2563EB` solid bg, white text, hover `#1D4ED8`, 6px radius.
+- **Ghost**: Transparent bg, `--border-strong` outline, hover bg `--surface-2`.
+- **Radius**: `--radius-sm` (6px) for buttons, `--radius-md` (8px) for inputs.
 
 ### Cards / Containers
-- **Corner Style**: Outlined corners (`12px` / `--radius-md`).
-- **Background**: Solid surface (`#FFFFFF`).
-- **Border**: Thin border (`1px solid #EAE3DA`).
-- **Internal Padding**: Structured padding (`24px` / `--space-5`).
+- **Radius**: `12px` (`--radius-lg`)
+- **Background**: `#FFFFFF`
+- **Border**: `1px solid #E2E8F0`
+- **Shadow**: `shadow-2` — subtle but perceptible
+- **Padding**: `24px` (`--pad-card`)
 
 ### Inputs / Fields
-- **Style**: Solid white background, outlined in `--border`, with a standard corner radius (`8px` / `--radius-sm`).
-- **Focus**: Displays a sharp outline ring of burnt orange (`2px solid #C8421C`) with an offset of 2px.
+- **Style**: White bg, `--border` outline, `6px` radius.
+- **Focus**: `2px solid #3B82F6` ring with `2px offset`.
 
 ---
 
 ## 6. Do's and Don'ts
 
 ### Do:
-- **Do** align all numeric data columns to the right and use JetBrains Mono.
-- **Do** wrap all text content in containers with a max-width of 75ch to preserve readability.
-- **Do** use standard SVG icons with a stroke width of 1.6 and height/width of 16px or 24px.
-- **Do** verify contrast ratios for helper text and placeholders.
+- **Do** use Inter for all non-numeric content at all levels of the hierarchy.
+- **Do** use JetBrains Mono + `tabular-nums` for all numeric data, KPIs, timestamps.
+- **Do** use the `shadow-2` on all cards for subtle depth.
+- **Do** keep electric blue to active states, primary buttons, and focus indicators only.
+- **Do** use cool gray borders (`#E2E8F0`).
 
 ### Don't:
-- **Don't** use emojis as visual markers. Always use SVG stroke line icons.
-- **Don't** use colored left-border stripes as highlights on warning banner blocks.
-- **Don't** use background gradients or text-clip gradients.
-- **Don't** use backdrop-blur filters or semi-transparent glass cards.
+- **Don't** use Fraunces or any serif font — it has been removed from this design system.
+- **Don't** use warm colors (`#FAF8F5`, `#EAE3DA`, `#C8421C`) — these belong to the old editorial system.
+- **Don't** use glassmorphism, backdrop-blur, or text-clip gradients.
+- **Don't** use emojis as visual markers.
+- **Don't** use colored left-border stripes on banner blocks — use full background tints instead.

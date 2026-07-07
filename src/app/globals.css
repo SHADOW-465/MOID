@@ -1,121 +1,127 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&family=Inter+Tight:ital,wght@0,100..900;1,100..900&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap');
 @import "tailwindcss";
 
 /* =========================================================
-   RAIS Pro — Modern SaaS Design System Revamp
+   RAIS Pro — Precision Slate Design System
    ========================================================= */
 
 :root, [data-theme="light"] {
   /* Surfaces */
-  --bg:            #FAF8F5;   /* warm paper background */
-  --surface:       #FFFFFF;   /* card background */
-  --surface-2:     #F3EFEA;   /* nested tables / strips */
-  --surface-3:     #EAE3DA;   /* deep wells */
-  --overlay:       rgba(28,25,23,0.4);
+  --bg:            #F8FAFC;   /* cool gray-white page */
+  --surface:       #FFFFFF;   /* card/panel background */
+  --surface-2:     #F1F5F9;   /* hover, zebra rows, nested tables */
+  --surface-3:     #E2E8F0;   /* deep wells, chip backgrounds */
+  --overlay:       rgba(15,23,42,0.45);
 
   /* Borders */
-  --border:        #EAE3DA;   /* crisp light border */
-  --border-strong: #D6CBBF;   /* solid divider */
-  --ring:          #C8421C;   /* burnt orange focus ring */
+  --border:        #E2E8F0;   /* standard card/panel border */
+  --border-strong: #CBD5E1;   /* table headers, strong dividers */
+  --ring:          #3B82F6;   /* blue focus ring */
 
-  --text:          #1C1917;   /* near-black charcoal */
-  --text-2:        #2E2A27;   /* darker secondary text */
-  --text-3:        #45403C;   /* darker muted labels */
+  /* Text */
+  --text:          #0F172A;   /* slate-900, near-black */
+  --text-2:        #475569;   /* slate-600, secondary labels */
+  --text-3:        #94A3B8;   /* slate-400, muted/placeholder */
   --text-invert:   #FFFFFF;
 
-  /* Accent (Burnt Orange) */
-  --accent:        #C8421C;   
-  --accent-hover:  #B03514;   
-  --accent-weak:   #FDF3F0;   
-  --accent-text:   #C8421C;   
+  /* Accent — Electric Blue */
+  --accent:        #2563EB;   /* blue-600 */
+  --accent-hover:  #1D4ED8;   /* blue-700 */
+  --accent-weak:   #EFF6FF;   /* blue-50 */
+  --accent-text:   #2563EB;
 
   /* Semantic status */
-  --positive:      #15803D;   
-  --positive-weak: #F0FDF4;
-  --warning:       #B45309;
-  --warning-weak:  #FEF3C7;
-  --critical:      #B91C1C;
+  --positive:      #059669;   /* emerald-600 */
+  --positive-weak: #ECFDF5;
+  --warning:       #D97706;   /* amber-600 */
+  --warning-weak:  #FFFBEB;
+  --critical:      #DC2626;   /* red-600 */
   --critical-weak: #FEF2F2;
   /* status aliases */
   --status-good:   var(--positive);
   --status-warn:   var(--warning);
   --status-bad:    var(--critical);
 
-  /* Elevation (minimalist soft shadows) */
-  --shadow-1: 0 1px 2px rgba(28,25,23,0.03);
-  --shadow-2: 0 4px 6px -1px rgba(28,25,23,0.04), 0 2px 4px -1px rgba(28,25,23,0.02);
-  --shadow-3: 0 10px 15px -3px rgba(28,25,23,0.04), 0 4px 6px -2px rgba(28,25,23,0.02);
+  /* Elevation — refined micro-shadows */
+  --shadow-1: 0 1px 2px rgba(15,23,42,0.04);
+  --shadow-2: 0 4px 8px rgba(15,23,42,0.06), 0 1px 3px rgba(15,23,42,0.04);
+  --shadow-3: 0 12px 24px rgba(15,23,42,0.08), 0 4px 8px rgba(15,23,42,0.04);
 
   /* Data-visualization categorical palette */
-  --viz-1: #C8421C; 
-  --viz-2: #4F46E5; 
-  --viz-3: #0F766E; 
-  --viz-4: #BE123C;
-  --viz-5: #B45309; 
-  --viz-6: #0369A1; 
-  --viz-7: #4D7C0F; 
-  --viz-8: #57534E;
+  --viz-1: #2563EB;   /* blue-600 — primary */
+  --viz-2: #059669;   /* emerald-600 */
+  --viz-3: #D97706;   /* amber-600 */
+  --viz-4: #DC2626;   /* red-600 */
+  --viz-5: #7C3AED;   /* violet-600 */
+  --viz-6: #0891B2;   /* cyan-600 */
+  --viz-7: #65A30D;   /* lime-600 */
+  --viz-8: #64748B;   /* slate-500 neutral */
 }
 
 [data-theme="dark"] {
   /* Surfaces */
-  --bg:            #12100E;   /* warm dark background */
-  --surface:       #1C1815;   /* warm dark surface card */
-  --surface-2:     #26211C;   
-  --surface-3:     #322B25;   
-  --overlay:       rgba(0,0,0,0.6);
+  --bg:            #0B0F1A;   /* very deep navy */
+  --surface:       #111827;   /* gray-900 cards */
+  --surface-2:     #1F2937;   /* gray-800 */
+  --surface-3:     #374151;   /* gray-700 */
+  --overlay:       rgba(0, 0, 0, 0.6);
 
   /* Borders */
-  --border:        #2C2621;
-  --border-strong: #3D352E;
-  --ring:          #FF6B3D;
+  --border:        #1F2937;   /* dark card border */
+  --border-strong: #374151;   /* stronger dividers */
+  --ring:          #60A5FA;   /* blue-400 focus */
 
-  --text:          #FAF8F5;   
-  --text-2:        #E8DFD3;   /* brighter secondary text */
-  --text-3:        #BFB2A5;   /* brighter muted text */
-  --text-invert:   #12100E;
+  /* Text */
+  --text:          #F9FAFB;   /* gray-50 */
+  --text-2:        #D1D5DB;   /* gray-300 */
+  --text-3:        #6B7280;   /* gray-500 */
+  --text-invert:   #0B0F1A;
 
-  /* Accent (Electric Burnt Orange) */
-  --accent:        #FF6B3D;   
-  --accent-hover:  #FF875E;
-  --accent-weak:   rgba(255, 107, 61, 0.08);   
-  --accent-text:   #FF6B3D;   
+  /* Accent */
+  --accent:        #3B82F6;   /* blue-500 */
+  --accent-hover:  #60A5FA;   /* blue-400 */
+  --accent-weak:   rgba(59,130,246,0.12);
+  --accent-text:   #60A5FA;
 
   /* Semantic status */
-  --positive:      #4ADE80;   
-  --positive-weak: rgba(74, 222, 128, 0.1);
-  --warning:       #FBBF24;
-  --warning-weak:  rgba(251, 191, 36, 0.1);
-  --critical:      #F87171;   
-  --critical-weak: rgba(248, 113, 113, 0.1);
+  --positive:      #10B981;   /* emerald-500 */
+  --positive-weak: rgba(16,185,129,0.1);
+  --warning:       #F59E0B;   /* amber-500 */
+  --warning-weak:  rgba(245,158,11,0.1);
+  --critical:      #EF4444;   /* red-500 */
+  --critical-weak: rgba(239,68,68,0.1);
+  /* status aliases */
+  --status-good:   var(--positive);
+  --status-warn:   var(--warning);
+  --status-bad:    var(--critical);
 
-  /* Elevation */
-  --shadow-1: 0 0 0 transparent;
-  --shadow-2: 0 0 0 transparent;
-  --shadow-3: 0 0 0 transparent;
+  /* Shadows off in dark */
+  --shadow-1: none;
+  --shadow-2: none;
+  --shadow-3: none;
 
   /* Data-visualization dark palette */
-  --viz-1: #FF6B3D; 
-  --viz-2: #818CF8; 
-  --viz-3: #2DD4BF; 
-  --viz-4: #FB7185;
-  --viz-5: #FBBF24; 
-  --viz-6: #38BDF8; 
-  --viz-7: #A3E635; 
-  --viz-8: #A8A29E;
+  --viz-1: #60A5FA;   /* blue-400 */
+  --viz-2: #34D399;   /* emerald-400 */
+  --viz-3: #FBBF24;   /* amber-400 */
+  --viz-4: #F87171;   /* red-400 */
+  --viz-5: #A78BFA;   /* violet-400 */
+  --viz-6: #22D3EE;   /* cyan-400 */
+  --viz-7: #A3E635;   /* lime-400 */
+  --viz-8: #94A3B8;   /* slate-400 */
 }
 
 :root {
-  /* Fonts */
-  --font-display: 'Fraunces', Georgia, serif;
-  --font-sans: 'Inter Tight', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  /* Fonts — single coherent Inter family */
+  --font-display: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-sans:    'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono:    'JetBrains Mono', 'Fira Code', monospace;
 
-  /* Layout metrics */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 20px;
+  /* Layout metrics — tighter, more precise */
+  --radius-sm:   6px;
+  --radius-md:   8px;
+  --radius-lg:   12px;
+  --radius-xl:   16px;
   --radius-pill: 9999px;
 
   --space-1: 4px;
@@ -126,7 +132,7 @@
   --space-6: 32px;
   --space-7: 48px;
   --space-8: 64px;
-  
+
   --tap: 40px;
   --pad-card: var(--space-5);
   --pad-section: var(--space-7);
@@ -165,10 +171,11 @@ html {
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-sans), 'Inter Tight', sans-serif;
-  font-size: 15px;
+  font-family: var(--font-sans), 'Inter', sans-serif;
+  font-size: 14px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   min-height: 100vh;
 }
@@ -203,40 +210,40 @@ input:focus-visible, textarea:focus-visible, button:focus-visible {
    Typography Utilities
    ========================================================= */
 .display {
-  font-family: var(--font-display), 'Fraunces', Georgia, serif;
-  font-size: 2.5rem;
-  line-height: 1.1;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-.h1 {
-  font-family: var(--font-display), 'Fraunces', Georgia, serif;
+  font-family: var(--font-display);
   font-size: 2rem;
   line-height: 1.15;
   font-weight: 700;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.03em;
 }
-.h2 {
-  font-family: var(--font-display), 'Fraunces', Georgia, serif;
+.h1 {
+  font-family: var(--font-display);
   font-size: 1.5rem;
   line-height: 1.25;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-weight: 700;
+  letter-spacing: -0.025em;
 }
-.h3 {
-  font-family: var(--font-display), 'Fraunces', Georgia, serif;
+.h2 {
+  font-family: var(--font-display);
   font-size: 1.25rem;
   line-height: 1.3;
   font-weight: 600;
-  letter-spacing: -0.005em;
+  letter-spacing: -0.02em;
+}
+.h3 {
+  font-family: var(--font-display);
+  font-size: 1.0625rem;
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: -0.015em;
 }
 .body-lg {
-  font-size: 1.0625rem;
+  font-size: 0.9375rem;
   line-height: 1.6;
   font-weight: 400;
 }
 .body {
-  font-size: 0.9375rem;
+  font-size: 0.875rem;
   line-height: 1.55;
   font-weight: 400;
 }
@@ -246,36 +253,36 @@ input:focus-visible, textarea:focus-visible, button:focus-visible {
   font-weight: 400;
 }
 .label {
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   line-height: 1.2;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 .num {
-  font-family: var(--font-mono), 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
-/* Redundant typography class compatibility */
+/* Typography compatibility aliases */
 .serif {
-  font-family: var(--font-display), 'Fraunces', Georgia, serif;
+  font-family: var(--font-display);
   font-weight: 700;
 }
 .sans {
-  font-family: var(--font-sans), 'Inter Tight', sans-serif;
+  font-family: var(--font-sans);
 }
 .mono {
-  font-family: var(--font-mono), 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 .eyebrow {
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   line-height: 1.2;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--text-2);
+  color: var(--text-3);
 }
 .eyebrow.accent {
   color: var(--accent-text);
@@ -357,7 +364,7 @@ input:focus-visible, textarea:focus-visible, button:focus-visible {
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
-  box-shadow: var(--shadow-1);
+  box-shadow: var(--shadow-2);
   border-radius: var(--radius-lg);
   padding: var(--pad-card);
 }
@@ -408,15 +415,15 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .masthead .row1 .left   { display: flex; align-items: center; gap: var(--space-4); }
 .masthead .row1 .right  { display: flex; align-items: center; gap: 8px; }
 .masthead .nameplate {
-  font-family: var(--font-display), 'Plus Jakarta Sans', sans-serif;
+  font-family: var(--font-display);
   font-weight: 700;
-  font-size: 20px;
+  font-size: 18px;
   color: var(--text);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
 }
 .masthead .nameplate em {
-  font-style: italic;
-  font-weight: 500;
+  font-style: normal;
+  font-weight: 600;
   color: var(--accent-text);
 }
 .masthead .meta {
@@ -499,8 +506,8 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .tracked-wide  { letter-spacing: 0.04em; }
 .hidden { display: none !important; }
 
-*::-webkit-scrollbar { width: 8px; height: 8px; }
-*::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+*::-webkit-scrollbar { width: 6px; height: 6px; }
+*::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
 *::-webkit-scrollbar-track { background: transparent; }
 
 /* =========================================================
