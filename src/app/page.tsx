@@ -23,7 +23,8 @@ import {
   pct,
   rupee,
   num,
-  Donut
+  Donut,
+  Spark
 } from "@/components/app/widgets";
 import type { Event } from "@/lib/store/types";
 import { DISPOSAFE_REGISTRY } from "@/lib/registry/disposafe";
@@ -554,20 +555,78 @@ export default function Dashboard() {
               not new math. Clicking any of the first 4 opens the 5-part drill-down
               narrative (what/why/cost/evidence/action) via kpiNarrative(). */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 20 }}>
-            <Kpi
-              primary
-              label="Rejection Rate"
-              value={pct(m.rate)}
-              sub={stats.rateDiff}
-              tone={m.rate > targetRej ? "bad" : "good"}
-              spark={m.tr}
+            {/* Primary Diagnostic Focus Card */}
+            <div 
               onClick={() => openModal(
                 `${grainLabel} Rejection Rate — Drill-down`,
                 kpiNarrative("rate", `The rejection rate stands at ${pct(m.rate)}, compared to the target of ${pct(targetRej)} (${stats.rateDiff}).`),
                 <div style={{ minHeight: 220, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={m.tr} target={targetRej} fmt={pct} /></div>,
                 { rows: srcRows({ types: ["production", "inspection"] }), value: pct(m.rate) },
               )}
-            />
+              className="card-hover"
+              style={{
+                gridColumn: "span 2",
+                border: "1px solid var(--border)",
+                borderTop: "2px solid var(--accent)",
+                borderRadius: "var(--radius-md)",
+                background: "var(--surface)",
+                padding: "20px",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+                cursor: "pointer",
+                minWidth: 0
+              }}
+            >
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--accent)" }}>Diagnostic Focus</div>
+                  <div className="muted" style={{ fontSize: 11, fontFamily: "var(--font-mono)" }}>Target: {pct(targetRej)}</div>
+                </div>
+                
+                <div style={{ display: "flex", gap: 24, marginTop: 12, alignItems: "center" }}>
+                  <div style={{ flexShrink: 0 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-3)" }}>Rejection Rate</div>
+                    <div style={{
+                      fontFamily: "var(--font-display)",
+                      fontSize: 38,
+                      fontWeight: 800,
+                      color: m.rate > targetRej ? "var(--critical)" : "var(--positive)",
+                      lineHeight: 1.1,
+                      margin: "4px 0"
+                    }}>
+                      {pct(m.rate)}
+                    </div>
+                    <div style={{ 
+                      fontSize: 11, 
+                      fontFamily: "var(--font-mono)", 
+                      color: m.rate > targetRej ? "var(--critical)" : "var(--positive)",
+                      fontWeight: 700
+                    }}>
+                      {stats.rateDiff}
+                    </div>
+                  </div>
+
+                  <div style={{ flex: 1, height: 44, display: "flex", alignItems: "flex-end", justifyContent: "center", borderLeft: "1px dashed var(--border)", paddingLeft: 20 }}>
+                    {m.tr && m.tr.length > 1 && <Spark points={m.tr} tone={m.rate > targetRej ? "bad" : "good"} />}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12, marginTop: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ display: "flex", flexDirection: "column", textAlign: "left" }}>
+                  <span className="muted" style={{ fontSize: 10.5 }}>Top Bottleneck Station</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{worstStageByRejs}</span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", textAlign: "right" }}>
+                  <span className="muted" style={{ fontSize: 10.5 }}>Contribution</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, fontFamily: "var(--font-mono)", color: "var(--critical)" }}>
+                    {worstStageRow ? `${(worstStageRow.contributionPct).toFixed(1)}%` : "—"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
             <Kpi
               primary
               label="First Pass Yield (FPY)"
@@ -582,6 +641,7 @@ export default function Dashboard() {
                 { rows: srcRows({ types: ["production", "inspection"] }), value: pct(m.fpy) },
               )}
             />
+
             <Kpi
               primary
               label="COPQ / Cost Impact"
@@ -596,19 +656,7 @@ export default function Dashboard() {
                 { rows: srcRows({ types: ["inspection", "rejection"] }), value: rupee(m.copq) },
               )}
             />
-            <Kpi
-              primary
-              label="Top Bottleneck"
-              value={worstStageByRejs}
-              sub={worstStageRow ? `${pct(worstStageRow.rejRate)} rejection rate` : "—"}
-              tone={worstStageRow && worstStageRow.rejRate > targetRej ? "bad" : "warn"}
-              onClick={() => openModal(
-                `${worstStageByRejs} — Drill-down`,
-                kpiNarrative("bottleneck", `${worstStageByRejs} is the top bottleneck stage, contributing ${num(worstStageRow?.rejected ?? 0)} rejections (${worstStageRow ? pct(worstStageRow.rejRate) : "—"} rejection rate).`),
-                <div style={{ minHeight: 220, display: "flex", flexDirection: "column", justifyContent: "center" }}><ProcessFlow rows={m.stages} /></div>,
-                { rows: srcRows({ stageId: worstStageRow?.stageId, types: ["production", "inspection"] }), value: worstStageRow ? pct(worstStageRow.rejRate) : "—" },
-              )}
-            />
+
             <Kpi
               primary
               label="Quality Status"

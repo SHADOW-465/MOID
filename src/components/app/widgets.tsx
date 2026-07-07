@@ -91,7 +91,7 @@ export function Card({ title, sub, children, span, onClick }: { title?: string; 
     >
       {title && (
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
-          <span style={{ fontSize: 13, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-3)" }}>{title}</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", fontFamily: "var(--font-sans)" }}>{title}</span>
           {sub && <span className="muted" style={{ fontSize: 11 }}>{sub}</span>}
         </div>
       )}
@@ -128,7 +128,7 @@ export function Kpi({
       className={onClick ? "card-hover" : ""}
       style={{ 
         border: "1px solid var(--border)", 
-        borderTop: primary ? "3px solid var(--accent)" : "1px solid var(--border)", 
+        borderTop: primary ? "2px solid var(--accent)" : "1px solid var(--border)", 
         borderRadius: "var(--radius-md)", 
         background: "var(--surface)", 
         padding: "16px",
@@ -140,7 +140,7 @@ export function Kpi({
       }}
     >
       <div>
-        <div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>{label}</div>
+        <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-3)" }}>{label}</div>
         <div style={{
           fontFamily: "var(--font-mono)",
           fontSize: primary ? 34 : 22,
