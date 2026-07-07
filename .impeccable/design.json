@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-07T14:13:00Z",
+  "title": "Design System: MO!D",
+  "extensions": {
+    "colorMeta": {
+      "primary": { "role": "primary", "displayName": "Burnt Orange", "canonical": "oklch(50% 0.22 35)", "tonalRamp": ["#FDF3F0", "#FBE3DC", "#F6C1B4", "#EA8E78", "#DB5C3C", "#C8421C", "#A23314", "#7B230B"] },
+      "neutral-bg": { "role": "neutral", "displayName": "Warm Paper", "canonical": "oklch(97% 0.005 60)", "tonalRamp": ["#FAF8F5", "#F3EFEA", "#EAE3DA", "#DCD2C5", "#B8A793", "#8E7D6A", "#5F5141", "#332A20"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Fraunces serif for display titles and main KPIs." },
+      "body": { "displayName": "Body", "purpose": "Inter Tight sans-serif for UI, forms, and general prose." }
+    },
+    "shadows": [
+      { "name": "shadow-1", "value": "0 1px 2px rgba(28,25,23,0.03)", "purpose": "Subtle card boundary shadow." }
+    ],
+    "motion": [
+      { "name": "transition-standard", "value": "all 150ms cubic-bezier(0.4, 0, 0.2, 1)", "purpose": "Default transition for hover states." }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Burnt orange solid action button.",
+      "html": "<button class=\"ds-btn-primary\">Publish Ledger</button>",
+      "css": ".ds-btn-primary { background: #C8421C; color: #FFFFFF; font-family: 'Inter Tight', sans-serif; font-size: 14px; font-weight: 600; padding: 10px 16px; border: 1px solid #C8421C; border-radius: 8px; cursor: pointer; transition: background 150ms ease-in-out; } .ds-btn-primary:hover { background: #B03514; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Outlined card-level secondary action.",
+      "html": "<button class=\"ds-btn-secondary\">Cancel Changes</button>",
+      "css": ".ds-btn-secondary { background: transparent; color: #2E2A27; font-family: 'Inter Tight', sans-serif; font-size: 14px; font-weight: 600; padding: 10px 16px; border: 1px solid #D6CBBF; border-radius: 8px; cursor: pointer; transition: background 150ms ease-in-out; } .ds-btn-secondary:hover { background: #F3EFEA; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Editorial Dossier",
+    "overview": "MO!D's visual language frames automated quality data within a highly structured, paper-like dossier or scientific journal format.",
+    "keyCharacteristics": [
+      "Warm Paper Canvas for readability",
+      "Contrast between Fraunces serif and Inter Tight UI",
+      "Flat outlined card shapes and ban of glassmorphism"
+    ],
+    "dos": [
+      "Do align all numeric data columns to the right and use JetBrains Mono.",
+      "Do use standard SVG icons with a stroke width of 1.6 and size of 16px or 24px."
+    ],
+    "donts": [
+      "Don't use emojis as visual markers.",
+      "Don't use backdrop-blur filters or semi-transparent glass cards."
+    ]
+  }
+}
