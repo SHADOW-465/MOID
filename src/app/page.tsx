@@ -1,11 +1,12 @@
 // src/app/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/app/AppShell";
 import { useEvents } from "@/components/app/EventsContext";
 import Icon from "@/components/editorial/Icon";
+import { gsap } from "gsap";
 import FloatingDetailModal, { type SourceRow } from "@/components/FloatingDetailModal";
 import { useTweaks } from "@/components/editorial/TweaksContext";
 import { 
@@ -104,6 +105,7 @@ export default function Dashboard() {
   const [modalSourceRows, setModalSourceRows] = useState<SourceRow[] | undefined>(undefined);
   const [modalPrimaryValue, setModalPrimaryValue] = useState<string | undefined>(undefined);
   const [rawSheets, setRawSheets] = useState<any[] | undefined>(undefined);
+  const [hoveredRec, setHoveredRec] = useState<number | null>(null);
 
   const openModal = (
     title: string,
@@ -245,6 +247,17 @@ export default function Dashboard() {
 
   // The active view is the GLOBAL stage scope from the header (TweaksContext).
   const activeView = t.stageView;
+  const dashboardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isLoading && m && dashboardRef.current) {
+      const children = dashboardRef.current.children;
+      gsap.fromTo(children,
+        { y: 16, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.4, stagger: 0.08, ease: "power2.out" }
+      );
+    }
+  }, [isLoading, m, activeView]);
 
   // Synchronize selected size with the available sizes dataset
   useEffect(() => {
@@ -518,7 +531,7 @@ export default function Dashboard() {
       )}
 
       {m && !activeView.startsWith("dataset:") && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+        <div ref={dashboardRef} style={{ display: "flex", flexDirection: "column", gap: 24 }}>
           {activeView !== "cumulative" ? (
             (
               <StationView
@@ -654,17 +667,23 @@ export default function Dashboard() {
                 {recommendationCards.map((rec, i) => {
                   const chipColor = rec.tone === "bad" ? "var(--critical)" : rec.tone === "warn" ? "var(--warning)" : "var(--positive)";
                   const chipText = rec.tone === "bad" ? "Critical" : rec.tone === "warn" ? "Warning" : "Info";
+                  const isHovered = hoveredRec === i;
                   return (
                     <div
                       key={i}
+                      onMouseEnter={() => setHoveredRec(i)}
+                      onMouseLeave={() => setHoveredRec(null)}
                       style={{
                         display: "flex",
                         flexDirection: "column",
                         gap: 5,
-                        padding: "10px 12px",
-                        background: "var(--surface-2)",
-                        border: "1px solid var(--border)",
+                        padding: "12px 14px",
+                        background: isHovered ? "var(--surface)" : "var(--surface-2)",
+                        border: isHovered ? "1.5px solid var(--accent)" : "1px solid var(--border)",
+                        boxShadow: isHovered ? "var(--shadow-2)" : "none",
                         borderRadius: "var(--radius-md)",
+                        transform: isHovered ? "translateY(-2px)" : "none",
+                        transition: "all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)"
                       }}
                     >
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
@@ -886,11 +905,29 @@ export default function Dashboard() {
  *  Recommendation). Presentational only — values are computed by the caller. */
 function BriefRow({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
-      <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-3)", minWidth: 108, flexShrink: 0 }}>
+    <div style={{ 
+      display: "flex", 
+      gap: 12, 
+      alignItems: "center",
+      padding: "8px 0",
+      borderBottom: "1px dashed var(--border)"
+    }}>
+      <span style={{ 
+        fontSize: 10, 
+        fontWeight: 700, 
+        textTransform: "uppercase", 
+        letterSpacing: "0.05em", 
+        color: "var(--accent-text)", 
+        minWidth: 120, 
+        flexShrink: 0,
+        background: "var(--accent-weak)",
+        padding: "3px 6px",
+        borderRadius: 4,
+        textAlign: "center"
+      }}>
         {label}
       </span>
-      <span style={{ fontSize: 13, color: "var(--text)" }}>{safeBolden(value)}</span>
+      <span style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5 }}>{safeBolden(value)}</span>
     </div>
   );
 }

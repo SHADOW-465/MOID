@@ -7,6 +7,7 @@ import { useTweaks } from "@/components/editorial/TweaksContext";
 import { useEvents } from "@/components/app/EventsContext";
 import { resolveScope } from "@/lib/analytics/scope";
 import { trustScore as computeTrustScore } from "@/lib/analytics/trust";
+import { gsap } from "gsap";
 
 export type NavKey =
   | "dashboard" | "workbooks" | "data-entry" | "staging" | "stage" | "size" | "defect"
@@ -110,6 +111,38 @@ export default function AppShell({
     }
     return false;
   });
+
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  const viewMenuRef = useRef<HTMLDivElement>(null);
+  const datePickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!sidebarRef.current) return;
+    gsap.to(sidebarRef.current, {
+      width: sidebarCollapsed ? 64 : 240,
+      duration: 0.35,
+      ease: "power3.inOut",
+      overwrite: "auto"
+    });
+  }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    if (showViewMenu && viewMenuRef.current) {
+      gsap.fromTo(viewMenuRef.current,
+        { opacity: 0, scale: 0.95, y: -8 },
+        { opacity: 1, scale: 1, y: 0, duration: 0.2, ease: "power2.out" }
+      );
+    }
+  }, [showViewMenu]);
+
+  useEffect(() => {
+    if (showPicker && datePickerRef.current) {
+      gsap.fromTo(datePickerRef.current,
+        { opacity: 0, scale: 0.95, y: -8 },
+        { opacity: 1, scale: 1, y: 0, duration: 0.2, ease: "power2.out" }
+      );
+    }
+  }, [showPicker]);
 
   const toggleSidebar = () => {
     setSidebarCollapsed((prev) => {
@@ -404,7 +437,7 @@ export default function AppShell({
       gridTemplateAreas: `"side top" "side main" "side status"`
     }}>
       {/* Sidebar Navigation */}
-      <aside style={{ 
+      <aside ref={sidebarRef} style={{ 
         gridArea: "side", 
         borderRight: "1px solid var(--border)", 
         background: "var(--surface)", 
@@ -414,8 +447,7 @@ export default function AppShell({
         top: 0, 
         height: "100vh",
         zIndex: 100,
-        width: sidebarCollapsed ? "64px" : "240px",
-        transition: "width 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)",
+        width: sidebarCollapsed ? 64 : 240,
         overflow: "hidden"
       }}>
         {/* logo and collapse toggle */}
@@ -752,6 +784,7 @@ export default function AppShell({
 
             {showViewMenu && (
               <div
+                ref={viewMenuRef}
                 className="dropdown-panel"
                 onClick={(e) => e.stopPropagation()}
                 style={{
@@ -894,6 +927,7 @@ export default function AppShell({
 
             {showPicker && (
               <div 
+                ref={datePickerRef}
                 onClick={(e) => e.stopPropagation()}
                 style={{
                   position: "absolute",

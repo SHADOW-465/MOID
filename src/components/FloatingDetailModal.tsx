@@ -84,6 +84,23 @@ export default function FloatingDetailModal({
   const tableScrollRef = useRef<HTMLDivElement>(null);
   const [beams, setBeams] = useState<Beam[]>([]);
 
+  const backdropRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (isOpen && backdropRef.current && panelRef.current) {
+      const gsapModule = require("gsap").gsap;
+      gsapModule.fromTo(backdropRef.current,
+        { opacity: 0 },
+        { opacity: 1, duration: 0.2, ease: "power2.out" }
+      );
+      gsapModule.fromTo(panelRef.current,
+        { y: 24, scale: 0.98, opacity: 0 },
+        { y: 0, scale: 1, opacity: 1, duration: 0.3, ease: "power3.out" }
+      );
+    }
+  }, [isOpen]);
+
   // rawSheets (prop) only ever holds the CURRENT browser session's cached
   // upload — sourceRows can span the full historical ledger, built from
   // files uploaded in past sessions. Those files' bytes are archived
@@ -265,11 +282,13 @@ export default function FloatingDetailModal({
 
   return (
     <div
+      ref={backdropRef}
       className="modal-backdrop"
-      style={{ position: "fixed", inset: 0, backgroundColor: "rgba(18,16,14,0.55)", zIndex: 1000, display: "grid", placeItems: "center", padding: 16 }}
+      style={{ position: "fixed", inset: 0, backgroundColor: "rgba(18,16,14,0.55)", zIndex: 1000, display: "grid", placeItems: "center", padding: 16, opacity: 0 }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
+        ref={panelRef}
         className="modal-panel"
         style={{
           width: "98vw",
@@ -283,6 +302,7 @@ export default function FloatingDetailModal({
           maxHeight: "96vh",
           overflow: "hidden",
           transition: "max-width 0.3s cubic-bezier(0.2, 0.8, 0.2, 1)",
+          opacity: 0,
         }}
       >
         {/* Title bar — slim */}
