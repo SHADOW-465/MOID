@@ -79,20 +79,21 @@ export function Card({ title, sub, children, span, onClick }: { title?: string; 
       style={{ 
         gridColumn: span ? `span ${span}` : undefined, 
         border: "1px solid var(--border)", 
-        borderRadius: "var(--radius-md)", 
+        borderRadius: "var(--radius-lg)", 
         background: "var(--surface)", 
-        padding: "16px",
+        padding: "20px",
         display: "flex",
         flexDirection: "column",
         justifyContent: "space-between",
         cursor: onClick ? "pointer" : "default",
-        minWidth: 0
+        minWidth: 0,
+        boxShadow: "var(--shadow-1)",
       }}
     >
       {title && (
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
-          <span style={{ fontSize: 13, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-3)" }}>{title}</span>
-          {sub && <span className="muted" style={{ fontSize: 11 }}>{sub}</span>}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14, borderBottom: "1px solid var(--border)", paddingBottom: 8 }}>
+          <span style={{ fontSize: 11.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-2)", fontFamily: "var(--font-sans)" }}>{title}</span>
+          {sub && <span className="muted" style={{ fontSize: 11, fontFamily: "var(--font-mono)" }}>{sub}</span>}
         </div>
       )}
       <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
