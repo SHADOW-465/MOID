@@ -831,17 +831,6 @@ export default function AppShell({
                         position: "relative",
                         zIndex: 1
                       }}>
-                      {isActive && (
-                        <span style={{
-                          position: "absolute",
-                          left: sidebarCollapsed ? 4 : 6,
-                          top: "25%",
-                          height: "50%",
-                          width: 3,
-                          background: "var(--accent)",
-                          borderRadius: 2,
-                        }} />
-                      )}
                       <Icon name={n.icon} size={isAnalyticsChild ? 12 : 14} stroke={isActive ? 2 : 1.5} style={{ flexShrink: 0, color: navIconColor(isActive) }} />
                       <span style={{ 
                         flex: 1,
