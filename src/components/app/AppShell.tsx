@@ -5,9 +5,18 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import Icon, { type IconName } from "@/components/editorial/Icon";
 import { useTweaks } from "@/components/editorial/TweaksContext";
 import { useEvents } from "@/components/app/EventsContext";
+import {
+  rejectionRate,
+  totalRejected,
+  totalChecked,
+  fpy,
+  copq,
+  savingsOpportunity,
+  trustScore,
+} from "@/lib/analytics";
+import type { DashboardConfig } from "@/types/dashboard";
 import { resolveScope } from "@/lib/analytics/scope";
 import { trustScore as computeTrustScore } from "@/lib/analytics/trust";
-import { gsap } from "gsap";
 
 export type NavKey =
   | "dashboard" | "workbooks" | "data-entry" | "staging" | "stage" | "size" | "defect"
@@ -65,7 +74,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { key: "reports", label: "Reports", icon: "print", href: "/reports" },
       { key: "capa", label: "CAPA & Actions", icon: "check", href: "/capa" },
-      { key: "ask", label: "Ask RAIS", icon: "comment", href: "/chat", aiBadge: true },
+      { key: "ask", label: "Ask MOID", icon: "comment", href: "/chat", aiBadge: true },
       { key: "audit", label: "Audit Trail", icon: "search", href: "/audit" },
       { key: "schema", label: "Data Schema", icon: "split", href: "/schema" },
       { key: "settings", label: "Settings", icon: "external", href: "/settings" },
@@ -86,18 +95,32 @@ const VIEW_OPTIONS: { id: string; label: string }[] = [
 ];
 
 export default function AppShell({
-  active, trustScore: trustScoreProp, statusCounts, dateRange, children,
+  active, trustScore: trustScoreProp, statusCounts, dateRange, children, presetId,
 }: {
   active: NavKey;
   trustScore?: number | null;
   statusCounts?: { alerts?: number; capa?: number; overdue?: number; anomalies?: number };
   dateRange?: string;
   children: React.ReactNode;
+  /** Which Data Entry preset's registry to load for stage-gate nav. Omit for the default preset. */
+  presetId?: string | null;
 }) {
   const router = useRouter();
+  const { events } = useEvents();
   const { t, setTweak } = useTweaks();
   const [mounted, setMounted] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
+  const navRef = useRef<HTMLDivElement>(null);
+  const lastPos = typeof window !== "undefined" ? (window as any).__last_nav_pos : null;
+  const [activeOffsetTop, setActiveOffsetTop] = useState(lastPos ? lastPos.top : -1000);
+  const [activeOffsetLeft, setActiveOffsetLeft] = useState(lastPos ? lastPos.left : 0);
+  const [activeHeight, setActiveHeight] = useState(lastPos ? lastPos.height : 0);
+  const [activeWidth, setActiveWidth] = useState(lastPos ? lastPos.width : 0);
+  // ponytail: highlight only glides once it has a real position to glide FROM.
+  // Every navigation remounts AppShell (fresh state), so without this flag the
+  // pill would tween in from its (-1000, 0) placeholder — reading as "always
+  // slides in from the top-left" — on every single tab change.
+  const [highlightReady, setHighlightReady] = useState(!!lastPos);
   const [showViewMenu, setShowViewMenu] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [isConfigured, setIsConfigured] = useState<boolean | null>(null);
@@ -112,37 +135,129 @@ export default function AppShell({
     return false;
   });
 
-  const sidebarRef = useRef<HTMLDivElement>(null);
-  const viewMenuRef = useRef<HTMLDivElement>(null);
-  const datePickerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!sidebarRef.current) return;
-    gsap.to(sidebarRef.current, {
-      width: sidebarCollapsed ? 64 : 240,
-      duration: 0.35,
-      ease: "power3.inOut",
-      overwrite: "auto"
-    });
-  }, [sidebarCollapsed]);
-
-  useEffect(() => {
-    if (showViewMenu && viewMenuRef.current) {
-      gsap.fromTo(viewMenuRef.current,
-        { opacity: 0, scale: 0.95, y: -8 },
-        { opacity: 1, scale: 1, y: 0, duration: 0.2, ease: "power2.out" }
-      );
+  // Floating Ask MOID Chat Widget States
+  const [showChatWidget, setShowChatWidget] = useState(false);
+  const [widgetInput, setWidgetInput] = useState("");
+  const [widgetMessages, setWidgetMessages] = useState<any[]>([
+    {
+      id: "welcome",
+      sender: "moid",
+      text: "Hello! I am MOID, your Manufacturing Operational Intelligence assistant. How can I help you analyze rejection trends or diagnostic metrics today?",
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     }
-  }, [showViewMenu]);
+  ]);
+  const [widgetLoading, setWidgetLoading] = useState(false);
+  const [activeConfig, setActiveConfig] = useState<DashboardConfig | null>(null);
+
+
 
   useEffect(() => {
-    if (showPicker && datePickerRef.current) {
-      gsap.fromTo(datePickerRef.current,
-        { opacity: 0, scale: 0.95, y: -8 },
-        { opacity: 1, scale: 1, y: 0, duration: 0.2, ease: "power2.out" }
-      );
+    const evs = events ?? [];
+    if (evs.length > 0) {
+      const scope = { grain: "month" as const };
+      const rate = rejectionRate(evs, scope).value;
+      const rejected = totalRejected(evs, scope).value;
+      const checked = totalChecked(evs, scope).value;
+      const fpyVal = fpy(evs, scope).value;
+      const copqRes = copq(evs, scope);
+      const savings = savingsOpportunity(evs, scope);
+
+      const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
+      const rupee = (n: number) => `₹${(n / 100000).toFixed(2)}L`;
+      const num = (n: number) => n.toLocaleString();
+
+      const computedConfig: DashboardConfig = {
+        dashboardTitle: "Live Staging Ledger",
+        executiveSummary: `Overall rejection rate is ${pct(rate)}. Visual Inspection contributes the highest rejection volume.`,
+        kpis: [
+          { label: "Rejection Rate", value: pct(rate), unit: "", trend: 0, context: "YTD average" },
+          { label: "Total Rejections", value: num(rejected), unit: "", trend: 0, context: "YTD total" },
+          { label: "First Pass Yield (FPY)", value: pct(fpyVal), unit: "", trend: 0, context: "YTD FPY" },
+          { label: "COPQ (This Month)", value: rupee(copqRes?.value ?? 0), trend: 0, context: "Month total" },
+          { label: "Savings Opportunity", value: rupee(savings ?? 0), trend: 0, context: "Annual Potential" },
+        ],
+        charts: [],
+        insights: [
+          `Total production checked is ${num(checked)} units.`,
+          `Discrepancy count stands at ${num(rejected)} rejected.`,
+        ],
+        recommendations: [],
+        alerts: [],
+        sections: [],
+      };
+
+      setActiveConfig(computedConfig);
     }
-  }, [showPicker]);
+  }, [events]);
+
+  const submitWidgetQuery = async () => {
+    const question = widgetInput.trim();
+    if (!question || widgetLoading) return;
+
+    setWidgetLoading(true);
+    setWidgetInput("");
+
+    // Add user message
+    const userMsg = {
+      id: `usr-${Date.now()}`,
+      sender: "user",
+      text: question,
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    };
+    setWidgetMessages((prev) => [...prev, userMsg]);
+
+    try {
+      const currentConfig = activeConfig || {
+        dashboardTitle: "Live Staging Ledger",
+        executiveSummary: "Operational analytics loaded.",
+        kpis: [
+          { label: "Rejection Rate", value: "0.00%", unit: "", trend: 0, context: "No active data" }
+        ],
+        charts: [],
+        insights: [],
+        recommendations: [],
+        alerts: [],
+        sections: [],
+      };
+
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question,
+          dataSummary: JSON.stringify(currentConfig.insights),
+          currentConfig,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Chat request failed");
+      }
+
+      const result = await res.json();
+      const text = result.type === "slide" && result.slide ? result.slide.headline : (result.text || "I was unable to construct a response.");
+
+      const moidMsg = {
+        id: `moid-${Date.now()}`,
+        sender: "moid",
+        text,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      };
+      setWidgetMessages((prev) => [...prev, moidMsg]);
+    } catch (err: any) {
+      setWidgetMessages((prev) => [
+        ...prev,
+        {
+          id: `err-${Date.now()}`,
+          sender: "moid",
+          text: `Error: ${err.message ?? "Operational AI returned a timeout error."}`,
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        },
+      ]);
+    } finally {
+      setWidgetLoading(false);
+    }
+  };
 
   const toggleSidebar = () => {
     setSidebarCollapsed((prev) => {
@@ -186,7 +301,7 @@ export default function AppShell({
 
   const suggestedGrain = mounted ? getSuggestedGrain() : "month";
 
-  const { events } = useEvents();
+
 
   // Pages that don't explicitly compute/pass a trustScore prop (most of them —
   // only Dashboard and Reports did) used to show a permanent "No data ingested
@@ -205,7 +320,7 @@ export default function AppShell({
 
   useEffect(() => {
     setMounted(true);
-    fetch("/api/schema")
+    fetch(presetId ? `/api/schema?presetId=${encodeURIComponent(presetId)}` : "/api/schema")
       .then((res) => res.json())
       .then((data) => {
         setIsConfigured(data.configured !== false);
@@ -215,7 +330,7 @@ export default function AppShell({
       .catch(() => {
         setIsConfigured(true);
       });
-  }, []);
+  }, [presetId]);
 
   useEffect(() => {
     fetch("/api/datasets")
@@ -374,6 +489,69 @@ export default function AppShell({
     }
   }, []);
 
+  // Calculate active navigation element coordinates relative to <nav> container
+  useEffect(() => {
+    if (!mounted || !navRef.current) return;
+    
+    const updatePosition = () => {
+      const activeEl = navRef.current?.querySelector('[data-nav-active="true"]');
+      const navEl = navRef.current;
+      if (activeEl && navEl && activeEl instanceof HTMLElement) {
+        setActiveOffsetTop(activeEl.offsetTop);
+        setActiveOffsetLeft(activeEl.offsetLeft);
+        setActiveHeight(activeEl.offsetHeight);
+        setActiveWidth(activeEl.offsetWidth);
+      } else {
+        setActiveOffsetTop(-1000);
+        setActiveOffsetLeft(0);
+      }
+    };
+
+    // 1. Initial measurement (placed with transitions off — see highlightReady
+    // effect below — so the pill appears already in place, not sliding in)
+    updatePosition();
+
+    // 2. Observe size changes (during transitions)
+    const observer = new ResizeObserver(() => {
+      requestAnimationFrame(updatePosition);
+    });
+    observer.observe(navRef.current);
+
+    // 3. Keep updating on window resize
+    window.addEventListener("resize", updatePosition);
+
+    // 4. Run a few delayed checks during sidebar collapse transition
+    const timers = [
+      setTimeout(updatePosition, 50),
+      setTimeout(updatePosition, 100),
+      setTimeout(updatePosition, 180),
+      setTimeout(updatePosition, 250),
+      setTimeout(updatePosition, 350)
+    ];
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updatePosition);
+      timers.forEach(clearTimeout);
+    };
+  }, [active, sidebarCollapsed, collapsedSections, mounted, viewStages, datasetTabs]);
+
+  // Enable the pill's slide transition only after its first real position has
+  // painted (two rAFs = one committed frame), so it never tweens in from the
+  // (-1000, 0) placeholder on mount/navigation — only glides between tabs
+  // within an already-settled sidebar.
+  useEffect(() => {
+    if (!mounted || activeOffsetTop === -1000) return;
+    let raf1 = 0, raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setHighlightReady(true));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [mounted, activeOffsetTop]);
+
   function toggleSection(title: string) {
     setCollapsedSections((prev) => {
       const next = { ...prev, [title]: !prev[title] };
@@ -425,6 +603,25 @@ export default function AppShell({
   const allViewOptions = [{ id: "cumulative", label: "Factory Overview" }, ...stationOptions, ...datasetTabs];
   const currentView = allViewOptions.find((v) => v.id === t.stageView)
     ?? { id: t.stageView, label: t.stageView === "cumulative" ? "Factory Overview" : t.stageView };
+  const sidebarBg = "var(--surface)";
+  const sidebarBorder = "1px solid var(--border-strong)";
+  const dispoTextColor = "var(--text)";
+  const navTextColor = (isActive: boolean, soon?: boolean) => {
+    if (isActive) return "var(--text)";
+    if (soon) return "var(--text-3)";
+    return "var(--text-2)";
+  };
+  const navIconColor = (isActive: boolean) => {
+    if (isActive) return "var(--accent)";
+    return "var(--text-3)";
+  };
+  const highlightBg = "color-mix(in srgb, var(--accent) 8%, var(--surface-2))";
+  const highlightBorder = "1px solid color-mix(in srgb, var(--accent) 15%, var(--border-strong))";
+  const sepBorderColor = "var(--border)";
+  const sectionHeaderColor = "var(--text-3)";
+  const toggleBtnBg = "var(--surface-2)";
+  const toggleBtnBorder = "1px solid var(--border-strong)";
+  const toggleBtnColor = "var(--text-2)";
 
   return (
     <div style={{ 
@@ -432,105 +629,120 @@ export default function AppShell({
       background: "var(--bg)", 
       color: "var(--text)", 
       display: "grid", 
-      gridTemplateColumns: "auto 1fr", 
-      gridTemplateRows: "70px 1fr 44px", 
-      gridTemplateAreas: `"side top" "side main" "side status"`
+      gridTemplateColumns: sidebarCollapsed 
+        ? "calc(48px + var(--space-4)) 1fr" 
+        : "calc(180px + var(--space-4)) 1fr", 
+      gridTemplateRows: "calc(var(--header-h) + var(--space-4)) 1fr calc(var(--footer-h) + var(--space-4))", 
+      gridTemplateAreas: `"side top" "side main" "side status"`,
+      transition: "grid-template-columns 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)"
     }}>
-      {/* Sidebar Navigation — Floating Glass Panel */}
-      <aside ref={sidebarRef} style={{ 
+      {/* Sidebar Navigation */}
+      <aside style={{ 
         gridArea: "side", 
-        background: "var(--glass)", 
-        backdropFilter: "blur(24px) saturate(1.4)", 
-        WebkitBackdropFilter: "blur(24px) saturate(1.4)",
-        border: "1px solid var(--border)",
-        borderRadius: sidebarCollapsed ? "var(--radius-md)" : "var(--radius-lg)",
+        background: sidebarBg, 
+        border: sidebarBorder,
+        borderRadius: "16px",
+        margin: "var(--space-4) 0 var(--space-4) var(--space-4)",
         display: "flex", 
         flexDirection: "column", 
         position: "sticky", 
-        top: 8, 
-        height: "calc(100vh - 16px)",
-        margin: "8px 0 8px 8px",
+        top: "var(--space-4)", 
+        height: "calc(100vh - var(--space-4) * 2)",
         zIndex: 100,
-        width: sidebarCollapsed ? 64 : 240,
+        width: sidebarCollapsed ? "48px" : "180px",
+        transition: "width 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), margin 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), background-color 0.25s ease, border-color 0.25s ease",
         overflow: "hidden",
-        boxShadow: "var(--shadow-2)",
-        transition: "border-radius 0.3s cubic-bezier(0.2, 0.8, 0.2, 1)"
+        boxShadow: "0 10px 30px -10px rgba(0,0,0,0.5)"
       }}>
         {/* logo and collapse toggle */}
         <div style={{ 
-          padding: sidebarCollapsed ? "20px 20px" : "20px 18px", 
+          padding: sidebarCollapsed ? "14px 0" : "14px 16px", 
           display: "flex", 
+          flexDirection: sidebarCollapsed ? "column" : "row",
           alignItems: "center", 
-          justifyContent: "flex-start",
-          borderBottom: "1px solid var(--border)",
-          minHeight: "69px",
-          transition: "padding 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)",
+          justifyContent: sidebarCollapsed ? "center" : "space-between",
+          gap: sidebarCollapsed ? 12 : 8,
+          borderBottom: "none",
+          minHeight: 52,
+          transition: "all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)",
           overflow: "hidden"
         }}>
-          <div style={{ 
-            display: "flex", 
-            alignItems: "center", 
-            gap: 6,
-            opacity: sidebarCollapsed ? 0 : 1,
-            maxWidth: sidebarCollapsed ? 0 : "172px",
-            overflow: "hidden",
-            whiteSpace: "nowrap",
-            marginRight: sidebarCollapsed ? 0 : 8,
-            flexShrink: 0,
-            transition: "opacity 0.2s ease, max-width 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), margin-right 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)"
-          }}>
-            <span style={{ 
-              fontFamily: "var(--font-display)", 
-              fontWeight: 800, 
-              fontSize: 20, 
-              color: "var(--text)",
-              letterSpacing: "-0.04em"
-            }}>
-              MO<span style={{ color: "var(--accent)" }}>!</span>D
-            </span>
-            <span className="muted" style={{ 
-              fontSize: 8.5, 
-              lineHeight: 1.15,
-              fontWeight: 500,
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-              marginLeft: 8
-            }}>
-              Manufacturing Operational<br />Intelligence &amp; Diagnostics
-            </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            <img src="/logo.png" alt="MOID Logo" style={{ width: 20, height: 20, objectFit: "contain", flexShrink: 0 }} />
+            {!sidebarCollapsed && (
+              <span style={{ 
+                fontFamily: "var(--font-sans)", 
+                fontWeight: 800, 
+                fontSize: 16, 
+                letterSpacing: "-0.01em",
+                display: "inline-flex"
+              }}>
+                <span style={{ color: dispoTextColor }}>Dispo</span>
+                <span style={{ color: "#009FDF" }}>safe</span>
+              </span>
+            )}
           </div>
           <button 
             onClick={toggleSidebar}
-            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
             style={{
-              background: "transparent",
-              border: "none",
-              color: "var(--text-3)",
+              background: toggleBtnBg,
+              border: toggleBtnBorder,
+              color: toggleBtnColor,
               cursor: "pointer",
               display: "grid",
               placeItems: "center",
-              padding: 4,
-              borderRadius: "var(--radius-sm)",
-              transition: "background 0.2s",
+              width: 24,
+              height: 24,
+              borderRadius: "50%",
+              transition: "all 0.2s",
               flexShrink: 0
             }}
-            onMouseOver={(e) => e.currentTarget.style.background = "var(--glass-hover)"}
-            onMouseOut={(e) => e.currentTarget.style.background = "transparent"}
+            onMouseOver={(e) => {
+              if (e.currentTarget) {
+                e.currentTarget.style.background = "var(--accent)";
+                e.currentTarget.style.color = "#FFFFFF";
+                e.currentTarget.style.borderColor = "var(--accent)";
+              }
+            }}
+            onMouseOut={(e) => {
+              if (e.currentTarget) {
+                e.currentTarget.style.background = toggleBtnBg;
+                e.currentTarget.style.color = toggleBtnColor;
+                e.currentTarget.style.borderColor = "var(--border-strong)";
+              }
+            }}
           >
-            <Icon name={sidebarCollapsed ? "arrow-right" : "arrow-left"} size={16} />
+            <Icon name={sidebarCollapsed ? "arrow-right" : "arrow-left"} size={12} />
           </button>
         </div>
 
         {/* nav links — grouped into collapsible sections */}
-        <nav style={{ flex: 1, overflowY: "auto", padding: sidebarCollapsed ? "12px 4px" : "12px 8px" }}>
+        <nav ref={navRef} style={{ position: "relative", flex: 1, overflowY: "auto", padding: sidebarCollapsed ? "12px 4px" : "12px 6px" }}>
+          {/* Sliding highlight indicator */}
+          <div style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: activeWidth,
+            height: activeHeight,
+            borderRadius: "30px",
+            background: highlightBg,
+            border: highlightBorder,
+            pointerEvents: "none",
+            transition: highlightReady ? "transform 0.28s cubic-bezier(0.25, 1, 0.5, 1), width 0.28s cubic-bezier(0.25, 1, 0.5, 1), height 0.28s cubic-bezier(0.25, 1, 0.5, 1)" : "none",
+            transform: `translate(${activeOffsetLeft}px, ${activeOffsetTop}px)`,
+            opacity: activeOffsetTop === -1000 ? 0 : 1,
+            zIndex: 0
+          }} />
           {NAV_SECTIONS.map((section) => {
             const isCollapsed = !!collapsedSections[section.title];
             return (
-              <div key={section.title} style={{ marginBottom: 6 }}>
+              <div key={section.title} style={{ marginBottom: 4 }}>
                 <div style={{ 
                   height: sidebarCollapsed ? 1 : 0, 
-                  borderTop: sidebarCollapsed ? "1px solid var(--border)" : "0px solid transparent", 
-                  margin: sidebarCollapsed ? "12px 4px 6px" : "0",
+                  borderTop: sidebarCollapsed ? `1px solid ${sepBorderColor}` : "0px solid transparent", 
+                  margin: sidebarCollapsed ? "8px 4px 4px" : "0",
                   opacity: sidebarCollapsed ? 1 : 0,
                   overflow: "hidden",
                   transition: "all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)"
@@ -538,10 +750,10 @@ export default function AppShell({
                 
                 <div style={{
                   opacity: sidebarCollapsed ? 0 : 1,
-                  maxHeight: sidebarCollapsed ? 0 : "30px",
+                  maxHeight: sidebarCollapsed ? 0 : "24px",
                   overflow: "hidden",
                   transition: "opacity 0.15s ease, max-height 0.25s ease",
-                  marginBottom: sidebarCollapsed ? 0 : 6
+                  marginBottom: sidebarCollapsed ? 0 : 4
                 }}>
                   <button
                     onClick={() => toggleSection(section.title)}
@@ -551,37 +763,50 @@ export default function AppShell({
                       alignItems: "center",
                       justifyContent: "space-between",
                       gap: 6,
-                      padding: "8px 16px 4px",
+                      padding: "4px 12px 2px",
                       background: "transparent",
                       border: "none",
                       cursor: "pointer",
                     }}
                   >
                     <span className="muted" style={{
-                      fontSize: 10,
+                      fontSize: 9,
                       fontWeight: 700,
                       textTransform: "uppercase",
                       letterSpacing: "0.06em",
-                      color: "var(--text-3)",
+                      color: sectionHeaderColor,
                     }}>
                       {section.title}
                     </span>
                     <Icon
                       name={isCollapsed ? "chevron-down" : "chevron-up"}
-                      size={11}
-                      style={{ color: "var(--text-3)" }}
+                      size={10}
+                      style={{ color: sectionHeaderColor }}
                     />
                   </button>
                 </div>
-
+ 
                 {(!isCollapsed || sidebarCollapsed) && section.items.map((n) => {
                   const isActive = n.key === active;
                   const isAnalyticsChild = n.indent;
-
+ 
                   return (
                     <button key={n.key} disabled={n.soon}
+                      data-nav-active={isActive}
                       onClick={() => {
                         if (n.href) {
+                          // Save current active tab coordinate to window before navigating
+                          if (typeof window !== "undefined" && navRef.current) {
+                            const activeEl = navRef.current.querySelector('[data-nav-active="true"]');
+                            if (activeEl && activeEl instanceof HTMLElement) {
+                              (window as any).__last_nav_pos = {
+                                top: activeEl.offsetTop,
+                                left: activeEl.offsetLeft,
+                                height: activeEl.offsetHeight,
+                                width: activeEl.offsetWidth
+                              };
+                            }
+                          }
                           router.push(n.href);
                         }
                       }}
@@ -590,34 +815,28 @@ export default function AppShell({
                         width: "100%",
                         display: "flex",
                         alignItems: "center",
-                        justifyContent: "flex-start",
-                        gap: sidebarCollapsed ? 0 : 10,
-                        padding: sidebarCollapsed ? "10px 20px" : (isAnalyticsChild ? "8px 16px 8px 32px" : "10px 16px"),
-                        marginBottom: 2,
-                        background: isActive
-                          ? "var(--accent-weak)"
-                          : "transparent",
-                        borderRadius: "var(--radius-pill)",
-                        color: isActive
-                          ? "var(--accent-text)"
-                          : n.soon
-                            ? "var(--text-3)"
-                            : "var(--text-2)",
+                        justifyContent: sidebarCollapsed ? "center" : "flex-start",
+                        gap: sidebarCollapsed ? 0 : 8,
+                        padding: sidebarCollapsed ? "8px 0" : (isAnalyticsChild ? "6px 12px 6px 20px" : "8px 12px"),
+                        marginBottom: 1,
+                        background: "transparent",
+                        borderRadius: "30px",
+                        color: navTextColor(isActive, n.soon),
                         border: "none",
                         cursor: n.soon ? "default" : "pointer",
-                        fontSize: isAnalyticsChild ? 12.5 : 13,
-                        fontWeight: isActive ? 600 : 400,
+                        fontSize: isAnalyticsChild ? 11.5 : 12.5,
+                        fontWeight: isActive ? 700 : 500,
                         textAlign: "left",
-                        boxShadow: isActive ? "0 0 12px var(--accent-glow)" : "none",
-                        transition: "padding 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), gap 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), background 0.15s ease, box-shadow 0.25s ease",
-                        position: "relative"
+                        transition: "padding 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), gap 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), color 0.15s ease",
+                        position: "relative",
+                        zIndex: 1
                       }}>
-                      <Icon name={n.icon} size={isAnalyticsChild ? 13 : 15} stroke={isActive ? 2 : 1.5} style={{ flexShrink: 0 }} />
+                      <Icon name={n.icon} size={isAnalyticsChild ? 12 : 14} stroke={isActive ? 2 : 1.5} style={{ flexShrink: 0, color: navIconColor(isActive) }} />
                       <span style={{ 
                         flex: 1,
                         opacity: sidebarCollapsed ? 0 : 1,
-                        maxWidth: sidebarCollapsed ? 0 : "300px",
-                        marginLeft: sidebarCollapsed ? 0 : 10,
+                        maxWidth: sidebarCollapsed ? 0 : "260px",
+                        marginLeft: sidebarCollapsed ? 0 : 8,
                         overflow: "hidden",
                         whiteSpace: "nowrap",
                         display: "inline-block",
@@ -640,7 +859,7 @@ export default function AppShell({
                             background: "var(--critical)",
                             color: "#fff",
                             fontSize: 10,
-                            borderRadius: "var(--radius-pill)",
+                            borderRadius: "var(--radius-sm)",
                             padding: "2px 6px",
                             fontWeight: 700,
                             fontFamily: "var(--font-mono)"
@@ -667,95 +886,37 @@ export default function AppShell({
           })}
         </nav>
 
-        {/* Data Trust Score */}
-        <div style={{ 
-          padding: sidebarCollapsed ? "12px 8px" : "14px 16px", 
-          borderTop: "1px solid var(--border)",
-          background: "var(--glass)",
-          borderRadius: "0 0 var(--radius-lg) var(--radius-lg)",
-          display: "flex",
-          flexDirection: "column",
-          gap: 6,
-          overflow: "hidden",
-          transition: "padding 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)"
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: sidebarCollapsed ? 0 : 10, transition: "gap 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)" }}>
-            <div 
-              title={`Data Trust Score: ${trustScore != null ? `${trustScore.toFixed(1)}%` : "—"}`}
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: "50%",
-                background: "var(--positive-weak)",
-                display: "grid",
-                placeItems: "center",
-                color: "var(--positive)",
-                flexShrink: 0
-              }}
-            >
-              <Icon name="check" size={16} stroke={2.5} />
-            </div>
-            <div style={{ 
-              display: "flex",
-              flexDirection: "column",
-              opacity: sidebarCollapsed ? 0 : 1,
-              maxWidth: sidebarCollapsed ? 0 : "160px",
-              overflow: "hidden",
-              whiteSpace: "nowrap",
-              transition: "opacity 0.15s ease, max-width 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)"
-            }}>
-              <div className="muted" style={{ fontSize: 9.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                Data Trust Score
-              </div>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-                <span style={{ 
-                  fontFamily: "var(--font-mono)", 
-                  fontSize: 19, 
-                  fontWeight: 800, 
-                  color: "var(--positive)" 
-                }}>
-                  {trustScore != null ? `${trustScore.toFixed(1)}%` : "—"}
-                </span>
-                {trustScore != null && (
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "var(--positive)" }}>
-                    {trustScore >= 95 ? "Excellent" : trustScore >= 85 ? "Good" : "Review"}
-                  </span>
-                )}
-              </div>
-              <div className="muted" style={{ fontSize: 9, marginTop: 1 }}>
-                {trustScore != null ? "Computed from the live ledger" : "No data ingested yet"}
-              </div>
-            </div>
-          </div>
-        </div>
+
       </aside>
 
-      {/* Topbar / Masthead — Glass Strip */}
+      {/* Topbar / Masthead */}
       <header style={{ 
         gridArea: "top", 
-        borderBottom: "1px solid var(--border)", 
-        background: "var(--glass)", 
-        backdropFilter: "blur(20px) saturate(1.3)", 
-        WebkitBackdropFilter: "blur(20px) saturate(1.3)",
-        padding: "0 24px", 
+        background: "var(--bg)", 
+        margin: "var(--space-4) var(--space-4) 0 var(--space-4)", 
         display: "flex", 
         alignItems: "center", 
         justifyContent: "space-between", 
         position: "sticky", 
-        top: 0, 
-        zIndex: 50
+        top: "var(--space-4)", 
+        zIndex: 50,
+        height: "var(--header-h)"
       }}>
-        {/* left filter selectors */}
-        <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-          <Selector label="Plant" value="Disposable Baddi" />
-          <Selector label="Line" value="FBC Line 1" />
-
-          {/* Global View (stage) selector — scopes the ENTIRE app to one process.
-              Compact dropdown (styled like Date Range below) replacing the old
-              always-visible 13-button strip; grouped into Factory Overview /
-              Stations (live data only) / Uploaded Data. */}
-          <div className="view-picker-container" style={{ display: "flex", flexDirection: "column", textAlign: "left", position: "relative" }}>
-            <span className="muted" style={{ fontSize: 9.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 2 }}>
+        {/* left filter selectors: Wrapped in a floating pillbox */}
+        <div style={{ 
+          display: "flex", 
+          alignItems: "center", 
+          gap: 12, 
+          background: "var(--surface)", 
+          border: "1px solid var(--border-strong)", 
+          borderRadius: "30px", 
+          padding: "4px 12px", 
+          boxShadow: "var(--shadow-sm)",
+          height: 38
+        }}>
+          {/* Global View Selector */}
+          <div className="view-picker-container" style={{ display: "flex", alignItems: "center", gap: 6, position: "relative" }}>
+            <span className="muted" style={{ fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>
               View
             </span>
             <div
@@ -764,24 +925,22 @@ export default function AppShell({
                 display: "flex",
                 alignItems: "center",
                 gap: 6,
-                fontSize: 12.5,
+                fontSize: 12,
                 fontWeight: 600,
-                border: "1px solid var(--border-strong)",
-                borderRadius: "var(--radius-sm)",
-                padding: "4px 10px",
+                borderRadius: "20px",
+                padding: "3px 8px",
                 background: "var(--surface-2)",
                 cursor: "pointer",
-                minWidth: 140,
+                minWidth: 130,
               }}
             >
-              <Icon name="table" size={12} style={{ color: "var(--text-3)" }} />
-              <span style={{ flex: 1 }}>{currentView.label}</span>
-              <Icon name="arrow-right" size={10} style={{ transform: "rotate(90deg)", color: "var(--text-3)" }} />
+              <Icon name="table" size={11} style={{ color: "var(--text-3)" }} />
+              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentView.label}</span>
+              <Icon name="arrow-right" size={9} style={{ transform: "rotate(90deg)", color: "var(--text-3)" }} />
             </div>
 
             {showViewMenu && (
               <div
-                ref={viewMenuRef}
                 className="dropdown-panel"
                 onClick={(e) => e.stopPropagation()}
                 style={{
@@ -792,7 +951,7 @@ export default function AppShell({
                   background: "var(--surface)",
                   border: "1px solid var(--border-strong)",
                   borderRadius: "var(--radius-md)",
-                  boxShadow: "var(--shadow-3)",
+                  boxShadow: "var(--shadow-lg)",
                   padding: 8,
                   zIndex: 200,
                   width: 260,
@@ -827,28 +986,16 @@ export default function AppShell({
             )}
           </div>
 
+          <div style={{ width: 1, height: 16, background: "var(--border)" }} />
+
           {/* D, W, M, FY Segmented Control */}
-          <div style={{ display: "flex", flexDirection: "column", textAlign: "left" }}>
-            <span className="muted" style={{ fontSize: 9.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 2, display: "flex", alignItems: "center", gap: 6 }}>
-              <span>Grain</span>
-              {suggestedGrain && (
-                <span style={{
-                  fontSize: 8,
-                  background: "var(--accent-weak)",
-                  color: "var(--accent)",
-                  padding: "1px 4px",
-                  borderRadius: 3,
-                  fontWeight: 700,
-                  textTransform: "uppercase"
-                }}>
-                  {suggestedGrain === "fy" ? "FY" : suggestedGrain} Suggested
-                </span>
-              )}
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span className="muted" style={{ fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+              Interval
             </span>
             <div style={{ 
               display: "flex",
-              border: "1px solid var(--border-strong)", 
-              borderRadius: "var(--radius-sm)", 
+              borderRadius: "20px", 
               padding: 2, 
               background: "var(--surface-2)",
               alignItems: "center"
@@ -865,7 +1012,7 @@ export default function AppShell({
                       padding: "2px 8px",
                       fontSize: 10,
                       fontWeight: 700,
-                      borderRadius: 3,
+                      borderRadius: 10,
                       background: active ? "var(--accent)" : "transparent",
                       color: active ? "var(--text-invert)" : "var(--text-2)",
                       transition: "all 0.12s ease",
@@ -891,10 +1038,12 @@ export default function AppShell({
             </div>
           </div>
 
+          <div style={{ width: 1, height: 16, background: "var(--border)" }} />
+
           {/* Interactive Date Range Selector */}
-          <div className="date-picker-container" style={{ display: "flex", flexDirection: "column", textAlign: "left", position: "relative" }}>
-            <span className="muted" style={{ fontSize: 9.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 2 }}>
-              Date Range
+          <div className="date-picker-container" style={{ display: "flex", alignItems: "center", gap: 6, position: "relative" }}>
+            <span className="muted" style={{ fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", whiteSpace: "nowrap" }}>
+              Range
             </span>
             <div 
               onClick={(e) => { e.stopPropagation(); setShowPicker(!showPicker); }}
@@ -902,16 +1051,15 @@ export default function AppShell({
                 display: "flex",
                 alignItems: "center",
                 gap: 6,
-                fontSize: 12.5, 
+                fontSize: 12, 
                 fontWeight: 600, 
-                border: "1px solid var(--border-strong)", 
-                borderRadius: "var(--radius-sm)", 
-                padding: "4px 10px", 
+                borderRadius: "20px", 
+                padding: "3px 8px", 
                 background: "var(--surface-2)",
                 cursor: "pointer"
               }}
             >
-              <Icon name="file" size={12} style={{ color: "var(--text-3)" }} />
+              <Icon name="file" size={11} style={{ color: "var(--text-3)" }} />
               <span>
                 {t.datePreset === "all" && "All Data"}
                 {t.datePreset === "last-90-days" && "Last 90 Days"}
@@ -919,12 +1067,11 @@ export default function AppShell({
                 {t.datePreset === "this-fy" && "This FY"}
                 {t.datePreset === "custom" && (t.dateFrom && t.dateTo ? `${t.dateFrom} to ${t.dateTo}` : "Custom Range")}
               </span>
-              <Icon name="arrow-right" size={10} style={{ transform: "rotate(90deg)", color: "var(--text-3)" }} />
+              <Icon name="arrow-right" size={9} style={{ transform: "rotate(90deg)", color: "var(--text-3)" }} />
             </div>
 
             {showPicker && (
               <div 
-                ref={datePickerRef}
                 onClick={(e) => e.stopPropagation()}
                 style={{
                   position: "absolute",
@@ -934,7 +1081,7 @@ export default function AppShell({
                   background: "var(--surface)",
                   border: "1px solid var(--border-strong)",
                   borderRadius: "var(--radius-md)",
-                  boxShadow: "var(--shadow-3)",
+                  boxShadow: "var(--shadow-lg)",
                   padding: 12,
                   zIndex: 200,
                   width: 240,
@@ -1035,20 +1182,22 @@ export default function AppShell({
           </div>
         </div>
 
-        {/* right profile / actions */}
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+        {/* right profile / actions: styled cleanly in pillbox cards */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {/* Notifications */}
           <button style={{ 
             position: "relative",
-            width: 36,
-            height: 36,
+            width: 32,
+            height: 32,
             borderRadius: "50%",
-            border: "1px solid var(--border)",
+            border: "1px solid var(--border-strong)",
             display: "grid",
             placeItems: "center",
-            background: "var(--glass)"
+            background: "var(--surface)",
+            cursor: "pointer",
+            boxShadow: "var(--shadow-sm)"
           }}>
-            <Icon name="alert" size={16} />
+            <Icon name="alert" size={14} />
             <span style={{
               position: "absolute",
               top: -2,
@@ -1057,8 +1206,8 @@ export default function AppShell({
               color: "#fff",
               fontSize: 9,
               fontWeight: 800,
-              width: 15,
-              height: 15,
+              width: 14,
+              height: 14,
               borderRadius: "50%",
               display: "grid",
               placeItems: "center"
@@ -1069,23 +1218,35 @@ export default function AppShell({
           <button 
             onClick={toggleTheme}
             style={{ 
-              width: 36,
-              height: 36,
+              width: 32,
+              height: 32,
               borderRadius: "50%",
-              border: "1px solid var(--border)",
+              border: "1px solid var(--border-strong)",
               display: "grid",
               placeItems: "center",
-              background: "var(--glass)",
+              background: "var(--surface)",
+              cursor: "pointer",
+              boxShadow: "var(--shadow-sm)",
               transition: "transform 0.2s"
             }}>
-            <Icon name={mounted && isDark ? "sun" : "moon"} size={16} />
+            <Icon name={mounted && isDark ? "sun" : "moon"} size={14} />
           </button>
 
           {/* User Profile */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ 
+            display: "flex", 
+            alignItems: "center", 
+            gap: 8, 
+            background: "var(--surface)", 
+            border: "1px solid var(--border-strong)", 
+            borderRadius: "30px", 
+            padding: "2px 10px 2px 2px", 
+            boxShadow: "var(--shadow-sm)", 
+            height: 32 
+          }}>
             <div style={{ 
-              width: 34, 
-              height: 34, 
+              width: 26, 
+              height: 26, 
               borderRadius: "50%", 
               background: "var(--surface-3)", 
               color: "var(--text)", 
@@ -1093,34 +1254,54 @@ export default function AppShell({
               placeItems: "center",
               fontFamily: "var(--font-display)",
               fontWeight: 700,
-              fontSize: 12.5,
+              fontSize: 11,
               border: "1px solid var(--border-strong)"
             }}>
-              RK
+              S
             </div>
             <div style={{ display: "flex", flexDirection: "column", textAlign: "left" }}>
-              <span style={{ fontSize: 13, fontWeight: 700 }}>Rajesh Kumar</span>
-              <span className="muted" style={{ fontSize: 10.5 }}>Quality Manager</span>
+              <span style={{ fontSize: 11, fontWeight: 700, lineHeight: 1.1 }}>Swamiji</span>
+              <span className="muted" style={{ fontSize: 9, lineHeight: 1.1 }}>General Manager</span>
             </div>
           </div>
 
-          {/* Export Action */}
-          <button onClick={handleExport} disabled={exporting} style={{
-            background: "var(--gradient-accent)",
-            color: "#FFFFFF", 
-            border: "none", 
-            borderRadius: "var(--radius-pill)", 
-            padding: "8px 20px", 
-            fontSize: 13, 
-            fontWeight: 600, 
-            cursor: "pointer", 
-            display: "inline-flex", 
-            gap: 6, 
-            alignItems: "center",
-            boxShadow: "0 4px 20px var(--accent-glow)",
-            minHeight: 36
-          }}>
-            <Icon name="print" size={13} /> {exporting ? "Exporting..." : "Export"} <Icon name="arrow-right" size={10} style={{ transform: "rotate(90deg)" }} />
+          {/* Export Action: Pillbox Card Button */}
+          <button 
+            onClick={handleExport} 
+            disabled={exporting} 
+            style={{
+              background: "var(--surface)",
+              color: "var(--text)", 
+              border: "1px solid var(--border-strong)", 
+              borderRadius: "30px", 
+              padding: "6px 14px", 
+              fontSize: 11.5, 
+              fontWeight: 700, 
+              cursor: "pointer", 
+              display: "inline-flex", 
+              gap: 6, 
+              alignItems: "center",
+              boxShadow: "var(--shadow-sm)",
+              transition: "all 0.2s ease",
+              minHeight: 32
+            }}
+            onMouseOver={(e) => {
+              if (!exporting) {
+                e.currentTarget.style.background = "var(--accent)";
+                e.currentTarget.style.color = "var(--text-invert)";
+                e.currentTarget.style.borderColor = "var(--accent)";
+              }
+            }}
+            onMouseOut={(e) => {
+              if (!exporting) {
+                e.currentTarget.style.background = "var(--surface)";
+                e.currentTarget.style.color = "var(--text)";
+                e.currentTarget.style.borderColor = "var(--border-strong)";
+              }
+            }}
+          >
+            <Icon name="print" size={11} /> 
+            {exporting ? "Exporting…" : "Export"}
           </button>
         </div>
       </header>
@@ -1129,10 +1310,15 @@ export default function AppShell({
       <main style={{ 
         gridArea: "main", 
         overflowY: "auto", 
-        padding: "24px",
+        padding: "var(--space-4)",
         background: "var(--bg)",
         position: "relative"
       }}>
+        <div style={{
+          width: "100%",
+          maxWidth: "1400px",
+          margin: "0 auto"
+        }}>
         {isConfigured === false && active !== "staging" && active !== "settings" && active !== "clear-data" ? (
           <div style={{
             display: "flex",
@@ -1142,13 +1328,11 @@ export default function AppShell({
             width: "100%"
           }}>
             <div style={{
-              background: "var(--glass)",
-              border: "1px solid var(--border-strong)",
-              borderRadius: "var(--radius-xl)",
+              background: "var(--paper)",
+              border: "2px solid var(--ink)",
+              borderRadius: "var(--radius-lg)",
               padding: "40px",
-              backdropFilter: "blur(20px)",
-              WebkitBackdropFilter: "blur(20px)",
-              boxShadow: "var(--shadow-2)",
+              boxShadow: "8px 8px 0px var(--ink)",
               maxWidth: "600px",
               width: "100%",
               textAlign: "center",
@@ -1158,26 +1342,27 @@ export default function AppShell({
               gap: 20
             }}>
               <div style={{
-                background: "var(--critical-weak)",
-                color: "var(--critical)",
-                border: "1px solid var(--border-strong)",
+                background: "color-mix(in srgb, var(--status-bad) 12%, transparent)",
+                color: "var(--status-bad)",
+                border: "2px solid var(--ink)",
                 borderRadius: "50%",
                 width: 64,
                 height: 64,
                 display: "grid",
                 placeItems: "center",
+                boxShadow: "3px 3px 0 var(--ink)"
               }}>
                 <Icon name="alert" size={32} />
               </div>
-              <h2 style={{ fontFamily: "var(--font-display)", fontSize: 26, margin: 0, color: "var(--text)", fontWeight: 800 }}>
+              <h2 style={{ fontFamily: "var(--font-display)", fontSize: 26, margin: 0, color: "var(--ink)", fontWeight: 800 }}>
                 Cockpit Locked
               </h2>
               <p style={{ fontSize: 14, color: "var(--text-2)", lineHeight: "1.6", margin: 0 }}>
                 The manufacturing cockpit is currently unconfigured. No plant-wide schema, stages, or defect types have been established in the database ledger.
               </p>
               <div style={{
-                background: "var(--glass)",
-                border: "1px dashed var(--border-strong)",
+                background: "var(--surface-2)",
+                border: "1.5px solid var(--border-strong)",
                 borderRadius: "var(--radius-md)",
                 padding: "14px 18px",
                 fontSize: 13,
@@ -1185,21 +1370,22 @@ export default function AppShell({
                 textAlign: "left",
                 fontFamily: "var(--font-sans)",
                 margin: "10px 0",
+                borderStyle: "dashed"
               }}>
                 <strong>Administrative Action Required:</strong> Ingest a pristine master workbook on the Staging page to extract your manufacturing line's stages and defects and unlock all analytics.
               </div>
               <button 
                 onClick={() => router.push("/staging")}
                 style={{
-                  background: "var(--gradient-accent)",
-                  color: "#FFFFFF",
-                  border: "none",
-                  borderRadius: "var(--radius-pill)",
+                  background: "var(--accent)",
+                  color: "#fff",
+                  border: "2px solid var(--ink)",
+                  borderRadius: "var(--radius-md)",
                   padding: "12px 28px",
                   fontSize: 14,
                   fontWeight: 700,
                   cursor: "pointer",
-                  boxShadow: "0 4px 20px var(--accent-glow)",
+                  boxShadow: "4px 4px 0 var(--ink)",
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 8
@@ -1212,54 +1398,208 @@ export default function AppShell({
         ) : (
           children
         )}
+        </div>
       </main>
 
       {/* Footer Status Bar */}
       <footer style={{ 
         gridArea: "status", 
-        borderTop: "1px solid var(--border)", 
-        background: "var(--glass)",
-        backdropFilter: "blur(16px)", 
-        WebkitBackdropFilter: "blur(16px)",
-        padding: "0 24px", 
+        background: "var(--surface)", 
+        border: "1px solid var(--border-strong)", 
+        borderRadius: "30px",
+        margin: "0 var(--space-4) var(--space-4) var(--space-4)", 
+        padding: "0 16px", 
         display: "flex", 
         alignItems: "center",
         justifyContent: "space-between", 
-        fontSize: 12
+        fontSize: 11,
+        height: "var(--footer-h)",
+        boxShadow: "var(--shadow-sm)"
       }}>
-        <div style={{ display: "flex", gap: 24 }}>
+        <div style={{ display: "flex", gap: "clamp(12px, 1.5vw, 24px)" }}>
           <Status tone="var(--critical)" label="Active Alerts" value={`${sc.alerts ?? 0} Critical`} />
           <Status tone="var(--positive)" label="Pending CAPA" value={`${sc.capa ?? 0} Actions`} />
           <Status tone="var(--warning)" label="Overdue Actions" value={`${sc.overdue ?? 0}`} />
           <Status tone="var(--warning)" label="Data Anomalies" value={`${sc.anomalies ?? 0}`} />
         </div>
-        
-        {/* Ask RAIS text input field */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, width: 340 }}>
-          <span className="muted" style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0, fontSize: 11.5 }}>
-            <Icon name="comment" size={12} style={{ color: "var(--accent)" }} /> Ask RAIS:
-          </span>
-          <input 
-            type="text" 
-            placeholder="Ask Rejection Advisory System..." 
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && e.currentTarget.value.trim()) {
-                router.push(`/chat?q=${encodeURIComponent(e.currentTarget.value.trim())}`);
-                e.currentTarget.value = "";
-              }
-            }}
-            style={{ 
-              flex: 1, 
-              fontSize: 11.5, 
-              padding: "4px 10px", 
-              border: "1px solid var(--border-strong)", 
-              borderRadius: "var(--radius-sm)",
-              background: "var(--bg)",
-              outline: "none"
-            }} 
-          />
-        </div>
       </footer>
+
+      {/* Floating Ask MOID Chat Widget */}
+      {showChatWidget && (
+        <div style={{
+          position: "fixed",
+          bottom: 84,
+          right: 24,
+          width: 360,
+          height: 480,
+          background: "var(--surface)",
+          border: "1px solid var(--border-strong)",
+          borderRadius: "16px",
+          boxShadow: "0 10px 40px -10px rgba(0,0,0,0.3)",
+          zIndex: 1000,
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden"
+        }}>
+          {/* Header */}
+          <div style={{
+            padding: "14px 18px",
+            background: "var(--accent)",
+            color: "#FFFFFF",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between"
+          }}>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <span style={{ fontFamily: "var(--font-display)", fontSize: 16, fontWeight: 800 }}>Ask MOID</span>
+              <span style={{ fontSize: 9.5, opacity: 0.8, textTransform: "uppercase", letterSpacing: "0.05em" }}>Operational Intelligence</span>
+            </div>
+            <button 
+              onClick={() => setShowChatWidget(false)}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "#FFFFFF",
+                cursor: "pointer",
+                padding: 4,
+                display: "grid",
+                placeItems: "center"
+              }}
+            >
+              <Icon name="x" size={16} />
+            </button>
+          </div>
+
+          {/* Messages */}
+          <div style={{
+            flex: 1,
+            overflowY: "auto",
+            padding: 16,
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+            background: "var(--bg)"
+          }}>
+            {widgetMessages.map((m) => (
+              <div 
+                key={m.id}
+                style={{
+                  alignSelf: m.sender === "user" ? "flex-end" : "flex-start",
+                  maxWidth: "85%",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 3
+                }}
+              >
+                <div style={{
+                  padding: "10px 14px",
+                  borderRadius: "12px",
+                  fontSize: 12.5,
+                  lineHeight: 1.4,
+                  background: m.sender === "user" ? "var(--surface-2)" : "var(--surface)",
+                  color: "var(--text)",
+                  border: m.sender === "user" ? "1px solid var(--border)" : "1px solid var(--border-strong)",
+                  boxShadow: "2px 2px 0 rgba(0,0,0,0.05)"
+                }}>
+                  {m.text}
+                </div>
+                <span style={{
+                  fontSize: 9,
+                  color: "var(--text-3)",
+                  alignSelf: m.sender === "user" ? "flex-end" : "flex-start",
+                  padding: "0 4px"
+                }}>
+                  {m.timestamp}
+                </span>
+              </div>
+            ))}
+            {widgetLoading && (
+              <div style={{ alignSelf: "flex-start", fontSize: 11, color: "var(--text-3)", fontStyle: "italic", padding: "4px 8px" }}>
+                MOID is thinking...
+              </div>
+            )}
+          </div>
+
+          {/* Input Area */}
+          <div style={{
+            padding: 12,
+            background: "var(--surface)",
+            borderTop: "1px solid var(--border-strong)",
+            display: "flex",
+            gap: 8,
+            alignItems: "center"
+          }}>
+            <input 
+              type="text"
+              placeholder="Ask anything about ledger..."
+              value={widgetInput}
+              onChange={(e) => setWidgetInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submitWidgetQuery();
+              }}
+              style={{
+                flex: 1,
+                fontSize: 12.5,
+                padding: "8px 12px",
+                borderRadius: "20px",
+                border: "1px solid var(--border-strong)",
+                outline: "none",
+                background: "var(--bg)",
+                color: "var(--text)"
+              }}
+            />
+            <button
+              onClick={submitWidgetQuery}
+              disabled={widgetLoading || !widgetInput.trim()}
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: "50%",
+                background: "var(--accent)",
+                color: "#FFFFFF",
+                border: "none",
+                cursor: "pointer",
+                display: "grid",
+                placeItems: "center",
+                opacity: widgetInput.trim() ? 1 : 0.5,
+                transition: "opacity 0.2s"
+              }}
+            >
+              <Icon name="arrow-right" size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Floating M Toggle Button */}
+      <button 
+        onClick={() => setShowChatWidget(!showChatWidget)}
+        title="Ask MOID AI Assistant"
+        style={{
+          position: "fixed",
+          bottom: 24,
+          right: 24,
+          width: 48,
+          height: 48,
+          borderRadius: "50%",
+          background: "var(--accent)",
+          color: "#FFFFFF",
+          border: "none",
+          cursor: "pointer",
+          display: "grid",
+          placeItems: "center",
+          boxShadow: "0 4px 16px rgba(0,0,0,0.25)",
+          zIndex: 1000,
+          fontWeight: 800,
+          fontSize: 18,
+          fontFamily: "var(--font-sans)",
+          transition: "transform 0.2s"
+        }}
+        onMouseOver={(e) => { e.currentTarget.style.transform = "scale(1.08)"; }}
+        onMouseOut={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
+      >
+        M
+      </button>
     </div>
   );
 }
@@ -1320,31 +1660,7 @@ function ViewMenuGroup({ label, options, activeId, onSelect, emptyLabel }: {
   );
 }
 
-function Selector({ label, value, icon }: { label: string; value: string; icon?: string }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", textAlign: "left" }}>
-      <span className="muted" style={{ fontSize: 9.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 2 }}>
-        {label}
-      </span>
-      <div style={{ 
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        fontSize: 12.5, 
-        fontWeight: 600, 
-        border: "1px solid var(--border-strong)", 
-        borderRadius: "var(--radius-sm)", 
-        padding: "4px 10px", 
-        background: "var(--surface-2)",
-        cursor: "pointer"
-      }}>
-        {icon === "calendar" && <Icon name="file" size={12} style={{ color: "var(--text-3)" }} />}
-        <span>{value}</span>
-        <Icon name="arrow-right" size={10} style={{ transform: "rotate(90deg)", color: "var(--text-3)" }} />
-      </div>
-    </div>
-  );
-}
+
 
 function Status({ tone, label, value }: { tone: string; label: string; value: string }) {
   return (

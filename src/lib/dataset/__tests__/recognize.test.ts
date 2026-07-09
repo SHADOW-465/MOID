@@ -86,15 +86,9 @@ describe("recognizeStage", () => {
 });
 
 const DIR = path.join(process.cwd(), "ANALYTICAL DATA", "REJECTION ANALYSIS 2025-26");
+const maybe = fs.existsSync(DIR) ? describe : describe.skip;
 
-describe("stage-aware grouping (real corpus)", () => {
-  if (!fs.existsSync(DIR)) {
-    it("skips because real corpus is not present", () => {
-      expect(true).toBe(true);
-    });
-    return;
-  }
-
+maybe("stage-aware grouping (real corpus)", () => {
   const files = fs
     .readdirSync(DIR)
     .filter((f) => /REJECTION ANALYSIS.*\.xlsx$/i.test(f) && !f.startsWith("~$"))

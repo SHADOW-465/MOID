@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import type { SeriesPoint, StageRow, DefectRow, StageTrendPoint } from "@/lib/analytics";
 import Icon from "@/components/editorial/Icon";
 import { useTweaks } from "@/components/editorial/TweaksContext";
@@ -10,8 +10,6 @@ import {
   hoverIndexFromPixels, 
   shouldShowLabel 
 } from "@/lib/chart-utils";
-import { useCountUp, useStaggerIn, useDrawSVG } from "@/lib/gsap-anims";
-import { gsap } from "gsap";
 
 /** Shared hover tooltip card used by every time-series chart. Positioned over the
  *  chart container at the hovered point; flips below when the point sits high. */
@@ -19,16 +17,67 @@ export function ChartTip({ leftPx, topPx, below, title, rows }: {
   leftPx: number; topPx: number; below: boolean; title: string;
   rows: { label: string; value: string; color?: string }[];
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [offset, setOffset] = useState({ x: 0, y: 0, forceBelow: null as boolean | null });
+
+  useLayoutEffect(() => {
+    if (!ref.current) return;
+    const el = ref.current;
+    const parent = el.offsetParent;
+    if (!parent) return;
+
+    const parentRect = parent.getBoundingClientRect();
+    const tooltipRect = el.getBoundingClientRect();
+
+    let shiftX = 0;
+    let forceBelowVal: boolean | null = null;
+
+    // Check left collision
+    const absoluteLeft = parentRect.left + leftPx - tooltipRect.width / 2;
+    if (absoluteLeft < parentRect.left + 8) {
+      shiftX = (parentRect.left + 8) - absoluteLeft;
+    }
+
+    // Check right collision
+    const absoluteRight = parentRect.left + leftPx + tooltipRect.width / 2;
+    if (absoluteRight > parentRect.right - 8) {
+      shiftX = (parentRect.right - 8) - absoluteRight;
+    }
+
+    // Check top/bottom collision
+    const isBelow = forceBelowVal !== null ? forceBelowVal : below;
+    if (!isBelow) {
+      const absoluteTop = parentRect.top + topPx - tooltipRect.height - 12;
+      if (absoluteTop < parentRect.top + 8) {
+        forceBelowVal = true;
+      }
+    } else {
+      const absoluteBottom = parentRect.top + topPx + tooltipRect.height + 12;
+      if (absoluteBottom > parentRect.bottom - 8) {
+        forceBelowVal = false;
+      }
+    }
+
+    setOffset({ x: shiftX, y: 0, forceBelow: forceBelowVal });
+  }, [leftPx, topPx, below, rows.length]);
+
+  const activeBelow = offset.forceBelow !== null ? offset.forceBelow : below;
+  const yTransform = activeBelow 
+    ? "translate(-50%, 12px)" 
+    : "translate(-50%, calc(-100% - 12px))";
+
   return (
-    <div style={{
-      position: "absolute", left: leftPx, top: topPx,
-      transform: below ? "translate(-50%, 12px)" : "translate(-50%, calc(-100% - 12px))",
-      background: "var(--surface)", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)",
-      backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
-      boxShadow: "var(--shadow-glow)", padding: "10px 12px", pointerEvents: "none",
-      zIndex: 30, minWidth: 130, whiteSpace: "nowrap",
-      transition: "left 0.15s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.15s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1)"
-    }}>
+    <div 
+      ref={ref}
+      style={{
+        position: "absolute", left: leftPx, top: topPx,
+        transform: `translate(${offset.x}px, 0px) ${yTransform}`,
+        background: "var(--surface)", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-sm)",
+        boxShadow: "0 6px 20px rgba(0,0,0,0.18)", padding: "8px 10px", pointerEvents: "none",
+        zIndex: 30, minWidth: 130, whiteSpace: "nowrap",
+        transition: "left 0.1s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.1s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.1s cubic-bezier(0.2, 0.8, 0.2, 1)"
+      }}
+    >
       <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)", marginBottom: rows.length ? 5 : 0, fontFamily: "var(--font-sans)" }}>{title}</div>
       {rows.map((r, i) => (
         <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, fontSize: 11.5, lineHeight: 1.7 }}>
@@ -74,6 +123,89 @@ export function ZoomButton({ onClick, children, title }: { onClick: (e: any) => 
 
 
 
+export function AnimatedValue({ value }: { value: string }) {
+  const [displayValue, setDisplayValue] = useState(value);
+  const prevValueRef = useRef(value);
+  const prevNumRef = useRef<number | null>(null);
+
+  // Parse initial number on mount to prevent initial 0-sweep animation
+  useEffect(() => {
+    const match = value.match(/([\d,.]+)/);
+    if (match) {
+      const cleanNum = parseFloat(match[1].replace(/,/g, ""));
+      if (!isNaN(cleanNum)) {
+        prevNumRef.current = cleanNum;
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (value === prevValueRef.current) return;
+    prevValueRef.current = value;
+    
+    const match = value.match(/([\d,.]+)/);
+    if (!match) {
+      setDisplayValue(value);
+      return;
+    }
+    
+    const numStr = match[1];
+    const isPercent = value.includes("%");
+    const isCurrency = value.includes("₹") || value.includes("Rs");
+    const hasComma = numStr.includes(",");
+    const targetNum = parseFloat(numStr.replace(/,/g, ""));
+    
+    if (isNaN(targetNum)) {
+      setDisplayValue(value);
+      return;
+    }
+    
+    const startNum = prevNumRef.current ?? targetNum;
+    prevNumRef.current = targetNum;
+
+    if (startNum === targetNum) {
+      setDisplayValue(value);
+      return;
+    }
+    
+    const duration = 600; // ms
+    const startTime = performance.now();
+    
+    let frameId: number;
+    const update = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // power3.out equivalent
+      const ease = 1 - Math.pow(1 - progress, 3);
+      const current = startNum + (targetNum - startNum) * ease;
+      
+      let formatted = "";
+      if (isPercent) {
+        formatted = `${current.toFixed(2)}%`;
+      } else {
+        const rounded = Math.round(current);
+        formatted = hasComma ? rounded.toLocaleString("en-IN") : String(rounded);
+        if (isCurrency) {
+          formatted = `₹${formatted}`;
+        }
+      }
+      
+      setDisplayValue(value.replace(/[\d,.]+/, formatted.replace(/[^0-9.]/g, "")));
+      
+      if (progress < 1) {
+        frameId = requestAnimationFrame(update);
+      } else {
+        setDisplayValue(value);
+      }
+    };
+    
+    frameId = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(frameId);
+  }, [value]);
+  
+  return <span>{displayValue}</span>;
+}
+
 export function Card({ title, sub, children, span, onClick }: { title?: string; sub?: string; children: React.ReactNode; span?: number; onClick?: () => void }) {
   return (
     <div 
@@ -81,27 +213,27 @@ export function Card({ title, sub, children, span, onClick }: { title?: string; 
       className={onClick ? "card-hover" : ""}
       style={{ 
         gridColumn: span ? `span ${span}` : undefined, 
-        border: "1px solid var(--border)", 
+        border: "1.5px solid var(--border)", 
         borderRadius: "var(--radius-lg)", 
-        background: "var(--glass)",
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)", 
-        padding: "20px",
+        background: "var(--surface)", 
+        padding: "var(--pad-card)",
         display: "flex",
         flexDirection: "column",
         justifyContent: "space-between",
         cursor: onClick ? "pointer" : "default",
         minWidth: 0,
-        boxShadow: "var(--shadow-1)",
+        boxShadow: "var(--shadow-2)",
+        position: "relative",
+        transition: "all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1)"
       }}
     >
       {title && (
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14, borderBottom: "1px solid var(--border)", paddingBottom: 8 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-2)", fontFamily: "var(--font-sans)" }}>{title}</span>
-          {sub && <span className="muted" style={{ fontSize: 11, fontFamily: "var(--font-mono)" }}>{sub}</span>}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "var(--space-3)" }}>
+          <span style={{ fontSize: "clamp(11.5px, 0.9vw, 13px)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", fontFamily: "var(--font-sans)" }}>{title}</span>
+          {sub && <span className="muted" style={{ fontSize: "clamp(9.5px, 0.8vw, 11px)", fontFamily: "var(--font-mono)" }}>{sub}</span>}
         </div>
       )}
-      <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>{children}</div>
     </div>
   );
 }
@@ -127,96 +259,68 @@ export function Kpi({
   spark?: SeriesPoint[];
   onClick?: () => void;
 }) {
-  const toneColor = tone === "bad" ? "var(--critical)" : tone === "warn" ? "var(--warning)" : tone === "good" ? "var(--positive)" : "var(--text)";
-  const toneGlow  = tone === "bad" ? "rgba(239,68,68,0.2)" : tone === "warn" ? "rgba(245,158,11,0.2)" : tone === "good" ? "rgba(16,185,129,0.2)" : "var(--accent-glow)";
-
-  // Parse numeric value for countUp animation
-  const numericStr = value.replace(/[^\d.-]/g, "");
-  const numeric    = parseFloat(numericStr);
-  const isNumeric  = !isNaN(numeric);
-  const prefix     = isNumeric ? value.slice(0, value.indexOf(numericStr)) : "";
-  const suffix     = isNumeric ? value.slice(value.indexOf(numericStr) + numericStr.length) : "";
-  const decimals   = (numericStr.split(".")[1] ?? "").length;
-
-  const countRef = useCountUp(
-    isNumeric
-      ? { value: numeric, decimals, prefix, suffix, duration: primary ? 1.8 : 1.4, delay: 0.05 }
-      : { value: 0, format: () => value }
-  );
-
-  const cardRef = useRef<HTMLDivElement>(null);
-
+  const color = tone === "bad" ? "var(--critical)" : tone === "warn" ? "var(--warning)" : tone === "good" ? "var(--positive)" : "var(--text)";
+  
   return (
     <div 
-      ref={cardRef}
       onClick={onClick}
       className={onClick ? "card-hover" : ""}
       style={{ 
-        position: "relative",
-        overflow: "hidden",
-        border: "1px solid var(--border)", 
+        border: "1.5px solid var(--border)", 
         borderRadius: "var(--radius-lg)", 
-        background: "var(--glass)",
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)",
-        padding: primary ? "20px 20px 16px" : "16px",
+        background: primary ? "color-mix(in srgb, var(--accent) 1.5%, var(--surface))" : "var(--surface)", 
+        padding: "clamp(6px, 0.8vh, 10px) clamp(8px, 1vw, 12px)",
         display: "flex",
         flexDirection: "column",
         justifyContent: "space-between",
         cursor: onClick ? "pointer" : "default",
         minWidth: 0,
+        boxShadow: primary ? "var(--shadow-2), 0 4px 20px -2px color-mix(in srgb, var(--accent) 8%, transparent)" : "var(--shadow-1)",
+        position: "relative",
+        transition: "all 0.35s cubic-bezier(0.2, 0.8, 0.2, 1)",
       }}
     >
-      {/* Gradient accent glow at top */}
-      <div style={{
-        position: "absolute",
-        top: 0, left: 0, right: 0,
-        height: primary ? 3 : 2,
-        background: tone
-          ? toneColor
-          : "var(--gradient-accent)",
-        borderRadius: "var(--radius-lg) var(--radius-lg) 0 0",
-      }} />
-      {/* Soft inner glow */}
-      {primary && (
+      {tone && (
         <div style={{
           position: "absolute",
-          top: 0, left: 0, right: 0, height: 80,
-          background: `linear-gradient(180deg, ${toneGlow} 0%, transparent 100%)`,
-          pointerEvents: "none",
+          top: 0,
+          right: 0,
+          width: 32,
+          height: 32,
+          borderTopRightRadius: "calc(var(--radius-lg) - 1.5px)",
+          background: `radial-gradient(circle at top right, ${color} 15%, transparent 70%)`,
+          opacity: 0.12,
+          pointerEvents: "none"
         }} />
       )}
-
+      
       <div>
-        <div className="muted" style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.07em", fontWeight: 700 }}>{label}</div>
-        <div
-          ref={countRef as React.RefObject<HTMLDivElement>}
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: primary ? 44 : 26,
-            fontWeight: 800,
-            color: toneColor,
-            margin: "10px 0 2px",
-            letterSpacing: primary ? "-0.03em" : "-0.01em",
-            lineHeight: 1,
-          }}
-        >
-          {value}
+        <div className="muted" style={{ fontSize: "clamp(9.5px, 0.8vw, 11px)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, fontFamily: "var(--font-sans)", color: "var(--text-3)" }}>{label}</div>
+        <div style={{
+          fontFamily: /[\d%₹]/.test(value) && !/[a-zA-Z]{5,}/.test(value) ? "var(--font-mono)" : "var(--font-display)",
+          fontSize: primary ? "clamp(19px, 1.4vw, 22px)" : "clamp(15px, 1.1vw, 17px)",
+          fontWeight: 800,
+          color,
+          margin: "clamp(2px, 0.4vh, 4px) 0 clamp(1px, 0.1vh, 2px)",
+          letterSpacing: "-0.015em",
+          lineHeight: 1.15
+        }}>
+          <AnimatedValue value={value} />
         </div>
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: "clamp(2px, 0.4vh, 6px)", gap: 12 }}>
         {sub && (
-          <div style={{ 
-            fontSize: 11.5, 
-            fontFamily: "var(--font-mono)", 
+          <div className="muted" style={{ 
+            fontSize: "clamp(10px, 0.8vw, 11.5px)", 
+            fontFamily: "var(--font-sans)", 
             color: tone === "bad" ? "var(--critical)" : tone === "good" ? "var(--positive)" : "var(--text-3)",
-            fontWeight: 600
+            fontWeight: 700
           }}>
             {sub}
           </div>
         )}
         {spark && spark.length > 1 && (
-          <div style={{ marginLeft: "auto" }}>
+          <div style={{ marginLeft: "auto", opacity: 0.85 }}>
             <Spark points={spark} tone={tone} />
           </div>
         )}
@@ -225,64 +329,27 @@ export function Kpi({
   );
 }
 
-
 export function Spark({ points, tone }: { points: SeriesPoint[]; tone?: "good" | "warn" | "bad" }) {
-  const svgRef   = useRef<SVGSVGElement>(null);
-  const pathRef  = useRef<SVGPathElement>(null);
-  const areaRef  = useRef<SVGPathElement>(null);
-  const gradId   = useRef(`spark-grad-${Math.random().toString(36).slice(2)}`);
-
   if (!points || points.length < 2) return null;
-
-  const v   = points.map((p) => p.value);
-  const max = Math.max(...v, 1e-6);
-  const min = Math.min(...v, 0);
-  const W = 110, H = 28;
-
-  // Build smooth bezier path
-  const xs = (i: number) => (i / (points.length - 1)) * W;
-  const ys = (val: number) => H - ((val - min) / (max - min || 1)) * (H - 4) - 2;
-
-  let linePath = `M ${xs(0)} ${ys(v[0])}`;
-  for (let i = 0; i < v.length - 1; i++) {
-    const x0 = xs(i), y0 = ys(v[i]), x1 = xs(i + 1), y1 = ys(v[i + 1]);
-    const cpx = (x0 + x1) / 2;
-    linePath += ` C ${cpx} ${y0}, ${cpx} ${y1}, ${x1} ${y1}`;
-  }
-  const areaPath = linePath + ` L ${xs(v.length - 1)} ${H} L ${xs(0)} ${H} Z`;
-
-  const stroke = tone === "bad" ? "var(--critical)" : tone === "good" ? "var(--positive)" : "var(--accent)";
-  const strokeRaw = tone === "bad" ? "#EF4444" : tone === "good" ? "#10B981" : "#6366F1";
-
-  // Animate draw on mount
-  useEffect(() => {
-    const path = pathRef.current;
-    if (!path) return;
-    const len = path.getTotalLength?.() ?? 0;
-    if (len === 0) return;
-    gsap.set(path, { strokeDasharray: len, strokeDashoffset: len });
-    const tw = gsap.to(path, { strokeDashoffset: 0, duration: 1.2, ease: "power2.out", delay: 0.1 });
-    return () => { tw.kill(); };
-  }, [points]);
-
-  // Fade area in
-  useEffect(() => {
-    const area = areaRef.current;
-    if (!area) return;
-    const tw = gsap.from(area, { opacity: 0, duration: 0.8, delay: 0.4, ease: "power2.out" });
-    return () => { tw.kill(); };
-  }, [points]);
-
+  const v = points.map((p) => p.value); 
+  const max = Math.max(...v, 1e-6), min = Math.min(...v, 0);
+  const W = 90, H = 16;
+  const d = points.map((p, i) => `${(i / (points.length - 1)) * W},${H - ((p.value - min) / (max - min || 1)) * H}`).join(" ");
+  const color = tone === "bad" ? "var(--critical)" : tone === "good" ? "var(--positive)" : "var(--accent)";
   return (
-    <svg ref={svgRef} width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ overflow: "visible" }}>
-      <defs>
-        <linearGradient id={gradId.current} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={strokeRaw} stopOpacity={0.28} />
-          <stop offset="100%" stopColor={strokeRaw} stopOpacity={0} />
-        </linearGradient>
-      </defs>
-      <path ref={areaRef} d={areaPath} fill={`url(#${gradId.current})`} />
-      <path ref={pathRef} d={linePath} fill="none" stroke={stroke} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" />
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ overflow: "visible" }}>
+      <polyline 
+        points={d} 
+        fill="none" 
+        stroke={color} 
+        strokeWidth={1.5} 
+        pathLength={1}
+        style={{
+          strokeDasharray: "1",
+          strokeDashoffset: "1",
+          animation: "draw-line var(--duration-slow) var(--ease-out) forwards"
+        }}
+      />
     </svg>
   );
 }
@@ -329,7 +396,8 @@ export function LineChart({
   mean, 
   color = "var(--accent)",
   stage,
-  metric
+  metric,
+  height = 280
 }: { 
   points: SeriesPoint[]; 
   target?: number; 
@@ -338,6 +406,7 @@ export function LineChart({
   color?: string;
   stage?: string;
   metric?: string;
+  height?: number;
 }) {
   const [zoom, setZoom] = useState(1.0);
   const [scrollLeft, setScrollLeft] = useState(0);
@@ -351,11 +420,19 @@ export function LineChart({
     return <Empty label="No trend points available for the selected range." />;
   }
 
-  const H = 280, padX = 42, padTop = 22, padBottom = 72;
+  const H = height, padX = 42, padTop = 22, padBottom = 72;
   const plotH = H - padTop - padBottom;
   const axisY = H - padBottom;
   const v = points.map((p) => p.value);
-  const max = Math.max(...v, target ?? 0, 1e-6);
+  const maxVal = Math.max(...v, target ?? 0);
+  let defaultMax = 0.05;
+  try {
+    const testStr = fmt(1000);
+    if (testStr.includes("₹") || testStr.includes("Lakhs")) {
+      defaultMax = 100000;
+    }
+  } catch (e) {}
+  const max = maxVal === 0 ? defaultMax : maxVal;
   const avg = v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0;
 
   const numPoints = points.length;
@@ -462,13 +539,35 @@ export function LineChart({
           )}
           {mean && (
             <g>
-              <line x1={padX} y1={y(avg)} x2={canvasWidth - padX} y2={y(avg)} stroke="var(--accent)" strokeDasharray="6,3" strokeWidth={1.4} />
-              <text x={padX + 6} y={y(avg) - 6} fontSize={11} fill="var(--accent)" fontWeight={800}>MEAN {fmt(avg)}</text>
+              <line x1={padX} y1={y(avg)} x2={canvasWidth - padX} y2={y(avg)} stroke="#C8421C" strokeDasharray="6,3" strokeWidth={1.4} />
+              <text x={padX + 6} y={y(avg) - 6} fontSize={11} fill="#C8421C" fontWeight={800}>MEAN {fmt(avg)}</text>
             </g>
           )}
 
-          {fillD && <path d={fillD} fill="var(--accent-weak)" opacity={0.25} />}
-          {pathD && <path d={pathD} fill="none" stroke={color} strokeWidth={2} />}
+          {fillD && (
+            <path 
+              d={fillD} 
+              fill="var(--accent-weak)" 
+              style={{
+                opacity: 0,
+                animation: "fade-up 0.8s ease-out 1.2s forwards"
+              }}
+            />
+          )}
+          {pathD && (
+            <path 
+              d={pathD} 
+              fill="none" 
+              stroke={color} 
+              strokeWidth={2} 
+              pathLength={1}
+              style={{
+                strokeDasharray: "1",
+                strokeDashoffset: "1",
+                animation: "draw-line var(--duration-slow) var(--ease-out) forwards"
+              }}
+            />
+          )}
 
           {/* Hover Crosshairs */}
           {hover != null && (
@@ -516,16 +615,18 @@ export function LineChart({
   );
 }
 
-const SERIES_COLORS = ["#2563EB", "#0D9488", "#D97706", "#DC2626", "#7C3AED", "#65A30D"];
+const SERIES_COLORS = ["#2563EB", "#0D9488", "#D97706", "#DC2626", "#EC4899", "#65A30D"];
 
 export function MultiLine({ 
   data, 
   stages, 
-  fmt 
+  fmt,
+  height = 296
 }: { 
   data: StageTrendPoint[]; 
   stages: { stageId: string; label: string }[]; 
-  fmt?: (n: number) => string 
+  fmt?: (n: number) => string;
+  height?: number;
 }) {
   const [zoom, setZoom] = useState(1.0);
   const [scrollLeft, setScrollLeft] = useState(0);
@@ -541,16 +642,26 @@ export function MultiLine({
 
   // Smart default: rates (≤1) render as %, counts render as integers.
   const fmtVal = fmt ?? ((n: number) => (n <= 1 ? `${(n * 100).toFixed(2)}%` : Math.round(n).toLocaleString("en-IN")));
-  const H = 296, padX = 42, padTop = 38, padBottom = 72;
+  const H = height, padX = 42, padTop = 38, padBottom = 72;
   const plotH = H - padTop - padBottom;
   const axisY = H - padBottom;
 
-  let max = 1e-6;
+  let maxVal = 0;
   for (const d of data) {
     for (const s of stages) {
-      max = Math.max(max, d.perStage[s.stageId] ?? 0);
+      maxVal = Math.max(maxVal, d.perStage[s.stageId] ?? 0);
     }
   }
+  let defaultMax = 0.05;
+  try {
+    const testStr = fmtVal(1000);
+    if (testStr.includes("₹") || testStr.includes("Lakhs")) {
+      defaultMax = 100000;
+    } else if (!testStr.includes("%") && maxVal > 1) {
+      defaultMax = 10;
+    }
+  } catch (e) {}
+  const max = maxVal === 0 ? defaultMax : maxVal;
 
   const numPoints = data.length;
   const baseSpacing = getBaseSpacing(numPoints);
@@ -565,7 +676,12 @@ export function MultiLine({
 
   const x = (i: number) => padX + i * spacing;
   const y = (val: number) => axisY - (val / (max || 1)) * plotH;
-  const color = (si: number) => SERIES_COLORS[si % SERIES_COLORS.length];
+  const getStageColor = (s: { stageId: string; label: string }, si: number) => {
+    if (s.stageId === "total" || s.label.toLowerCase() === "total") {
+      return "#39FF14"; // Neon green
+    }
+    return SERIES_COLORS[si % SERIES_COLORS.length];
+  };
 
   const buffer = 10;
   const startIdx = isScrollable ? Math.max(0, Math.floor((scrollLeft - padX) / spacing) - buffer) : 0;
@@ -649,12 +765,24 @@ export function MultiLine({
               ? `M ${x(startIdx)} ${y(data[startIdx].perStage[s.stageId] ?? 0)} ` + visibleData.map((d, idx) => `L ${x(startIdx + idx)} ${y(d.perStage[s.stageId] ?? 0)}`).join(" ")
               : "";
             return pathD ? (
-              <path key={s.stageId} fill="none" stroke={color(si)} strokeWidth={1.8} d={pathD} />
+              <path 
+                key={s.stageId} 
+                fill="none" 
+                stroke={getStageColor(s, si)} 
+                strokeWidth={1.8} 
+                d={pathD} 
+                pathLength={1}
+                style={{
+                  strokeDasharray: "1",
+                  strokeDashoffset: "1",
+                  animation: `draw-line var(--duration-slow) var(--ease-out) ${si * 0.12}s forwards`
+                }}
+              />
             ) : null;
           })}
 
           {hover != null && stages.map((s, si) => (
-            <circle key={`h${s.stageId}`} cx={x(hover)} cy={y(data[hover].perStage[s.stageId] ?? 0)} r={3.5} fill={color(si)} stroke="var(--surface)" strokeWidth={1.5} />
+            <circle key={`h${s.stageId}`} cx={x(hover)} cy={y(data[hover].perStage[s.stageId] ?? 0)} r={3.5} fill={getStageColor(s, si)} stroke="var(--surface)" strokeWidth={1.5} />
           ))}
 
           {/* Rotated thinned date labels */}
@@ -670,7 +798,7 @@ export function MultiLine({
           {/* Legend */}
           {stages.map((s, si) => (
             <g key={`lg${s.stageId}`} transform={`translate(${padX + (si % 5) * 110}, ${12 + Math.floor(si / 5) * 12})`}>
-              <circle cx={0} cy={-2} r={4} fill={color(si)} />
+              <circle cx={0} cy={-2} r={4} fill={getStageColor(s, si)} />
               <text x={8} y={3} fontSize={11} fill="var(--text-2)" fontWeight={700}>{s.label.split(" ")[0].toUpperCase()}</text>
             </g>
           ))}
@@ -686,7 +814,7 @@ export function MultiLine({
               .map((s, si) => {
                 const c = data[hover].counts?.[s.stageId];
                 const exact = c && c.checked > 0 ? ` · ${num(c.rejected)}/${num(c.checked)}` : "";
-                return { label: s.label.split(" ")[0], value: fmtVal(data[hover].perStage[s.stageId] ?? 0) + exact, color: color(si), raw: data[hover].perStage[s.stageId] ?? 0 };
+                return { label: s.label.split(" ")[0], value: fmtVal(data[hover].perStage[s.stageId] ?? 0) + exact, color: getStageColor(s, si), raw: data[hover].perStage[s.stageId] ?? 0 };
               })
               .sort((a, b) => b.raw - a.raw)
               .map(({ label, value, color }) => ({ label, value, color }))}
@@ -699,26 +827,33 @@ export function MultiLine({
 
 
 export function BarsH({ rows, fmt }: { rows: { label: string; value: number; sub?: string }[]; fmt: (n: number) => string }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   if (!rows || rows.length === 0) {
     return <Empty label="No distribution records available." />;
   }
   const max = Math.max(...rows.map((r) => r.value), 1e-6);
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {rows.map((r, i) => (
         <div key={r.label}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 4 }}>
-            <span style={{ color: "var(--text)", fontWeight: 500 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 6 }}>
+            <span style={{ color: "var(--text)", fontWeight: 600 }}>
               {r.label}
-              {r.sub ? <span className="muted" style={{ fontSize: 11 }}> · {r.sub}</span> : null}
+              {r.sub ? <span className="muted" style={{ fontSize: 11, fontWeight: 500 }}> · {r.sub}</span> : null}
             </span>
             <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--text-2)" }}>{fmt(r.value)}</span>
           </div>
-          <div style={{ height: 8, background: "var(--surface-2)", borderRadius: 4, overflow: "hidden", border: "1px solid var(--border)" }}>
+          <div style={{ height: 10, background: "var(--surface-2)", borderRadius: 5, overflow: "hidden", border: "1px solid var(--border)" }}>
             <div style={{ 
-              width: `${(r.value / max) * 100}%`, 
+              width: mounted ? `${(r.value / max) * 100}%` : "0%", 
               height: "100%", 
-              background: "var(--accent)" 
+              background: i === 0 ? "var(--accent)" : "color-mix(in srgb, var(--accent) 70%, transparent)",
+              transition: "width 1.2s cubic-bezier(0.2, 0.8, 0.2, 1)",
+              borderRadius: 5
             }} />
           </div>
         </div>
@@ -924,14 +1059,21 @@ export function Donut({
   data, 
   fmt,
   size = 160,
-  fontSize = 12
+  fontSize = 12,
+  hideLegend = false
 }: { 
   data: { label: string; value: number; color?: string }[]; 
   fmt?: (n: number) => string;
   size?: number;
   fontSize?: number;
+  hideLegend?: boolean;
 }) {
   const [hover, setHover] = useState<number | null>(null);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const total = data.reduce((s, d) => s + d.value, 0);
   if (!data.length || total <= 0) return <Empty label="No data for the selected range." />;
   const f = fmt ?? ((n: number) => Math.round(n).toLocaleString("en-IN"));
@@ -944,23 +1086,26 @@ export function Donut({
         <circle cx={cx} cy={cy} r={R} fill="none" stroke="var(--border)" strokeWidth={20} />
         {data.map((d, i) => {
           const frac = d.value / total, seg = frac * C, off = acc * C; acc += frac;
+          const animatedSeg = mounted ? seg : 0;
           return <circle key={i} cx={cx} cy={cy} r={R} fill="none" stroke={col(i)} strokeWidth={hover === i ? 24 : 20}
-            strokeDasharray={`${seg} ${C - seg}`} strokeDashoffset={-off} transform={`rotate(-90 ${cx} ${cy})`}
-            onMouseEnter={() => setHover(i)} style={{ transition: "stroke-width .1s" }} />;
+            strokeDasharray={`${animatedSeg} ${C - animatedSeg}`} strokeDashoffset={-off} transform={`rotate(-90 ${cx} ${cy})`}
+            onMouseEnter={() => setHover(i)} style={{ transition: "stroke-width .15s, stroke-dasharray 1.4s cubic-bezier(0.16, 1, 0.3, 1)" }} />;
         })}
         <text x={cx} y={cy - 3} textAnchor="middle" fontSize={10} fill="var(--text-3)">Total</text>
         <text x={cx} y={cy + 14} textAnchor="middle" fontSize={15} fontWeight={800} fontFamily="var(--font-mono)" fill="var(--text)">{f(total)}</text>
       </svg>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: fontSize }}>
-        {data.map((d, i) => (
-          <div key={i} onMouseEnter={() => setHover(i)} style={{ display: "flex", alignItems: "center", gap: 10, opacity: hover == null || hover === i ? 1 : 0.5 }}>
-            <span style={{ width: fontSize - 3, height: fontSize - 3, borderRadius: 2, background: col(i), flexShrink: 0 }} />
-            <span style={{ color: "var(--text-2)", minWidth: fontSize * 8 }}>{d.label}</span>
-            <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--text)" }}>{f(d.value)}</span>
-            <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-2)" }}>({((d.value / total) * 100).toFixed(1)}%)</span>
-          </div>
-        ))}
-      </div>
+      {!hideLegend && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: fontSize }}>
+          {data.map((d, i) => (
+            <div key={i} onMouseEnter={() => setHover(i)} style={{ display: "flex", alignItems: "center", gap: 10, opacity: hover == null || hover === i ? 1 : 0.5, transition: "opacity 0.2s" }}>
+              <span style={{ width: fontSize - 3, height: fontSize - 3, borderRadius: 2, background: col(i), flexShrink: 0 }} />
+              <span style={{ color: "var(--text-2)", minWidth: fontSize * 8 }}>{d.label}</span>
+              <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--text)" }}>{f(d.value)}</span>
+              <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-2)" }}>({((d.value / total) * 100).toFixed(1)}%)</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

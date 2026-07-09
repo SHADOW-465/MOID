@@ -4,15 +4,9 @@ import { datasetsWithRowsFromWorkbooks } from "../from-workbooks";
 import { buildGenericDashboard } from "../dashboard";
 
 const DIR = path.join(process.cwd(), "ANALYTICAL DATA", "REJECTION ANALYSIS 2025-26");
+const maybe = fs.existsSync(DIR) ? describe : describe.skip;
 
-describe("buildGenericDashboard (real corpus)", () => {
-  if (!fs.existsSync(DIR)) {
-    it("skips because real corpus is not present", () => {
-      expect(true).toBe(true);
-    });
-    return;
-  }
-
+maybe("buildGenericDashboard (real corpus)", () => {
   const files = fs
     .readdirSync(DIR)
     .filter((f) => /REJECTION ANALYSIS.*\.xlsx$/i.test(f) && !f.startsWith("~$"))

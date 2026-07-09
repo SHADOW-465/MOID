@@ -14,6 +14,7 @@ import { buildReviewRows, reviewSummary, applyEdit, defectKey } from "@/lib/inge
 import { SUMMARY_NAME } from "@/lib/ingest/from-rejection-sheets";
 import type { StageDayRecord } from "@/lib/ingest/emit";
 import { DISPOSAFE_REGISTRY } from "@/lib/registry/disposafe";
+import { matchAgainstPresets, type PresetMatch } from "@/lib/registry/match-preset";
 import type { Dataset } from "@/lib/dataset/types";
 
 export default function StagingPage() {
@@ -56,6 +57,13 @@ export default function StagingPage() {
   const [isConfigured, setIsConfigured] = useState<boolean | null>(null);
   const [isMasterMode, setIsMasterMode] = useState(false);
 
+  // Preset identity for this upload — set explicitly by the operator, never
+  // auto-decided. "merge" extends an existing preset; "new" creates one.
+  // Presets never silently overwrite or combine with each other.
+  const [presets, setPresets] = useState<{ presetId: string; name: string; stageCount: number }[]>([]);
+  const [presetMatches, setPresetMatches] = useState<PresetMatch[]>([]);
+  const [presetChoice, setPresetChoice] = useState<{ mode: "merge" | "new"; presetId?: string; name?: string }>({ mode: "new", name: "" });
+
   // New Column Mapping Carryover
   const [newColumns, setNewColumns] = useState<{ stageId: string; colName: string; type: string }[]>([]);
   const [confirmMappings, setConfirmMappings] = useState<Record<string, boolean>>({});
@@ -77,7 +85,19 @@ export default function StagingPage() {
         console.error("Failed to load active registry:", err);
         setIsConfigured(true);
       });
+    fetch("/api/schema?list=true")
+      .then(res => res.json())
+      .then(data => setPresets(data.presets || []))
+      .catch(err => console.error("Failed to load presets:", err));
   }, []);
+
+  // Set preset choice name automatically when a fresh workbook schema is extracted
+  useEffect(() => {
+    if (!extractedSchema) {
+      return;
+    }
+    setPresetChoice({ mode: "new", name: fileName.replace(/\.(xlsx|xls|csv)$/i, "") });
+  }, [extractedSchema, fileName]);
 
   const rows = useMemo(() => buildReviewRows(records), [records]);
   const summary = useMemo(() => reviewSummary(rows), [rows]);
@@ -313,12 +333,17 @@ export default function StagingPage() {
       const firstInvalidGlobalIdx = reviewedRows.findIndex((r) => r.status === "invalid");
       setPage(firstInvalidGlobalIdx >= 0 ? Math.floor(firstInvalidGlobalIdx / PAGE_SIZE) : 0);
 
-      // Auto-save active schema to registry in master-configuration mode.
+      // First-ever preset: nothing to merge into yet, so this always creates
+      // a new preset named after the uploaded file.
       if (isMasterMode && firstSchema && firstSchema.stages.length > 0) {
         const regRes = await fetch("/api/schema", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ schema: firstSchema }),
+          body: JSON.stringify({
+            schema: firstSchema,
+            name: (files.length === 1 ? files[0].name : `${files.length} files`).replace(/\.(xlsx|xls|csv)$/i, ""),
+            createdFromFilename: files.length === 1 ? files[0].name : undefined,
+          }),
         });
         const regData = await regRes.json();
         if (regData.success) {
@@ -467,19 +492,28 @@ export default function StagingPage() {
 
   async function commitSchemaAsMaster() {
     if (!extractedSchema) return;
+    if (presetChoice.mode === "new" && !presetChoice.name?.trim()) {
+      setError("Name this preset before saving (see 'Excel Preset' panel above).");
+      return;
+    }
     setBusy(true); setError(null); setSaveSuccessMsg(null);
     try {
       const regRes = await fetch("/api/schema", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ schema: extractedSchema })
+        body: JSON.stringify({
+          schema: extractedSchema,
+          ...(presetChoice.mode === "merge"
+            ? { presetId: presetChoice.presetId }
+            : { name: presetChoice.name, createdFromFilename: fileName }),
+        })
       });
       const regData = await regRes.json();
       if (!regRes.ok) throw new Error(regData.error ?? "Failed to save schema");
       if (regData.success) {
         setActiveRegistry(regData.registry);
         setIsConfigured(true);
-        setSaveSuccessMsg("Master schema locked and updated successfully!");
+        setSaveSuccessMsg(presetChoice.mode === "merge" ? "Preset updated successfully!" : "New preset saved successfully!");
         setTimeout(() => setSaveSuccessMsg(null), 4000);
       }
     } catch (e: any) {
@@ -492,78 +526,34 @@ export default function StagingPage() {
   async function publish() {
     setBusy(true); setError(null);
     try {
-      const approvedNewCols = newColumns.filter(c => confirmMappings[`${c.stageId}|${c.colName}`]);
-      const regToUpdate = activeRegistry || DISPOSAFE_REGISTRY;
-
-      const mergedSizes = (() => {
-        const map = new Map<string, any>();
-        for (const s of (regToUpdate.sizes || [])) map.set(s.sizeId, s);
-        // discoveredSizes is bridged from handleUpload via sessionStorage.
-        const cached = sessionStorage.getItem(`rais_sizes_${ingestionId}`);
-        if (cached) for (const s of JSON.parse(cached)) map.set(s.sizeId, s);
-        return Array.from(map.values()).sort((a, b) => Number(a.sizeId.slice(2)) - Number(b.sizeId.slice(2)));
-      })();
-
-      const sizesChanged = JSON.stringify(mergedSizes) !== JSON.stringify(regToUpdate.sizes || []);
-
-      if ((approvedNewCols.length > 0 || sizesChanged) && regToUpdate) {
-        // Clone registry stages and inject new fields (only when new columns approved)
-        const updatedStages = approvedNewCols.length > 0
-          ? regToUpdate.stages.map((stage: any) => {
-              const defaultFields = [
-                { name: "Checked Qty", type: "number", required: true, addAs: "column", appliesTo: "all", unit: "" },
-                { name: "Good Qty", type: "number", required: false, addAs: "column", appliesTo: "all", unit: "" },
-                { name: "Rework Qty", type: "number", required: false, addAs: "column", appliesTo: "all", unit: "" },
-                { name: "Rejected Qty", type: "number", required: true, addAs: "column", appliesTo: "all", unit: "" }
-              ];
-              const fields = stage.fields ? [...stage.fields] : [...defaultFields];
-
-              approvedNewCols.forEach((newCol) => {
-                if (newCol.stageId === stage.stageId) {
-                  const alreadyExists = fields.some(f => f.name.toLowerCase() === newCol.colName.toLowerCase());
-                  if (!alreadyExists) {
-                    fields.push({
-                      name: newCol.colName,
-                      type: newCol.type as any,
-                      required: false,
-                      addAs: "column",
-                      appliesTo: "selected",
-                      selectedStages: [stage.stageId]
-                    });
-                  }
-                }
-              });
-              return {
-                ...stage,
-                fields
-              };
-            })
-          : regToUpdate.stages;
-
-        // Save new schema config
-        const regRes = await fetch("/api/schema", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            registry: {
-              ...regToUpdate,
-              stages: updatedStages,
-              sizes: mergedSizes
-            }
-          })
-        });
-
-        if (!regRes.ok) throw new Error("Failed to update registry schema with new custom fields");
-        const regData = await regRes.json();
-        if (regData.registry) {
-          setActiveRegistry(regData.registry);
-        }
+      if (!extractedSchema) {
+        throw new Error("No schema available to publish.");
       }
+
+      // Always save the extracted schema as a new preset named after the file (or custom name)
+      const presetName = presetChoice.name || fileName.replace(/\.(xlsx|xls|csv)$/i, "");
+      const regRes = await fetch("/api/schema", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          schema: extractedSchema,
+          name: presetName,
+          createdFromFilename: fileName,
+        })
+      });
+
+      if (!regRes.ok) {
+        const errBody = await regRes.json().catch(() => ({}));
+        throw new Error(errBody.error ? `Failed to save preset: ${errBody.error}` : "Failed to save preset.");
+      }
+
+      const regData = await regRes.json();
+      const savedPresetId = regData.registry.presetId;
 
       const res = await fetch("/api/ingest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ingestionId, fileName, records, comments })
+        body: JSON.stringify({ ingestionId, fileName, records, comments, presetId: savedPresetId })
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Publish failed");
       const r = await res.json();
@@ -627,7 +617,7 @@ export default function StagingPage() {
         <button onClick={() => router.push("/")} style={{ background: "var(--status-good)", color: "#fff", border: "none", borderRadius: 8, padding: "6px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>View dashboard →</button>
       </div>}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: 18 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 300px", gap: 18 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <Card 
             title="Upload" 
@@ -667,6 +657,24 @@ export default function StagingPage() {
               </div>
             </div>
           </Card>
+
+          {/* Preset identity — every workbook is a separate independent preset */}
+          {extractedSchema && (
+            <Card title="Excel Preset Name" sub="The independent Data Entry preset name for this workbook.">
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                  Save as preset:
+                  <input
+                    type="text"
+                    value={presetChoice.name ?? ""}
+                    onChange={(e) => setPresetChoice({ mode: "new", name: e.target.value })}
+                    placeholder="e.g. April 2026 Rejection Report"
+                    style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid var(--border)", width: 300, background: "var(--bg)", color: "var(--text)" }}
+                  />
+                </label>
+              </div>
+            </Card>
+          )}
 
           {/* New Column Mappings Card */}
           {newColumns.length > 0 && (

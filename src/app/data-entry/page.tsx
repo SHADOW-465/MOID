@@ -1,13 +1,17 @@
 // src/app/data-entry/page.tsx
 "use client";
 
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import AppShell from "@/components/app/AppShell";
 import Icon from "@/components/editorial/Icon";
 import { useEvents } from "@/components/app/EventsContext";
 import { DISPOSAFE_REGISTRY } from "@/lib/registry/disposafe";
 import DatasetEntryForm from "@/components/DatasetEntryForm";
 import MonthlyEntryGrid from "@/components/MonthlyEntryGrid";
+import { useTweaks } from "@/components/editorial/TweaksContext";
+import WeekPicker from "@/components/WeekPicker";
+import { type EntryGrain } from "@/lib/entry/period";
+import { fyContaining } from "@/lib/analytics/scope";
 
 interface FieldDef {
   name: string;
@@ -40,10 +44,55 @@ const DEFAULT_FIELDS: FieldDef[] = [
 const today = () => new Date().toISOString().slice(0, 10);
 
 export default function DataEntryPage() {
-  const { refreshEvents } = useEvents();
+  const { refreshEvents, events } = useEvents();
   const [activeTab, setActiveTab] = useState<"entry" | "ledger" | "custom">("entry");
   const [monthlyDirty, setMonthlyDirty] = useState(false);
   const [date, setDate] = useState(today());
+
+  const { t, setTweak } = useTweaks();
+
+  // FY grain doesn't have its own row range — it narrows to a fiscal year,
+  // then a month tab within it drives the same Month case the grid already
+  // renders. `fyOpenMonth` is the anchor actually passed to the grid whenever
+  // t.grain === "fy"; `date` (below) remains the anchor for day/week/month.
+  const [fyStartYear, setFyStartYear] = useState<number>(() => fyContaining(today()).startYear);
+  const [fyOpenMonth, setFyOpenMonth] = useState<string>(() => {
+    const fy = fyContaining(today());
+    return fy.from; // default to April 1st of the current/most-recent FY
+  });
+
+  // Grain-change guard: the topbar's D/W/M/FY buttons (AppShell) set t.grain
+  // directly with no way for this page to veto it. Detect the change here
+  // instead, and revert it if there are unsaved edits the operator declines
+  // to discard — see docs/superpowers/specs/2026-07-09-data-entry-grain-aware-design.md §4.
+  const prevGrainRef = useRef(t.grain);
+  useEffect(() => {
+    if (t.grain === prevGrainRef.current) return;
+    if (activeTab === "entry" && monthlyDirty) {
+      const ok = confirm("You have unsaved changes in the data entry grid that haven't been submitted yet. Switching the Grain will discard them. Continue?");
+      if (!ok) {
+        setTweak("grain", prevGrainRef.current);
+        return;
+      }
+    }
+    prevGrainRef.current = t.grain;
+  }, [t.grain, activeTab, monthlyDirty, setTweak]);
+
+  // The FY dropdown's options: every FY that has at least one event, plus the
+  // FY containing today so the control is never empty on a fresh install.
+  const fyOptions = useMemo(() => {
+    const years = new Set<number>([fyContaining(today()).startYear]);
+    for (const e of events ?? []) {
+      years.add(fyContaining(e.occurredOn.start).startYear);
+    }
+    return Array.from(years).sort((a, b) => b - a);
+  }, [events]);
+
+  // The grain actually handed to MonthlyEntryGrid: "fy" isn't a grid grain
+  // (Task 2's EntryGrain is day|week|month) — FY mode always edits a month.
+  const effectiveGrain: EntryGrain = t.grain === "fy" ? "month" : t.grain;
+  const effectiveAnchor = t.grain === "fy" ? fyOpenMonth : date;
+
   const [hdr, setHdr] = useState({
     shift: "Day Shift",
     operator: "",
@@ -59,6 +108,10 @@ export default function DataEntryPage() {
 
   // Registry state
   const [registry, setRegistry] = useState<any | null>(null);
+
+  // Preset state — which uploaded-workbook-derived Data Entry preset is active.
+  const [presets, setPresets] = useState<{ presetId: string; name: string; stageCount: number }[]>([]);
+  const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
 
   // Ledger state
   const [ledgerRecords, setLedgerRecords] = useState<any[]>([]);
@@ -86,7 +139,7 @@ export default function DataEntryPage() {
   // Load registry, ledger records, and prefilled header fields on mount.
   // The spreadsheet itself (MonthlyEntryGrid) loads its own month of data.
   useEffect(() => {
-    loadRegistry();
+    loadPresets();
     loadLedger();
     if (typeof window !== "undefined") {
       const savedOperator = localStorage.getItem("rais_hdr_operator");
@@ -119,9 +172,9 @@ export default function DataEntryPage() {
     });
   };
 
-  const loadRegistry = async () => {
+  const loadRegistry = async (presetId?: string | null) => {
     try {
-      const res = await fetch("/api/schema");
+      const res = await fetch(presetId ? `/api/schema?presetId=${encodeURIComponent(presetId)}` : "/api/schema");
       const data = await res.json();
       if (data.registry) {
         setRegistry(data.registry);
@@ -129,6 +182,29 @@ export default function DataEntryPage() {
     } catch (err) {
       console.error("Error loading registry:", err);
     }
+  };
+
+  const loadPresets = async () => {
+    try {
+      const res = await fetch("/api/schema?list=true");
+      const data = await res.json();
+      const list = data.presets || [];
+      setPresets(list);
+      // Default to the first preset (matches the API's own "no presetId"
+      // fallback) so the picker and the loaded registry agree from the start.
+      const initial = list[0]?.presetId ?? null;
+      setSelectedPresetId(initial);
+      await loadRegistry(initial);
+    } catch (err) {
+      console.error("Error loading presets:", err);
+      await loadRegistry(null);
+    }
+  };
+
+  const handlePresetChange = async (presetId: string) => {
+    if (!confirmLeaveEntryGrid()) return;
+    setSelectedPresetId(presetId);
+    await loadRegistry(presetId);
   };
 
   const loadLedger = async () => {
@@ -379,8 +455,8 @@ Assign another field as Rejected Quantity.`;
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          presetId: selectedPresetId ?? activeRegistry.presetId ?? activeRegistry.clientId,
           registry: {
-            clientId: "disposafe",
             stages: draftStages,
             defects: activeRegistry.defects
           }
@@ -497,7 +573,7 @@ Assign another field as Rejected Quantity.`;
   const [busyAction, setBusyAction] = useState<string | null>(null);
 
   return (
-    <AppShell active="data-entry">
+    <AppShell active="data-entry" presetId={selectedPresetId}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <div style={{ display: "flex", gap: 4 }}>
           <button
@@ -568,12 +644,58 @@ Assign another field as Rejected Quantity.`;
         <div>
           <div style={{ display: "flex", gap: 14, alignItems: "flex-end", marginBottom: 16, padding: 16, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12 }}>
             <label className="muted" style={{ fontSize: 11, display: "flex", flexDirection: "column", gap: 4 }}>
-              Report Date
-              <input type="date" value={date} onChange={(e) => {
-                const newDate = e.target.value;
-                if (!confirmLeaveEntryGrid()) return;
-                setDate(newDate);
-              }} style={{ ...inp, width: 160 }} />
+              {t.grain === "day" && "Report Date"}
+              {t.grain === "week" && "Report Week"}
+              {t.grain === "month" && "Report Month"}
+              {t.grain === "fy" && "Report FY"}
+
+              {t.grain === "day" && (
+                <input type="date" value={date} onChange={(e) => {
+                  const newDate = e.target.value;
+                  if (!confirmLeaveEntryGrid()) return;
+                  setDate(newDate);
+                }} style={{ ...inp, width: 160 }} />
+              )}
+
+              {t.grain === "week" && (
+                <WeekPicker value={date} onChange={(next) => {
+                  if (!confirmLeaveEntryGrid()) return;
+                  setDate(next);
+                }} />
+              )}
+
+              {t.grain === "month" && (
+                <input type="month" value={date.slice(0, 7)} onChange={(e) => {
+                  if (!confirmLeaveEntryGrid()) return;
+                  setDate(`${e.target.value}-01`);
+                }} style={{ ...inp, width: 160 }} />
+              )}
+
+              {t.grain === "fy" && (
+                <select value={fyStartYear} onChange={(e) => {
+                  if (!confirmLeaveEntryGrid()) return;
+                  const y = Number(e.target.value);
+                  setFyStartYear(y);
+                  setFyOpenMonth(`${y}-04-01`);
+                }} style={{ ...inp, width: 160 }}>
+                  {fyOptions.map((y) => (
+                    <option key={y} value={y}>FY{y}-{String((y + 1) % 100).padStart(2, "0")}</option>
+                  ))}
+                </select>
+              )}
+            </label>
+            <label className="muted" style={{ fontSize: 11, display: "flex", flexDirection: "column", gap: 4 }}>
+              Excel Preset
+              <select
+                value={selectedPresetId ?? ""}
+                onChange={(e) => handlePresetChange(e.target.value)}
+                style={{ ...inp, width: 220 }}
+              >
+                {presets.length === 0 && <option value="">Default Registry</option>}
+                {presets.map((p) => (
+                  <option key={p.presetId} value={p.presetId}>{p.name} ({p.stageCount} stages)</option>
+                ))}
+              </select>
             </label>
             <label className="muted" style={{ fontSize: 11, display: "flex", flexDirection: "column", gap: 4 }}>
               Shift
@@ -618,13 +740,49 @@ Assign another field as Rejected Quantity.`;
             </Field>
           </Section>
 
-          <MonthlyEntryGrid
-            key={date}
-            initialDate={date}
-            customFields={entryCustomFields}
-            blockedReason={hdr.operator.trim() ? null : "Operator name is required."}
-            onDirtyChange={setMonthlyDirty}
-          />
+          {t.grain === "fy" && (
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 16 }}>
+              {Array.from({ length: 12 }, (_, i) => {
+                const month = ((i + 3) % 12) + 1; // Apr(4)..Mar(3): i=0 -> 4, ..., i=8 -> 12, i=9 -> 1, ...
+                const year = month >= 4 ? fyStartYear : fyStartYear + 1;
+                const anchor = `${year}-${String(month).padStart(2, "0")}-01`;
+                const on = fyOpenMonth.slice(0, 7) === anchor.slice(0, 7);
+                const label = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][month - 1];
+                return (
+                  <button key={anchor} onClick={() => { if (confirmLeaveEntryGrid()) setFyOpenMonth(anchor); }}
+                    style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border-strong)",
+                      background: on ? "var(--accent)" : "var(--surface-2)",
+                      color: on ? "var(--text-invert)" : "var(--text-2)", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {presets.length === 0 ? (
+            <div style={{ padding: 24, textAlign: "center", background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 12, color: "var(--text-2)" }}>
+              No Data Entry presets yet. Upload a workbook on <a href="/staging" style={{ color: "var(--accent)" }}>Excel Upload / Staging</a> to create the first one.
+            </div>
+          ) : (
+            <MonthlyEntryGrid
+              key={`${effectiveGrain}-${effectiveAnchor}-${selectedPresetId ?? "default"}`}
+              grain={effectiveGrain}
+              anchorDate={effectiveAnchor}
+              onAnchorChange={(next) => {
+                if (t.grain === "fy") {
+                  setFyOpenMonth(next);
+                  setFyStartYear(fyContaining(next).startYear);
+                } else {
+                  setDate(next);
+                }
+              }}
+              presetId={selectedPresetId}
+              customFields={entryCustomFields}
+              blockedReason={hdr.operator.trim() ? null : "Operator name is required."}
+              onDirtyChange={setMonthlyDirty}
+            />
+          )}
         </div>
       ) : (
         /* Data Ledger / Entry History View */

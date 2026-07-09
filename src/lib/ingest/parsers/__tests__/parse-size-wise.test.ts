@@ -10,12 +10,6 @@ const hasValve = existsSync(VALVE_FILE);
 const hasVisual = existsSync(VISUAL_FILE);
 
 describe("parseSizeWise", () => {
-  if (!hasValve && !hasVisual) {
-    it("skips because real corpus files are not present", () => {
-      expect(true).toBe(true);
-    });
-  }
-
   if (hasValve) {
     it("parses VALVE INTEGRITY side-by-side cumulative sheet", () => {
       const records = parseSizeWise(readFileSync(VALVE_FILE), VALVE_FILE);
