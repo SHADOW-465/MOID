@@ -539,8 +539,8 @@ export function LineChart({
           )}
           {mean && (
             <g>
-              <line x1={padX} y1={y(avg)} x2={canvasWidth - padX} y2={y(avg)} stroke="#C8421C" strokeDasharray="6,3" strokeWidth={1.4} />
-              <text x={padX + 6} y={y(avg) - 6} fontSize={11} fill="#C8421C" fontWeight={800}>MEAN {fmt(avg)}</text>
+              <line x1={padX} y1={y(avg)} x2={canvasWidth - padX} y2={y(avg)} stroke="var(--accent)" strokeDasharray="6,3" strokeWidth={1.4} />
+              <text x={padX + 6} y={y(avg) - 6} fontSize={11} fill="var(--accent)" fontWeight={800}>MEAN {fmt(avg)}</text>
             </g>
           )}
 

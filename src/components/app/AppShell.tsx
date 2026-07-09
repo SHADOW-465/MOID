@@ -677,8 +677,8 @@ export default function AppShell({
                 letterSpacing: "-0.01em",
                 display: "inline-flex"
               }}>
-                <span style={{ color: dispoTextColor }}>Dispo</span>
-                <span style={{ color: "#009FDF" }}>safe</span>
+                <span style={{ color: "var(--secondary)" }}>Dispo</span>
+                <span style={{ color: "var(--accent)" }}>safe</span>
               </span>
             )}
           </div>
@@ -831,6 +831,17 @@ export default function AppShell({
                         position: "relative",
                         zIndex: 1
                       }}>
+                      {isActive && (
+                        <span style={{
+                          position: "absolute",
+                          left: sidebarCollapsed ? 4 : 6,
+                          top: "25%",
+                          height: "50%",
+                          width: 3,
+                          background: "var(--accent)",
+                          borderRadius: 2,
+                        }} />
+                      )}
                       <Icon name={n.icon} size={isAnalyticsChild ? 12 : 14} stroke={isActive ? 2 : 1.5} style={{ flexShrink: 0, color: navIconColor(isActive) }} />
                       <span style={{ 
                         flex: 1,
@@ -867,8 +878,8 @@ export default function AppShell({
                         ) : null}
                         {n.aiBadge ? (
                           <span style={{
-                            background: "var(--accent-weak)",
-                            color: "var(--accent)",
+                            background: "var(--secondary-weak)",
+                            color: "var(--secondary)",
                             fontSize: 9,
                             borderRadius: 4,
                             padding: "1px 5px",
@@ -1444,7 +1455,7 @@ export default function AppShell({
           {/* Header */}
           <div style={{
             padding: "14px 18px",
-            background: "var(--accent)",
+            background: "var(--secondary)",
             color: "#FFFFFF",
             display: "flex",
             alignItems: "center",
@@ -1555,7 +1566,7 @@ export default function AppShell({
                 width: 32,
                 height: 32,
                 borderRadius: "50%",
-                background: "var(--accent)",
+                background: "var(--secondary)",
                 color: "#FFFFFF",
                 border: "none",
                 cursor: "pointer",
@@ -1582,7 +1593,7 @@ export default function AppShell({
           width: 48,
           height: 48,
           borderRadius: "50%",
-          background: "var(--accent)",
+          background: "var(--secondary)",
           color: "#FFFFFF",
           border: "none",
           cursor: "pointer",

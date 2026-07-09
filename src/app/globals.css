@@ -14,102 +14,121 @@
   --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
 
   /* Surfaces */
-  --bg:            #FAF8F5;   /* warm paper background */
+  --bg:            #F7FAFC;   /* clinical light background */
   --surface:       #FFFFFF;   /* card background */
-  --surface-2:     #F3EFEA;   /* nested tables / strips */
-  --surface-3:     #EAE3DA;   /* deep wells */
-  --overlay:       rgba(28,25,23,0.4);
+  --surface-2:     #FDFEFF;   /* secondary background / nested tables / strips */
+  --surface-3:     #E5EDF3;   /* deep wells / borders */
+  --overlay:       rgba(15, 23, 42, 0.4);
 
   /* Borders */
-  --border:        #EAE3DA;   /* crisp light border */
-  --border-strong: #D6CBBF;   /* solid divider */
-  --ring:          #C8421C;   /* burnt orange focus ring */
+  --border:        #E5EDF3;   /* clinical light border */
+  --border-strong: #CBD5E1;   /* solid divider */
+  --ring:          #2EA7E0;   /* Disposafe Medical Blue focus ring */
 
-  --text:          #1C1917;   /* near-black charcoal */
-  --text-2:        #2E2A27;   /* darker secondary text */
-  --text-3:        #45403C;   /* darker muted labels */
+  --text:          #0F172A;   /* Primary slate */
+  --text-2:        #64748B;   /* Secondary text */
+  --text-3:        #94A3B8;   /* Muted labels */
   --text-invert:   #FFFFFF;
 
-  /* Accent (Burnt Orange) */
-  --accent:        #C8421C;
-  --accent-hover:  #B03514;
-  --accent-weak:   #FDF3F0;
-  --accent-text:   #C8421C;
+  /* Accent (Primary Disposafe Medical Blue) */
+  --accent:        #2EA7E0;
+  --accent-hover:  #1C92CC;
+  --accent-weak:   rgba(46, 167, 224, 0.08);
+  --accent-text:   #2EA7E0;
+
+  /* Secondary Brand Color (Disposafe Indigo) */
+  --secondary:      #3D2E8F;
+  --secondary-hover:#2C1E70;
+  --secondary-weak: rgba(61, 46, 143, 0.08);
 
   /* Semantic status */
-  --positive:      #15803D;
-  --positive-weak: #F0FDF4;
-  --warning:       #B45309;
-  --warning-weak:  #FEF3C7;
-  --critical:      #B91C1C;
-  --critical-weak: #FEF2F2;
+  --positive:      #22C55E;
+  --positive-weak: rgba(34, 197, 94, 0.08);
+  --warning:       #F59E0B;
+  --warning-weak:  rgba(245, 158, 11, 0.08);
+  --critical:      #EF4444;
+  --critical-weak: rgba(239, 68, 68, 0.08);
   /* status aliases */
   --status-good:   var(--positive);
   --status-warn:   var(--warning);
   --status-bad:    var(--critical);
 
   /* Elevation (minimalist soft shadows) */
-  --shadow-1: 0 1px 2px rgba(28,25,23,0.03);
-  --shadow-2: 0 4px 6px -1px rgba(28,25,23,0.04), 0 2px 4px -1px rgba(28,25,23,0.02);
-  --shadow-3: 0 10px 15px -3px rgba(28,25,23,0.04), 0 4px 6px -2px rgba(28,25,23,0.02);
+  --shadow-1: 0 1px 3px rgba(15, 23, 42, 0.03), 0 1px 2px rgba(15, 23, 42, 0.02);
+  --shadow-2: 0 4px 6px -1px rgba(15, 23, 42, 0.03), 0 2px 4px -1px rgba(15, 23, 42, 0.02);
+  --shadow-3: 0 10px 15px -3px rgba(15, 23, 42, 0.03), 0 4px 6px -2px rgba(15, 23, 42, 0.01);
+
+  /* Charts Semantic Colors - Constant across themes to build color memory */
+  --stage-visual:   #2EA7E0;      /* Blue */
+  --stage-balloon:  #06B6D4;      /* Cyan */
+  --stage-valve:    #F97316;      /* Orange */
+  --stage-final:    #EF4444;      /* Red */
+  --stage-assembly: #8B5CF6;      /* Purple */
+  --stage-packing:  #22C55E;      /* Green */
+  --stage-others:   #64748B;      /* Slate */
 
   /* Data-visualization categorical palette */
-  --viz-1: #C8421C;
-  --viz-2: #4F46E5;
-  --viz-3: #0F766E;
-  --viz-4: #BE123C;
-  --viz-5: #B45309;
-  --viz-6: #0369A1;
-  --viz-7: #4D7C0F;
-  --viz-8: #57534E;
+  --viz-1: var(--stage-visual);
+  --viz-2: var(--stage-balloon);
+  --viz-3: var(--stage-valve);
+  --viz-4: var(--stage-final);
+  --viz-5: var(--stage-assembly);
+  --viz-6: var(--stage-packing);
+  --viz-7: var(--stage-others);
+  --viz-8: #475569;
 }
 
 [data-theme="dark"] {
   /* Surfaces */
-  --bg:            #12100E;   /* warm dark background */
-  --surface:       #1C1815;   /* warm dark surface card */
-  --surface-2:     #26211C;
-  --surface-3:     #322B25;
+  --bg:            #0B1118;   /* Avoid pure black, clinical dark background */
+  --surface:       #16222E;   /* Card background */
+  --surface-2:     #111A24;   /* Secondary background */
+  --surface-3:     #1F2E3D;   /* Darker wells */
   --overlay:       rgba(0,0,0,0.6);
 
   /* Borders */
-  --border:        #2C2621;
-  --border-strong: #3D352E;
-  --ring:          #FF6B3D;
+  --border:        #233342;
+  --border-strong: #2E4256;
+  --ring:          #2EA7E0;   /* Medical Blue focus ring */
 
-  --text:          #FAF8F5;
-  --text-2:        #E8DFD3;   /* brighter secondary text */
-  --text-3:        #BFB2A5;   /* brighter muted text */
-  --text-invert:   #12100E;
+  --text:          #F8FAFC;   /* Dark Mode Primary */
+  --text-2:        #CBD5E1;   /* Dark Secondary */
+  --text-3:        #64748B;   /* Dark Muted */
+  --text-invert:   #0B1118;
 
-  /* Accent (Electric Burnt Orange) */
-  --accent:        #FF6B3D;
-  --accent-hover:  #FF875E;
-  --accent-weak:   rgba(255, 107, 61, 0.08);
-  --accent-text:   #FF6B3D;
+  /* Accent (Disposafe Medical Blue) */
+  --accent:        #2EA7E0;
+  --accent-hover:  #45B8F0;
+  --accent-weak:   rgba(46, 167, 224, 0.12);
+  --accent-text:   #2EA7E0;
+
+  /* Secondary Brand Color (Disposafe Indigo - lightened for dark mode contrast) */
+  --secondary:      #8E7FFF;
+  --secondary-hover:#A599FF;
+  --secondary-weak: rgba(142, 127, 255, 0.12);
 
   /* Semantic status */
-  --positive:      #4ADE80;
-  --positive-weak: rgba(74, 222, 128, 0.1);
-  --warning:       #FBBF24;
-  --warning-weak:  rgba(251, 191, 36, 0.1);
-  --critical:      #F87171;
-  --critical-weak: rgba(248, 113, 113, 0.1);
+  --positive:      #22C55E;
+  --positive-weak: rgba(34, 197, 94, 0.12);
+  --warning:       #F59E0B;
+  --warning-weak:  rgba(245, 158, 11, 0.12);
+  --critical:      #EF4444;
+  --critical-weak: rgba(239, 68, 68, 0.12);
 
   /* Elevation */
-  --shadow-1: 0 0 0 transparent;
-  --shadow-2: 0 0 0 transparent;
-  --shadow-3: 0 0 0 transparent;
+  --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.1);
+  --shadow-2: 0 4px 6px -1px rgba(0, 0, 0, 0.12), 0 2px 4px -1px rgba(0, 0, 0, 0.08);
+  --shadow-3: 0 10px 15px -3px rgba(0, 0, 0, 0.15), 0 4px 6px -2px rgba(0, 0, 0, 0.1);
 
-  /* Data-visualization dark palette */
-  --viz-1: #FF6B3D;
-  --viz-2: #818CF8;
-  --viz-3: #2DD4BF;
-  --viz-4: #FB7185;
-  --viz-5: #FBBF24;
-  --viz-6: #38BDF8;
-  --viz-7: #A3E635;
-  --viz-8: #A8A29E;
+  /* Data-visualization dark palette (kept identical to light mode for color memory) */
+  --viz-1: var(--stage-visual);
+  --viz-2: var(--stage-balloon);
+  --viz-3: var(--stage-valve);
+  --viz-4: var(--stage-final);
+  --viz-5: var(--stage-assembly);
+  --viz-6: var(--stage-packing);
+  --viz-7: var(--stage-others);
+  --viz-8: #475569;
 }
 
 :root {
@@ -202,11 +221,26 @@ a {
   color: inherit;
   text-decoration: none;
 }
-input, textarea {
+input, textarea, select {
   font-family: inherit;
   color: inherit;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 0.875rem;
+  transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
 }
-input:focus-visible, textarea:focus-visible, button:focus-visible {
+input:focus, textarea:focus, select:focus, input:focus-visible, textarea:focus-visible {
+  border-color: var(--ring) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 15%, transparent) !important;
+  outline: none !important;
+}
+input::placeholder, textarea::placeholder {
+  color: var(--text-3);
+  opacity: 0.8;
+}
+button:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
@@ -373,6 +407,46 @@ input:focus-visible, textarea:focus-visible, button:focus-visible {
   font-size: 12px;
   min-height: 32px;
   border-radius: var(--radius-sm);
+}
+.btn.danger {
+  background: var(--critical);
+  border-color: var(--critical);
+  color: var(--text-invert);
+}
+.btn.danger:hover {
+  background: var(--critical-deep, #DC2626);
+  border-color: var(--critical-deep, #DC2626);
+}
+
+/* =========================================================
+   Tables (neutral headers, hover subtle grey, selection light blue)
+   ========================================================= */
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+th {
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border-strong);
+}
+tr {
+  background: transparent !important; /* Do not tint rows */
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+tr:hover {
+  background-color: var(--surface-2) !important; /* Subtle grey hover */
+}
+tr.selected, tr[data-selected="true"] {
+  background-color: var(--accent-weak) !important; /* Light blue selection */
+}
+td {
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
 }
 
 /* =========================================================

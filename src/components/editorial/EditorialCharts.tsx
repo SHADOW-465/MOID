@@ -8,6 +8,29 @@ import {
   shouldShowLabel
 } from "@/lib/chart-utils";
 
+export function getStageColor(labelOrId: string, defaultIdx: number = 0): string {
+  const norm = labelOrId.toLowerCase();
+  if (norm.includes("visual") || norm === "visual" || norm === "eye-punching" || norm.includes("eye punching")) return "var(--stage-visual)";
+  if (norm.includes("balloon") || norm === "balloon" || norm === "balloon-production" || norm.includes("balloon production")) return "var(--stage-balloon)";
+  if (norm.includes("valve") || norm === "valve-integrity" || norm.includes("valve integrity") || norm === "valve-fixing" || norm.includes("valve fixing")) return "var(--stage-valve)";
+  if (norm.includes("final") || norm === "final" || norm.includes("final inspection")) return "var(--stage-final)";
+  if (norm.includes("assembly") || norm === "assembly") return "var(--stage-assembly)";
+  if (norm.includes("packing") || norm === "packing") return "var(--stage-packing)";
+  if (norm.includes("other") || norm === "others" || norm === "oth") return "var(--stage-others)";
+  
+  // Fallback to sequential variables or other stages
+  const fallbackColors = [
+    "var(--stage-visual)",
+    "var(--stage-balloon)",
+    "var(--stage-valve)",
+    "var(--stage-final)",
+    "var(--stage-assembly)",
+    "var(--stage-packing)",
+    "var(--stage-others)"
+  ];
+  return fallbackColors[defaultIdx % fallbackColors.length];
+}
+
 /**
  * Inline SVG editorial charts. Each chart respects the body[data-chart-style]
  * tweak: "filled" | "outline" | "minimal". Colors come from CSS variables so
@@ -59,6 +82,7 @@ export function TrendLine({
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
 
   const { t } = useTweaks();
+  const strokeColor = getStageColor(t.stageView, 0);
   const { ref: containerRef, width: containerWidth } = useContainerWidth(600);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -155,8 +179,8 @@ export function TrendLine({
         >
           <defs>
             <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--viz-1)" stopOpacity="0.25" />
-              <stop offset="100%" stopColor="var(--viz-1)" stopOpacity="0.0" />
+              <stop offset="0%" stopColor={strokeColor} stopOpacity="0.25" />
+              <stop offset="100%" stopColor={strokeColor} stopOpacity="0.0" />
             </linearGradient>
           </defs>
           {[0, 0.25, 0.5, 0.75, 1].map((p, i) => (
@@ -210,7 +234,7 @@ export function TrendLine({
             <path
               d={pathD}
               fill="none"
-              stroke={style === "minimal" ? "var(--text)" : "var(--viz-1)"}
+              stroke={style === "minimal" ? "var(--text)" : strokeColor}
               strokeWidth={style === "minimal" ? 1.5 : 2.25}
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -236,8 +260,8 @@ export function TrendLine({
                 cx={xs(i)}
                 cy={ys(v)}
                 r={r}
-                fill={isAccent ? "var(--viz-1)" : "var(--surface)"}
-                stroke={isAccent ? "var(--viz-1)" : "var(--border)"}
+                fill={isAccent ? strokeColor : "var(--surface)"}
+                stroke={isAccent ? strokeColor : "var(--border)"}
                 strokeWidth="2"
                 style={{ transition: "r 0.15s ease" }}
               />
@@ -250,7 +274,7 @@ export function TrendLine({
               fontSize="14"
               fontFamily="var(--font-mono)"
               fontWeight="800"
-              fill="var(--viz-1)"
+              fill={strokeColor}
             >
               {values[lastIdx].toFixed(2)}%
             </text>
@@ -297,7 +321,7 @@ export function TrendLine({
             }}
           >
             <div style={{ fontWeight: 700, color: "var(--text)", marginBottom: 2 }}>{cycles[hoveredIdx].toUpperCase()}</div>
-            <div style={{ color: "var(--viz-1)", fontFamily: "var(--font-mono)", fontWeight: 800 }}>
+            <div style={{ color: strokeColor, fontFamily: "var(--font-mono)", fontWeight: 800 }}>
               Value: {values[hoveredIdx].toFixed(2)}%
             </div>
           </div>
@@ -340,7 +364,7 @@ export function HorizontalBars({
         const y = padT + i * rowH;
         const cy = y + rowH / 2;
         const isTop = accentTop && i === 0;
-        const fill = `var(--viz-${(i % 8) + 1})`;
+        const fill = getStageColor(String(d[labelKey]), i);
         const stroke = fill;
         const gradId = `${baseId}-grad-${i}`;
 
@@ -548,7 +572,7 @@ export function VerticalBars({
             const y = padT + innerH - bh;
             
             const isWorst = i === worstIdx;
-            const fill = isWorst ? "var(--critical)" : "var(--viz-1)";
+            const fill = isWorst ? "var(--critical)" : getStageColor(String(d[labelKey]), i);
             const gradId = `${baseId}-vgrad-${i}`;
             return (
               <g key={i}>
@@ -648,7 +672,7 @@ export function VerticalBars({
             }}
           >
             <div style={{ fontWeight: 700, color: "var(--text)", marginBottom: 2 }}>{data[hoveredIdx][labelKey]}</div>
-            <div style={{ color: hoveredIdx === worstIdx ? "var(--critical)" : "var(--viz-1)", fontFamily: "var(--font-mono)", fontWeight: 800 }}>
+            <div style={{ color: hoveredIdx === worstIdx ? "var(--critical)" : getStageColor(String(data[hoveredIdx][labelKey]), hoveredIdx), fontFamily: "var(--font-mono)", fontWeight: 800 }}>
               Value: {(data[hoveredIdx][valueKey] as number).toFixed(2)}{suffix}
             </div>
             {subLabelFn && (
@@ -695,7 +719,7 @@ export function Donut({
     if (l.includes("hold")) {
       return "var(--warning)";
     }
-    return `var(--viz-${(i % 8) + 1})`;
+    return getStageColor(label, i);
   }
 
   let cursor = -Math.PI / 2;

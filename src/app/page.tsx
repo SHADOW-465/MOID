@@ -760,7 +760,7 @@ export default function Dashboard() {
                     <Empty label="No defect data available for this period." />
                   ) : (
                     m.defects.slice(0, 5).map((d, i) => {
-                      const colors = ["#C8421C", "#2563EB", "#D97706", "#0D9488", "#EC4899"];
+                      const colors = ["var(--viz-1)", "var(--viz-2)", "var(--viz-3)", "var(--viz-4)", "var(--viz-5)"];
                       const rejRate = getDefectRejRate(d);
                       return (
                         <div key={d.label} style={{ 
