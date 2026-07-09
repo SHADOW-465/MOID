@@ -10,6 +10,8 @@ import {
   hoverIndexFromPixels, 
   shouldShowLabel 
 } from "@/lib/chart-utils";
+import { useCountUp, useStaggerIn, useDrawSVG } from "@/lib/gsap-anims";
+import { gsap } from "gsap";
 
 /** Shared hover tooltip card used by every time-series chart. Positioned over the
  *  chart container at the hovered point; flips below when the point sits high. */
@@ -21,8 +23,9 @@ export function ChartTip({ leftPx, topPx, below, title, rows }: {
     <div style={{
       position: "absolute", left: leftPx, top: topPx,
       transform: below ? "translate(-50%, 12px)" : "translate(-50%, calc(-100% - 12px))",
-      background: "var(--surface)", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-sm)",
-      boxShadow: "0 6px 20px rgba(0,0,0,0.18)", padding: "8px 10px", pointerEvents: "none",
+      background: "var(--surface)", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-md)",
+      backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+      boxShadow: "var(--shadow-glow)", padding: "10px 12px", pointerEvents: "none",
       zIndex: 30, minWidth: 130, whiteSpace: "nowrap",
       transition: "left 0.15s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.15s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1)"
     }}>
@@ -80,7 +83,9 @@ export function Card({ title, sub, children, span, onClick }: { title?: string; 
         gridColumn: span ? `span ${span}` : undefined, 
         border: "1px solid var(--border)", 
         borderRadius: "var(--radius-lg)", 
-        background: "var(--surface)", 
+        background: "var(--glass)",
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)", 
         padding: "20px",
         display: "flex",
         flexDirection: "column",
@@ -92,7 +97,7 @@ export function Card({ title, sub, children, span, onClick }: { title?: string; 
     >
       {title && (
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14, borderBottom: "1px solid var(--border)", paddingBottom: 8 }}>
-          <span style={{ fontSize: 11.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-2)", fontFamily: "var(--font-sans)" }}>{title}</span>
+          <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-2)", fontFamily: "var(--font-sans)" }}>{title}</span>
           {sub && <span className="muted" style={{ fontSize: 11, fontFamily: "var(--font-mono)" }}>{sub}</span>}
         </div>
       )}
@@ -122,38 +127,86 @@ export function Kpi({
   spark?: SeriesPoint[];
   onClick?: () => void;
 }) {
-  const color = tone === "bad" ? "var(--critical)" : tone === "warn" ? "var(--warning)" : tone === "good" ? "var(--positive)" : "var(--text)";
+  const toneColor = tone === "bad" ? "var(--critical)" : tone === "warn" ? "var(--warning)" : tone === "good" ? "var(--positive)" : "var(--text)";
+  const toneGlow  = tone === "bad" ? "rgba(239,68,68,0.2)" : tone === "warn" ? "rgba(245,158,11,0.2)" : tone === "good" ? "rgba(16,185,129,0.2)" : "var(--accent-glow)";
+
+  // Parse numeric value for countUp animation
+  const numericStr = value.replace(/[^\d.-]/g, "");
+  const numeric    = parseFloat(numericStr);
+  const isNumeric  = !isNaN(numeric);
+  const prefix     = isNumeric ? value.slice(0, value.indexOf(numericStr)) : "";
+  const suffix     = isNumeric ? value.slice(value.indexOf(numericStr) + numericStr.length) : "";
+  const decimals   = (numericStr.split(".")[1] ?? "").length;
+
+  const countRef = useCountUp(
+    isNumeric
+      ? { value: numeric, decimals, prefix, suffix, duration: primary ? 1.8 : 1.4, delay: 0.05 }
+      : { value: 0, format: () => value }
+  );
+
+  const cardRef = useRef<HTMLDivElement>(null);
+
   return (
     <div 
+      ref={cardRef}
       onClick={onClick}
       className={onClick ? "card-hover" : ""}
       style={{ 
+        position: "relative",
+        overflow: "hidden",
         border: "1px solid var(--border)", 
-        borderTop: primary ? "3px solid var(--accent)" : "1px solid var(--border)", 
-        borderRadius: "var(--radius-md)", 
-        background: "var(--surface)", 
-        padding: "16px",
+        borderRadius: "var(--radius-lg)", 
+        background: "var(--glass)",
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
+        padding: primary ? "20px 20px 16px" : "16px",
         display: "flex",
         flexDirection: "column",
         justifyContent: "space-between",
         cursor: onClick ? "pointer" : "default",
-        minWidth: 0
+        minWidth: 0,
       }}
     >
-      <div>
-        <div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>{label}</div>
+      {/* Gradient accent glow at top */}
+      <div style={{
+        position: "absolute",
+        top: 0, left: 0, right: 0,
+        height: primary ? 3 : 2,
+        background: tone
+          ? toneColor
+          : "var(--gradient-accent)",
+        borderRadius: "var(--radius-lg) var(--radius-lg) 0 0",
+      }} />
+      {/* Soft inner glow */}
+      {primary && (
         <div style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: primary ? 34 : 22,
-          fontWeight: 800,
-          color,
-          margin: "8px 0 2px",
-          letterSpacing: primary ? "-0.01em" : undefined,
-        }}>{value}</div>
+          position: "absolute",
+          top: 0, left: 0, right: 0, height: 80,
+          background: `linear-gradient(180deg, ${toneGlow} 0%, transparent 100%)`,
+          pointerEvents: "none",
+        }} />
+      )}
+
+      <div>
+        <div className="muted" style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.07em", fontWeight: 700 }}>{label}</div>
+        <div
+          ref={countRef as React.RefObject<HTMLDivElement>}
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: primary ? 44 : 26,
+            fontWeight: 800,
+            color: toneColor,
+            margin: "10px 0 2px",
+            letterSpacing: primary ? "-0.03em" : "-0.01em",
+            lineHeight: 1,
+          }}
+        >
+          {value}
+        </div>
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: 10 }}>
         {sub && (
-          <div className="muted" style={{ 
+          <div style={{ 
             fontSize: 11.5, 
             fontFamily: "var(--font-mono)", 
             color: tone === "bad" ? "var(--critical)" : tone === "good" ? "var(--positive)" : "var(--text-3)",
@@ -172,16 +225,64 @@ export function Kpi({
   );
 }
 
+
 export function Spark({ points, tone }: { points: SeriesPoint[]; tone?: "good" | "warn" | "bad" }) {
+  const svgRef   = useRef<SVGSVGElement>(null);
+  const pathRef  = useRef<SVGPathElement>(null);
+  const areaRef  = useRef<SVGPathElement>(null);
+  const gradId   = useRef(`spark-grad-${Math.random().toString(36).slice(2)}`);
+
   if (!points || points.length < 2) return null;
-  const v = points.map((p) => p.value); 
-  const max = Math.max(...v, 1e-6), min = Math.min(...v, 0);
-  const W = 110, H = 24;
-  const d = points.map((p, i) => `${(i / (points.length - 1)) * W},${H - ((p.value - min) / (max - min || 1)) * H}`).join(" ");
-  const color = tone === "bad" ? "var(--critical)" : tone === "good" ? "var(--positive)" : "var(--accent)";
+
+  const v   = points.map((p) => p.value);
+  const max = Math.max(...v, 1e-6);
+  const min = Math.min(...v, 0);
+  const W = 110, H = 28;
+
+  // Build smooth bezier path
+  const xs = (i: number) => (i / (points.length - 1)) * W;
+  const ys = (val: number) => H - ((val - min) / (max - min || 1)) * (H - 4) - 2;
+
+  let linePath = `M ${xs(0)} ${ys(v[0])}`;
+  for (let i = 0; i < v.length - 1; i++) {
+    const x0 = xs(i), y0 = ys(v[i]), x1 = xs(i + 1), y1 = ys(v[i + 1]);
+    const cpx = (x0 + x1) / 2;
+    linePath += ` C ${cpx} ${y0}, ${cpx} ${y1}, ${x1} ${y1}`;
+  }
+  const areaPath = linePath + ` L ${xs(v.length - 1)} ${H} L ${xs(0)} ${H} Z`;
+
+  const stroke = tone === "bad" ? "var(--critical)" : tone === "good" ? "var(--positive)" : "var(--accent)";
+  const strokeRaw = tone === "bad" ? "#EF4444" : tone === "good" ? "#10B981" : "#6366F1";
+
+  // Animate draw on mount
+  useEffect(() => {
+    const path = pathRef.current;
+    if (!path) return;
+    const len = path.getTotalLength?.() ?? 0;
+    if (len === 0) return;
+    gsap.set(path, { strokeDasharray: len, strokeDashoffset: len });
+    const tw = gsap.to(path, { strokeDashoffset: 0, duration: 1.2, ease: "power2.out", delay: 0.1 });
+    return () => { tw.kill(); };
+  }, [points]);
+
+  // Fade area in
+  useEffect(() => {
+    const area = areaRef.current;
+    if (!area) return;
+    const tw = gsap.from(area, { opacity: 0, duration: 0.8, delay: 0.4, ease: "power2.out" });
+    return () => { tw.kill(); };
+  }, [points]);
+
   return (
-    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ overflow: "visible" }}>
-      <polyline points={d} fill="none" stroke={color} strokeWidth={1.5} />
+    <svg ref={svgRef} width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ overflow: "visible" }}>
+      <defs>
+        <linearGradient id={gradId.current} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={strokeRaw} stopOpacity={0.28} />
+          <stop offset="100%" stopColor={strokeRaw} stopOpacity={0} />
+        </linearGradient>
+      </defs>
+      <path ref={areaRef} d={areaPath} fill={`url(#${gradId.current})`} />
+      <path ref={pathRef} d={linePath} fill="none" stroke={stroke} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

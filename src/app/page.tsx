@@ -254,8 +254,8 @@ export default function Dashboard() {
     if (!isLoading && m && dashboardRef.current) {
       const children = dashboardRef.current.children;
       gsap.fromTo(children,
-        { y: 16, opacity: 0 },
-        { y: 0, opacity: 1, duration: 0.4, stagger: 0.08, ease: "power2.out" }
+        { y: 24, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.55, stagger: 0.06, ease: "power2.out", clearProps: "all" }
       );
     }
   }, [isLoading, m, activeView]);

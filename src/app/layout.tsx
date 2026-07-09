@@ -23,7 +23,7 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `
               try {
-                const theme = localStorage.theme || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+                const theme = localStorage.theme || 'dark';
                 document.documentElement.setAttribute('data-theme', theme);
               } catch (_) {}
             `,

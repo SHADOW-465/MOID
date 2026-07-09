@@ -436,19 +436,25 @@ export default function AppShell({
       gridTemplateRows: "70px 1fr 44px", 
       gridTemplateAreas: `"side top" "side main" "side status"`
     }}>
-      {/* Sidebar Navigation */}
+      {/* Sidebar Navigation — Floating Glass Panel */}
       <aside ref={sidebarRef} style={{ 
         gridArea: "side", 
-        borderRight: "1px solid var(--border)", 
-        background: "var(--surface)", 
+        background: "var(--glass)", 
+        backdropFilter: "blur(24px) saturate(1.4)", 
+        WebkitBackdropFilter: "blur(24px) saturate(1.4)",
+        border: "1px solid var(--border)",
+        borderRadius: sidebarCollapsed ? "var(--radius-md)" : "var(--radius-lg)",
         display: "flex", 
         flexDirection: "column", 
         position: "sticky", 
-        top: 0, 
-        height: "100vh",
+        top: 8, 
+        height: "calc(100vh - 16px)",
+        margin: "8px 0 8px 8px",
         zIndex: 100,
         width: sidebarCollapsed ? 64 : 240,
-        overflow: "hidden"
+        overflow: "hidden",
+        boxShadow: "var(--shadow-2)",
+        transition: "border-radius 0.3s cubic-bezier(0.2, 0.8, 0.2, 1)"
       }}>
         {/* logo and collapse toggle */}
         <div style={{ 
@@ -508,7 +514,7 @@ export default function AppShell({
               transition: "background 0.2s",
               flexShrink: 0
             }}
-            onMouseOver={(e) => e.currentTarget.style.background = "var(--surface-3)"}
+            onMouseOver={(e) => e.currentTarget.style.background = "var(--glass-hover)"}
             onMouseOut={(e) => e.currentTarget.style.background = "transparent"}
           >
             <Icon name={sidebarCollapsed ? "arrow-right" : "arrow-left"} size={16} />
@@ -591,7 +597,7 @@ export default function AppShell({
                         background: isActive
                           ? "var(--accent-weak)"
                           : "transparent",
-                        borderRadius: "var(--radius-sm)",
+                        borderRadius: "var(--radius-pill)",
                         color: isActive
                           ? "var(--accent-text)"
                           : n.soon
@@ -602,22 +608,10 @@ export default function AppShell({
                         fontSize: isAnalyticsChild ? 12.5 : 13,
                         fontWeight: isActive ? 600 : 400,
                         textAlign: "left",
-                        transition: "padding 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), gap 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), background 0.15s ease",
+                        boxShadow: isActive ? "0 0 12px var(--accent-glow)" : "none",
+                        transition: "padding 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), gap 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), background 0.15s ease, box-shadow 0.25s ease",
                         position: "relative"
                       }}>
-                      {isActive && (
-                        <div style={{
-                          position: "absolute",
-                          left: 0,
-                          top: sidebarCollapsed ? 0 : "15%",
-                          bottom: sidebarCollapsed ? 0 : "auto",
-                          height: sidebarCollapsed ? "100%" : "70%",
-                          width: 3,
-                          background: "var(--accent)",
-                          borderRadius: sidebarCollapsed ? 0 : "0 2px 2px 0",
-                          transition: "all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)"
-                        }} />
-                      )}
                       <Icon name={n.icon} size={isAnalyticsChild ? 13 : 15} stroke={isActive ? 2 : 1.5} style={{ flexShrink: 0 }} />
                       <span style={{ 
                         flex: 1,
@@ -646,7 +640,7 @@ export default function AppShell({
                             background: "var(--critical)",
                             color: "#fff",
                             fontSize: 10,
-                            borderRadius: "var(--radius-sm)",
+                            borderRadius: "var(--radius-pill)",
                             padding: "2px 6px",
                             fontWeight: 700,
                             fontFamily: "var(--font-mono)"
@@ -675,9 +669,10 @@ export default function AppShell({
 
         {/* Data Trust Score */}
         <div style={{ 
-          padding: "16px", 
+          padding: sidebarCollapsed ? "12px 8px" : "14px 16px", 
           borderTop: "1px solid var(--border)",
-          background: "var(--surface-2)",
+          background: "var(--glass)",
+          borderRadius: "0 0 var(--radius-lg) var(--radius-lg)",
           display: "flex",
           flexDirection: "column",
           gap: 6,
@@ -735,11 +730,13 @@ export default function AppShell({
         </div>
       </aside>
 
-      {/* Topbar / Masthead */}
+      {/* Topbar / Masthead — Glass Strip */}
       <header style={{ 
         gridArea: "top", 
         borderBottom: "1px solid var(--border)", 
-        background: "var(--surface)", 
+        background: "var(--glass)", 
+        backdropFilter: "blur(20px) saturate(1.3)", 
+        WebkitBackdropFilter: "blur(20px) saturate(1.3)",
         padding: "0 24px", 
         display: "flex", 
         alignItems: "center", 
@@ -1049,7 +1046,7 @@ export default function AppShell({
             border: "1px solid var(--border)",
             display: "grid",
             placeItems: "center",
-            background: "var(--surface-2)"
+            background: "var(--glass)"
           }}>
             <Icon name="alert" size={16} />
             <span style={{
@@ -1078,7 +1075,7 @@ export default function AppShell({
               border: "1px solid var(--border)",
               display: "grid",
               placeItems: "center",
-              background: "var(--surface-2)",
+              background: "var(--glass)",
               transition: "transform 0.2s"
             }}>
             <Icon name={mounted && isDark ? "sun" : "moon"} size={16} />
@@ -1109,21 +1106,21 @@ export default function AppShell({
 
           {/* Export Action */}
           <button onClick={handleExport} disabled={exporting} style={{
-            background: "var(--accent)",
-            color: "var(--text-invert)", 
+            background: "var(--gradient-accent)",
+            color: "#FFFFFF", 
             border: "none", 
-            borderRadius: "var(--radius-md)", 
-            padding: "8px 16px", 
+            borderRadius: "var(--radius-pill)", 
+            padding: "8px 20px", 
             fontSize: 13, 
             fontWeight: 600, 
             cursor: "pointer", 
             display: "inline-flex", 
             gap: 6, 
             alignItems: "center",
-            boxShadow: "var(--shadow-1)",
+            boxShadow: "0 4px 20px var(--accent-glow)",
             minHeight: 36
           }}>
-            <Icon name="print" size={13} /> {exporting ? "Exporting…" : "Export"} <Icon name="arrow-right" size={10} style={{ transform: "rotate(90deg)" }} />
+            <Icon name="print" size={13} /> {exporting ? "Exporting..." : "Export"} <Icon name="arrow-right" size={10} style={{ transform: "rotate(90deg)" }} />
           </button>
         </div>
       </header>
@@ -1145,11 +1142,13 @@ export default function AppShell({
             width: "100%"
           }}>
             <div style={{
-              background: "var(--paper)",
-              border: "2px solid var(--ink)",
-              borderRadius: "var(--radius-lg)",
+              background: "var(--glass)",
+              border: "1px solid var(--border-strong)",
+              borderRadius: "var(--radius-xl)",
               padding: "40px",
-              boxShadow: "8px 8px 0px var(--ink)",
+              backdropFilter: "blur(20px)",
+              WebkitBackdropFilter: "blur(20px)",
+              boxShadow: "var(--shadow-2)",
               maxWidth: "600px",
               width: "100%",
               textAlign: "center",
@@ -1159,27 +1158,26 @@ export default function AppShell({
               gap: 20
             }}>
               <div style={{
-                background: "color-mix(in srgb, var(--status-bad) 12%, transparent)",
-                color: "var(--status-bad)",
-                border: "2px solid var(--ink)",
+                background: "var(--critical-weak)",
+                color: "var(--critical)",
+                border: "1px solid var(--border-strong)",
                 borderRadius: "50%",
                 width: 64,
                 height: 64,
                 display: "grid",
                 placeItems: "center",
-                boxShadow: "3px 3px 0 var(--ink)"
               }}>
                 <Icon name="alert" size={32} />
               </div>
-              <h2 style={{ fontFamily: "var(--font-display)", fontSize: 26, margin: 0, color: "var(--ink)", fontWeight: 800 }}>
+              <h2 style={{ fontFamily: "var(--font-display)", fontSize: 26, margin: 0, color: "var(--text)", fontWeight: 800 }}>
                 Cockpit Locked
               </h2>
               <p style={{ fontSize: 14, color: "var(--text-2)", lineHeight: "1.6", margin: 0 }}>
                 The manufacturing cockpit is currently unconfigured. No plant-wide schema, stages, or defect types have been established in the database ledger.
               </p>
               <div style={{
-                background: "var(--surface-2)",
-                border: "1.5px solid var(--border-strong)",
+                background: "var(--glass)",
+                border: "1px dashed var(--border-strong)",
                 borderRadius: "var(--radius-md)",
                 padding: "14px 18px",
                 fontSize: 13,
@@ -1187,22 +1185,21 @@ export default function AppShell({
                 textAlign: "left",
                 fontFamily: "var(--font-sans)",
                 margin: "10px 0",
-                borderStyle: "dashed"
               }}>
                 <strong>Administrative Action Required:</strong> Ingest a pristine master workbook on the Staging page to extract your manufacturing line's stages and defects and unlock all analytics.
               </div>
               <button 
                 onClick={() => router.push("/staging")}
                 style={{
-                  background: "var(--accent)",
-                  color: "#fff",
-                  border: "2px solid var(--ink)",
-                  borderRadius: "var(--radius-md)",
+                  background: "var(--gradient-accent)",
+                  color: "#FFFFFF",
+                  border: "none",
+                  borderRadius: "var(--radius-pill)",
                   padding: "12px 28px",
                   fontSize: 14,
                   fontWeight: 700,
                   cursor: "pointer",
-                  boxShadow: "4px 4px 0 var(--ink)",
+                  boxShadow: "0 4px 20px var(--accent-glow)",
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 8
@@ -1221,7 +1218,9 @@ export default function AppShell({
       <footer style={{ 
         gridArea: "status", 
         borderTop: "1px solid var(--border)", 
-        background: "var(--surface)", 
+        background: "var(--glass)",
+        backdropFilter: "blur(16px)", 
+        WebkitBackdropFilter: "blur(16px)",
         padding: "0 24px", 
         display: "flex", 
         alignItems: "center",
