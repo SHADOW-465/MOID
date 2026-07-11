@@ -103,13 +103,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!user) {
-    return <LoginPage />;
-  }
-
   return (
     <AuthContext.Provider value={{ user, login, logout, isLoading }}>
-      {children}
+      {!user ? <LoginPage /> : children}
     </AuthContext.Provider>
   );
 }
