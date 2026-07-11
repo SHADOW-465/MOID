@@ -4,6 +4,7 @@ import "./globals.css";
 import { TweaksProvider } from "@/components/editorial/TweaksContext";
 import { EventsProvider } from "@/components/app/EventsContext";
 import { RegistryProvider } from "@/components/app/RegistryContext";
+import { AuthProvider } from "@/components/app/AuthContext";
 
 export const metadata: Metadata = {
   title: "RAIS Pro — Rejection Diagnostic",
@@ -33,7 +34,9 @@ export default function RootLayout({
         <TweaksProvider>
           <EventsProvider>
             <RegistryProvider>
-              {children}
+              <AuthProvider>
+                {children}
+              </AuthProvider>
             </RegistryProvider>
           </EventsProvider>
         </TweaksProvider>

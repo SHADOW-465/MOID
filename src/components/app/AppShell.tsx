@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useEffect, useMemo, useRef } from "react";
 import Icon, { type IconName } from "@/components/editorial/Icon";
+import { useAuth, isNavKeyAllowed, displayRole, getFirstAllowedRoute } from "@/components/app/AuthContext";
 import { useTweaks } from "@/components/editorial/TweaksContext";
 import { useEvents } from "@/components/app/EventsContext";
 import {
@@ -106,9 +107,30 @@ export default function AppShell({
   presetId?: string | null;
 }) {
   const router = useRouter();
+  const { user, logout } = useAuth();
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
   const { events } = useEvents();
   const { t, setTweak } = useTweaks();
   const [mounted, setMounted] = useState(false);
+
+  // Redirect unauthorized users
+  useEffect(() => {
+    if (mounted && user) {
+      if (!isNavKeyAllowed(user.role, active)) {
+        const fallback = getFirstAllowedRoute(user.role);
+        router.push(fallback);
+      }
+    }
+  }, [mounted, user, active, router]);
+
+  const filteredNavSections = useMemo(() => {
+    if (!user) return [];
+    return NAV_SECTIONS.map((section) => {
+      const items = section.items.filter((item) => isNavKeyAllowed(user.role, item.key));
+      return { ...section, items };
+    }).filter((section) => section.items.length > 0);
+  }, [user]);
+
   const [showPicker, setShowPicker] = useState(false);
   const navRef = useRef<HTMLDivElement>(null);
   const lastPos = typeof window !== "undefined" ? (window as any).__last_nav_pos : null;
@@ -585,6 +607,25 @@ export default function AppShell({
     };
   }, [showViewMenu]);
 
+  useEffect(() => {
+    if (!showProfileMenu) return;
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest(".profile-menu-container")) {
+        setShowProfileMenu(false);
+      }
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowProfileMenu(false);
+    };
+    window.addEventListener("click", handleClick);
+    window.addEventListener("keydown", handleKey);
+    return () => {
+      window.removeEventListener("click", handleClick);
+      window.removeEventListener("keydown", handleKey);
+    };
+  }, [showProfileMenu]);
+
   const isDark = t.theme === "dark";
   const toggleTheme = () => {
     setTweak("theme", isDark ? "light" : "dark");
@@ -735,7 +776,7 @@ export default function AppShell({
             opacity: activeOffsetTop === -1000 ? 0 : 1,
             zIndex: 0
           }} />
-          {NAV_SECTIONS.map((section) => {
+          {filteredNavSections.map((section) => {
             const isCollapsed = !!collapsedSections[section.title];
             return (
               <div key={section.title} style={{ marginBottom: 4 }}>
@@ -1232,37 +1273,109 @@ export default function AppShell({
             <Icon name={mounted && isDark ? "sun" : "moon"} size={14} />
           </button>
 
-          {/* User Profile */}
-          <div style={{ 
-            display: "flex", 
-            alignItems: "center", 
-            gap: 8, 
-            background: "var(--surface)", 
-            border: "1px solid var(--border-strong)", 
-            borderRadius: "30px", 
-            padding: "2px 10px 2px 2px", 
-            boxShadow: "var(--shadow-sm)", 
-            height: 32 
-          }}>
-            <div style={{ 
-              width: 26, 
-              height: 26, 
-              borderRadius: "50%", 
-              background: "var(--surface-3)", 
-              color: "var(--text)", 
-              display: "grid", 
-              placeItems: "center",
-              fontFamily: "var(--font-display)",
-              fontWeight: 700,
-              fontSize: 11,
-              border: "1px solid var(--border-strong)"
-            }}>
-              S
+          {/* User Profile & Dropdown container */}
+          <div className="profile-menu-container" style={{ position: "relative" }}>
+            <div 
+              onClick={(e) => { e.stopPropagation(); setShowProfileMenu(!showProfileMenu); }}
+              style={{ 
+                display: "flex", 
+                alignItems: "center", 
+                gap: 8, 
+                background: "var(--surface)", 
+                border: "1px solid var(--border-strong)", 
+                borderRadius: "30px", 
+                padding: "2px 10px 2px 2px", 
+                boxShadow: "var(--shadow-sm)", 
+                height: 32,
+                cursor: "pointer"
+              }}
+            >
+              <div style={{ 
+                width: 26, 
+                height: 26, 
+                borderRadius: "50%", 
+                background: "var(--surface-3)", 
+                color: "var(--text)", 
+                display: "grid", 
+                placeItems: "center",
+                fontFamily: "var(--font-display)",
+                fontWeight: 700,
+                fontSize: 11,
+                border: "1px solid var(--border-strong)"
+              }}>
+                {user ? user.name[0].toUpperCase() : "S"}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", textAlign: "left" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, lineHeight: 1.1 }}>{user ? user.name : "Swamiji"}</span>
+                <span className="muted" style={{ fontSize: 9, lineHeight: 1.1 }}>{user ? displayRole(user.role) : "General Manager"}</span>
+              </div>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", textAlign: "left" }}>
-              <span style={{ fontSize: 11, fontWeight: 700, lineHeight: 1.1 }}>Swamiji</span>
-              <span className="muted" style={{ fontSize: 9, lineHeight: 1.1 }}>General Manager</span>
-            </div>
+
+            {showProfileMenu && (
+              <div 
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  position: "absolute",
+                  top: "100%",
+                  right: 0,
+                  marginTop: 6,
+                  background: "var(--surface)",
+                  border: "1px solid var(--border-strong)",
+                  borderRadius: "var(--radius-md)",
+                  boxShadow: "var(--shadow-lg)",
+                  padding: "8px",
+                  zIndex: 200,
+                  width: 180,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 4
+                }}
+              >
+                <div style={{
+                  padding: "6px 8px",
+                  fontSize: 11,
+                  color: "var(--text-3)",
+                  borderBottom: "1px solid var(--border)",
+                  marginBottom: 4,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 2
+                }}>
+                  <span style={{ fontWeight: 700, color: "var(--text)" }}>{user?.name}</span>
+                  <span style={{ fontSize: 9.5 }}>{displayRole(user?.role)}</span>
+                </div>
+                <button
+                  onClick={() => {
+                    logout();
+                    setShowProfileMenu(false);
+                  }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "8px 8px",
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    background: "transparent",
+                    color: "var(--critical)",
+                    border: "none",
+                    borderRadius: "var(--radius-sm)",
+                    cursor: "pointer",
+                  }}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.background = "var(--critical-weak)";
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.background = "transparent";
+                  }}
+                >
+                  <Icon name="external" size={12} style={{ color: "var(--critical)" }} />
+                  <span>Log Out</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Export Action: Pillbox Card Button */}
@@ -1396,7 +1509,70 @@ export default function AppShell({
             </div>
           </div>
         ) : (
-          children
+          isNavKeyAllowed(user?.role, active) ? children : (
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              minHeight: "70vh",
+              width: "100%",
+              fontFamily: "var(--font-sans)"
+            }}>
+              <div style={{
+                background: "var(--paper)",
+                border: "2px solid var(--ink)",
+                borderRadius: "var(--radius-lg)",
+                padding: "40px",
+                boxShadow: "8px 8px 0px var(--ink)",
+                maxWidth: "500px",
+                width: "100%",
+                textAlign: "center",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 20
+              }}>
+                <div style={{
+                  background: "color-mix(in srgb, var(--critical) 12%, transparent)",
+                  color: "var(--critical)",
+                  border: "2px solid var(--ink)",
+                  borderRadius: "50%",
+                  width: 64,
+                  height: 64,
+                  display: "grid",
+                  placeItems: "center",
+                  boxShadow: "3px 3px 0 var(--ink)"
+                }}>
+                  <Icon name="alert" size={32} />
+                </div>
+                <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, margin: 0, color: "var(--ink)", fontWeight: 800 }}>
+                  Access Denied
+                </h2>
+                <p style={{ fontSize: 13.5, color: "var(--text-2)", lineHeight: "1.6", margin: 0 }}>
+                  Your role ({displayRole(user?.role)}) does not have permission to access the <strong>{active}</strong> cockpit screen.
+                </p>
+                <button 
+                  onClick={() => router.push(getFirstAllowedRoute(user?.role || "owner"))}
+                  style={{
+                    background: "var(--accent)",
+                    color: "#fff",
+                    border: "2px solid var(--ink)",
+                    borderRadius: "var(--radius-md)",
+                    padding: "10px 24px",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    boxShadow: "4px 4px 0 var(--ink)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8
+                  }}
+                >
+                  Return to Permitted Area
+                </button>
+              </div>
+            </div>
+          )
         )}
         </div>
       </main>
