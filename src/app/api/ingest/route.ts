@@ -87,7 +87,9 @@ export async function POST(req: NextRequest) {
 
     // Attach comments to records (keyed by stageId or by row index)
     const recordsWithComments = records.map((r, idx) => {
-      const comment = body.comments?.[r.stageId] || body.comments?.[idx.toString()] || null;
+      // Fall back to the record's own comment — data-entry attaches the
+      // reconciliation reason there, and it must not be nulled out here.
+      const comment = body.comments?.[r.stageId] || body.comments?.[idx.toString()] || r.comment || null;
       return {
         ...r,
         comment: comment && comment.trim() ? comment.trim() : null

@@ -17,7 +17,7 @@ import { type EntryGrain, resolvePeriod, stepPeriod, periodLabel } from "@/lib/e
 import QtyInput from "@/components/entry/QtyInput";
 
 type TemplateColumn = { key: string; label: string; type: "number"; required: boolean };
-type TemplateDefect = { defectCode: string; label: string };
+type TemplateDefect = { defectCode: string; label: string; sources?: string[] };
 type TemplateStage = {
   stageId: string;
   label: string;
@@ -82,28 +82,37 @@ export default function MonthlyEntryGrid({
     onDirtyChangeRef.current?.(dirty);
   }, [dirty]);
 
-  useEffect(() => {
+  const loadTemplate = useCallback(async () => {
     setTemplateLoading(true);
     setTemplateError(null);
-    fetch("/api/entry-template")
-      .then(async (res) => {
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          setTemplate(null);
-          setTemplateError(data.error ?? "No entry template — upload and verify a workbook first.");
-          return;
-        }
-        setTemplate(data.template ?? null);
-        if (!data.template?.stages?.length) {
-          setTemplateError("No stages in the verified ontology yet.");
-        }
-      })
-      .catch(() => {
+    try {
+      const res = await fetch("/api/entry-template", { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
         setTemplate(null);
-        setTemplateError("Failed to load entry template.");
-      })
-      .finally(() => setTemplateLoading(false));
+        setTemplateError(data.error ?? "No entry template — upload and verify a workbook first.");
+        return;
+      }
+      setTemplate(data.template ?? null);
+      if (!data.template?.stages?.length) {
+        setTemplateError("No stages in the verified ontology yet.");
+      }
+    } catch {
+      setTemplate(null);
+      setTemplateError("Failed to load entry template.");
+    } finally {
+      setTemplateLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadTemplate();
+    // Verifying a workbook in another tab must reshape this grid without a
+    // hard reload — the schema is learned live, so refetch when we regain focus.
+    const onFocus = () => loadTemplate();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [loadTemplate]);
 
   const stages = template?.stages ?? [];
   const sizes = template?.sizes ?? [];
@@ -138,6 +147,20 @@ export default function MonthlyEntryGrid({
   const defectCols: TemplateDefect[] = activeStage?.defects ?? [];
 
   const rowKey = isSizeWise ? activeSize : "__line__";
+  const rowId = (date: string) => `${date}|${rowKey}`;
+
+  /**
+   * Rows whose Rejected total was *stated* — typed by the operator, or loaded
+   * from an already-saved record. Auto-fill from defects writes Rejected only
+   * for rows NOT in this set, so a number a human entered is never rewritten
+   * by a later defect keystroke. That rewrite was the old chaos.
+   *
+   * A ref, not state, on purpose: it is read and written inside the same
+   * synchronous setRecords updater as the edit it governs, so there is no
+   * render between "user typed" and "auto-fill decides" for a stale value to
+   * leak through. Cleared and re-seeded by loadRange when the slice changes.
+   */
+  const rejectedStated = useRef<Set<string>>(new Set());
 
   const blankRecord = (date: string): StageDayRecord => ({
     occurredOn: { kind: "day", start: date, end: date },
@@ -158,6 +181,11 @@ export default function MonthlyEntryGrid({
   const updateCapture = (date: string, colKey: string, num: number | null) => {
     const prop = COL_TO_RECORD[colKey];
     if (!prop) return;
+    if (prop === "rejected") {
+      // Typing it makes it stated; clearing it hands the row back to auto-fill.
+      if (num == null) rejectedStated.current.delete(rowId(date));
+      else rejectedStated.current.add(rowId(date));
+    }
     setDirty(true);
     setRecords((prev) => {
       let idx = prev.findIndex((r) => r.occurredOn.start === date && (r.size ?? "__line__") === rowKey);
@@ -174,7 +202,14 @@ export default function MonthlyEntryGrid({
     });
   };
 
-  /** Commit a defect count. null/0 removes that defect. Never touches rejected. */
+  /**
+   * Commit a defect count. null/0 removes that defect.
+   *
+   * Rejected is DERIVED here, never negotiated: if the operator logged defects
+   * before stating a Rejected total, Rejected mirrors the defect sum. Once the
+   * operator states Rejected themselves, this stops writing and the row is
+   * reconciled by comparison instead (see `mismatches`).
+   */
   const updateDefect = (date: string, defectCode: string, num: number | null) => {
     setDirty(true);
     setRecords((prev) => {
@@ -186,7 +221,7 @@ export default function MonthlyEntryGrid({
         idx = next.length - 1;
       }
       if (num == null || num === 0) {
-        return next.map((r, i) =>
+        next = next.map((r, i) =>
           i !== idx
             ? r
             : {
@@ -195,8 +230,24 @@ export default function MonthlyEntryGrid({
                 extractedBy: "direct-entry",
               },
         );
+      } else {
+        next = applyEdit(next, idx, defectCode, num);
       }
-      return applyEdit(next, idx, defectCode, num);
+
+      if (rejectedStated.current.has(rowId(date))) return next;
+      const sum = next[idx].defects.reduce((s, d) => s + d.value, 0);
+      return next.map((r, i) =>
+        i !== idx
+          ? r
+          : {
+              ...r,
+              rejected:
+                sum === 0
+                  ? null
+                  : { ...(r.rejected ?? { cell: "ENTRY!rejected", header: "Rejected" }), value: sum },
+              extractedBy: "direct-entry",
+            },
+      );
     });
   };
 
@@ -216,11 +267,20 @@ export default function MonthlyEntryGrid({
       // Unsaved edits win over the server copy — that is the whole point of the
       // draft. Saving (or discarding) clears it, so this can't shadow real data.
       const draft = loadDraft<StageDayRecord[]>(draftKey);
-      setRecords(draft ?? data.records ?? []);
+      const loaded: StageDayRecord[] = draft ?? data.records ?? [];
+      // A Rejected total that already exists (saved, or restored from a draft)
+      // was stated by a human once — auto-fill must not claim it back.
+      rejectedStated.current = new Set(
+        loaded
+          .filter((r) => r.rejected?.value != null)
+          .map((r) => `${r.occurredOn.start}|${r.size ?? "__line__"}`),
+      );
+      setRecords(loaded);
       setDirty(!!draft);
     } catch (err) {
       console.error("Error loading range:", err);
       setError("Failed to load this period's data.");
+      rejectedStated.current = new Set();
       setRecords([]);
       setDirty(false);
     } finally {
@@ -277,24 +337,75 @@ export default function MonthlyEntryGrid({
     onAnchorChange?.(stepPeriod(grain, anchorDate, delta));
   };
 
-  const invalidCount = Array.from(reviewByDate.values()).filter((r) => r.status === "invalid").length;
+  /**
+   * Rows where the operator's stated Rejected disagrees with the defects they
+   * logged. Not a blocker — a real one is common (a reject with no defect code
+   * yet, a defect counted twice). It must be *stated and explained*, not
+   * silently reconciled by the app.
+   */
+  const mismatches = useMemo(() => {
+    const out: { date: string; rejected: number; defectSum: number; delta: number }[] = [];
+    for (const rec of records) {
+      if ((rec.size ?? "__line__") !== rowKey) continue;
+      const rejected = rec.rejected?.value ?? null;
+      if (rejected == null || rec.defects.length === 0) continue;
+      const defectSum = rec.defects.reduce((s, d) => s + d.value, 0);
+      if (defectSum !== rejected) {
+        out.push({ date: rec.occurredOn.start, rejected, defectSum, delta: defectSum - rejected });
+      }
+    }
+    return out.sort((a, b) => a.date.localeCompare(b.date));
+  }, [records, rowKey]);
+
+  const mismatchByDate = useMemo(
+    () => new Map(mismatches.map((m) => [m.date, m])),
+    [mismatches],
+  );
+
+  // ponytail: a defect/rejected disagreement is matched by flag text, the one
+  // marker reviewRow exposes. Blocking invalids (negatives, rejected > checked,
+  // balance violations) are anything else — those stay un-saveable.
+  const isReconcileOnly = (flags: string[]) =>
+    flags.length > 0 && flags.every((f) => f.startsWith("Defect Mismatch"));
+
+  const invalidCount = Array.from(reviewByDate.values()).filter(
+    (r) => r.status === "invalid" && !isReconcileOnly(r.flags),
+  ).length;
+
+  const [reconcileReason, setReconcileReason] = useState("");
+  const needsReason = mismatches.length > 0 && reconcileReason.trim().length < 4;
 
   async function saveMonth() {
     if (blockedReason) {
       setError(blockedReason);
       return;
     }
+    if (needsReason) {
+      setError(
+        `${mismatches.length} day(s) don't reconcile — give a reason (at least 4 characters) before saving.`,
+      );
+      return;
+    }
     setSaving(true);
     setError(null);
     setSuccess(null);
     const ingestionId = globalThis.crypto?.randomUUID?.() ?? `entry-${Date.now()}`;
+    const reason = reconcileReason.trim();
     const payload = records
       .filter((r) => r.checked || r.acceptedGood || r.rework || r.rejected || r.defects.length > 0)
-      .map((r) => ({
-        ...r,
-        ingestionId,
-        customFields: { ...r.customFields, ...customFields, size: r.size ?? customFields?.size },
-      }));
+      .map((r) => {
+        const mm = (r.size ?? "__line__") === rowKey ? mismatchByDate.get(r.occurredOn.start) : undefined;
+        return {
+          ...r,
+          ingestionId,
+          // The unreconciled row carries its own explanation into the ledger as
+          // an AnnotationEvent, so the audit trail shows the gap AND the why.
+          comment: mm
+            ? `Unreconciled: defects sum ${mm.defectSum} vs rejected ${mm.rejected} (${mm.delta > 0 ? "+" : ""}${mm.delta}). Reason: ${reason}`
+            : r.comment ?? null,
+          customFields: { ...r.customFields, ...customFields, size: r.size ?? customFields?.size },
+        };
+      });
 
     if (payload.length === 0) {
       setError("Enter quantities for at least one day before saving.");
@@ -309,7 +420,11 @@ export default function MonthlyEntryGrid({
         body: JSON.stringify({ ingestionId, fileName: `Data Entry ${rangeLabel}`, records: payload }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Save failed");
-      setSuccess(`${payload.length} day(s) saved for ${rangeLabel}.`);
+      setSuccess(
+        `${payload.length} day(s) saved for ${rangeLabel}.` +
+          (mismatches.length ? ` ${mismatches.length} logged as unreconciled with your reason.` : ""),
+      );
+      setReconcileReason("");
       setDirty(false);
       saveDraft(draftKey, null);
       await loadRange();
@@ -423,7 +538,7 @@ export default function MonthlyEntryGrid({
         )}
         <button
           onClick={saveMonth}
-          disabled={saving || invalidCount > 0 || !!blockedReason}
+          disabled={saving || invalidCount > 0 || !!blockedReason || needsReason}
           style={{
             marginLeft: "auto",
             background: "var(--status-good)",
@@ -433,8 +548,8 @@ export default function MonthlyEntryGrid({
             padding: "8px 20px",
             fontSize: 13,
             fontWeight: 700,
-            cursor: saving || invalidCount > 0 || blockedReason ? "not-allowed" : "pointer",
-            opacity: saving || invalidCount > 0 || blockedReason ? 0.6 : 1,
+            cursor: saving || invalidCount > 0 || blockedReason || needsReason ? "not-allowed" : "pointer",
+            opacity: saving || invalidCount > 0 || blockedReason || needsReason ? 0.6 : 1,
             whiteSpace: "nowrap",
           }}
         >
@@ -465,6 +580,41 @@ export default function MonthlyEntryGrid({
           }}
         >
           {error}
+        </div>
+      )}
+
+      {mismatches.length > 0 && (
+        <div
+          style={{
+            marginBottom: 14,
+            padding: "12px 14px",
+            borderRadius: 9,
+            border: "1px solid var(--status-warn, var(--border-strong))",
+            background: "color-mix(in srgb, var(--status-warn, var(--accent)) 10%, transparent)",
+            fontSize: 13,
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>
+            {mismatches.length} day(s) don&apos;t reconcile
+          </div>
+          <ul style={{ margin: "0 0 10px 0", paddingLeft: 18, fontFamily: "var(--font-mono)", fontSize: 12 }}>
+            {mismatches.map((m) => (
+              <li key={m.date}>
+                {m.date} — defects sum {m.defectSum}, rejected {m.rejected} ({m.delta > 0 ? "+" : ""}
+                {m.delta} {m.delta > 0 ? "more defects than rejects" : "rejects with no defect logged"})
+              </li>
+            ))}
+          </ul>
+          <label style={{ display: "block", fontSize: 12, marginBottom: 4 }}>
+            Reason (required — stored in the audit trail with the row)
+          </label>
+          <textarea
+            value={reconcileReason}
+            onChange={(e) => setReconcileReason(e.target.value)}
+            rows={2}
+            placeholder="e.g. 3 rejects held for defect classification by QA"
+            style={{ ...inp, width: "100%", padding: "6px 8px", resize: "vertical" }}
+          />
         </div>
       )}
 
@@ -533,10 +683,15 @@ export default function MonthlyEntryGrid({
                 </th>
               ))}
               {defectCols.map((d) => (
-                <th key={d.defectCode} style={eth} title={d.label}>
+                <th
+                  key={d.defectCode}
+                  style={eth}
+                  title={d.sources?.length ? `${d.label} — from ${d.sources.join(", ")}` : d.label}
+                >
                   {d.defectCode}
                 </th>
               ))}
+              {defectCols.length > 0 && <th style={eth}>Recon</th>}
             </tr>
           </thead>
           <tbody>
@@ -610,6 +765,29 @@ export default function MonthlyEntryGrid({
                       </td>
                     );
                   })}
+                  {defectCols.length > 0 && (
+                    <td style={{ ...etd, fontFamily: "var(--font-mono)", fontSize: 11, whiteSpace: "nowrap" }}>
+                      {(() => {
+                        const mm = mismatchByDate.get(date);
+                        if (mm) {
+                          return (
+                            <span
+                              style={{ color: "var(--status-bad)", fontWeight: 700 }}
+                              title={`Defects sum ${mm.defectSum} vs rejected ${mm.rejected}`}
+                            >
+                              unreconciled {mm.defectSum} of {mm.rejected}
+                            </span>
+                          );
+                        }
+                        if (!rec || rec.defects.length === 0) return null;
+                        return (
+                          <span className="muted" title="Defects match the rejected total">
+                            ✓ {rec.rejected?.value ?? 0}
+                          </span>
+                        );
+                      })()}
+                    </td>
+                  )}
                 </tr>
               );
             })}
@@ -654,7 +832,7 @@ export default function MonthlyEntryGrid({
       <div style={{ display: "flex", justifyContent: "center", marginTop: 16 }}>
         <button
           onClick={saveMonth}
-          disabled={saving || invalidCount > 0 || !!blockedReason}
+          disabled={saving || invalidCount > 0 || !!blockedReason || needsReason}
           style={{
             background: "var(--status-good)",
             color: "#fff",
@@ -663,8 +841,8 @@ export default function MonthlyEntryGrid({
             padding: "10px 22px",
             fontSize: 14,
             fontWeight: 700,
-            cursor: saving || invalidCount > 0 || blockedReason ? "not-allowed" : "pointer",
-            opacity: saving || invalidCount > 0 || blockedReason ? 0.6 : 1,
+            cursor: saving || invalidCount > 0 || blockedReason || needsReason ? "not-allowed" : "pointer",
+            opacity: saving || invalidCount > 0 || blockedReason || needsReason ? 0.6 : 1,
           }}
         >
           {saving

@@ -22,13 +22,17 @@ const CAPTURE_COLUMNS: Record<string, { key: string; label: string }> = {
   rejected: { key: "rejected",     label: "Rejected Qty" },
 };
 
+const CAPTURE_ORDER = Object.keys(CAPTURE_COLUMNS);
+
 export type EntryTemplateStage = {
   stageId: string;
   label: string;
   sizeWise: boolean;
   isQualityGate: boolean;
   columns: { key: string; label: string; type: "number"; required: boolean }[];
-  defects: { defectCode: string; label: string }[];
+  /** `sources` = the workbook file names that taught this column. Traceability:
+   *  a column is the union across every verified MOD, never one sheet's view. */
+  defects: { defectCode: string; label: string; sources: string[] }[];
   layout: {
     sheet: string;
     tableId: string;
@@ -67,8 +71,8 @@ function defectsFromEntities(
   doc: ModDocumentT,
   stageId: string,
   stageOfRegion: Map<string, string>,
-): { defectCode: string; label: string }[] {
-  const out = new Map<string, { defectCode: string; label: string }>();
+): { defectCode: string; label: string; sources: string[] }[] {
+  const out = new Map<string, { defectCode: string; label: string; sources: string[] }>();
   const catalogByCode = new Map((doc.defects ?? []).map((d) => [d.defectCode, d]));
 
   for (const e of doc.entities) {
@@ -84,6 +88,7 @@ function defectsFromEntities(
       out.set(code, {
         defectCode: code,
         label: e.original.header?.trim() || catalog?.label || humanize(code),
+        sources: [doc.workbook.fileName],
       });
     }
   }
@@ -96,7 +101,7 @@ function stageScore(hasLayout: boolean, migrated: boolean, hasEntityDefects: boo
   return (hasLayout ? 4 : 0) + (migrated ? 0 : 2) + (hasEntityDefects ? 1 : 0);
 }
 
-function templateFrom(rows: ModRowT[]) {
+export function templateFrom(rows: ModRowT[]) {
   const stages = new Map<string, EntryTemplateStage>();
   const sizes = new Map<string, { sizeId: string; label: string }>();
   const validation: { ruleId: string; expr: string; severity: string }[] = [];
@@ -152,18 +157,52 @@ function templateFrom(rows: ModRowT[]) {
 
       const score = stageScore(!!layout, migrated, defects.length > 0);
       const existing = stages.get(s.stageId);
-      if (existing && (existing._score ?? 0) >= score) continue;
 
-      stages.set(s.stageId, {
-        stageId: s.stageId,
-        label: s.label,
-        sizeWise: !!s.sizeWise,
-        isQualityGate: !!s.isQualityGate,
-        columns,
-        defects,
-        layout,
-        _score: score,
-      });
+      if (!existing) {
+        stages.set(s.stageId, {
+          stageId: s.stageId,
+          label: s.label,
+          sizeWise: !!s.sizeWise,
+          isQualityGate: !!s.isQualityGate,
+          columns,
+          defects,
+          layout,
+          _score: score,
+        });
+        continue;
+      }
+
+      // UNION, not winner-take-all. Every verified workbook that touches this
+      // stage contributes its columns; a second sheet sharing a defect code is
+      // the *same* column (that shared code IS the learned relation), and a
+      // code only one sheet has is added rather than dropped. `_score` now only
+      // arbitrates the single-valued fields (label, layout).
+      const byKey = new Map(existing.columns.map((c) => [c.key, c]));
+      for (const c of columns) if (!byKey.has(c.key)) byKey.set(c.key, c);
+      existing.columns = [...CAPTURE_ORDER]
+        .map((k) => byKey.get(CAPTURE_COLUMNS[k].key))
+        .filter((c): c is (typeof columns)[number] => !!c);
+
+      const byCode = new Map(existing.defects.map((d) => [d.defectCode, d]));
+      for (const d of defects) {
+        const hit = byCode.get(d.defectCode);
+        if (hit) {
+          for (const src of d.sources) if (!hit.sources.includes(src)) hit.sources.push(src);
+        } else {
+          byCode.set(d.defectCode, d);
+        }
+      }
+      existing.defects = [...byCode.values()];
+
+      existing.sizeWise = existing.sizeWise || !!s.sizeWise;
+      existing.isQualityGate = existing.isQualityGate || !!s.isQualityGate;
+      if (score > (existing._score ?? 0)) {
+        existing.label = s.label;
+        if (layout) existing.layout = layout;
+        existing._score = score;
+      } else if (!existing.layout && layout) {
+        existing.layout = layout;
+      }
     }
 
     for (const sz of doc.sizes) if (!sizes.has(sz.sizeId)) sizes.set(sz.sizeId, sz);
