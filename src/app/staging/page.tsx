@@ -210,12 +210,28 @@ export default function StagingPage() {
   };
 
   async function publish() {
+    // Each extracted row carries the MOD lineage that interpreted it. Prefer
+    // that over `publishedModId`, which holds only the MOST RECENT publish —
+    // with two workbooks staged in one session it stamps the first file's rows
+    // with the second file's ontology. No MOD at all means these rows never
+    // went through verify → publish, so the schema they used was never learned:
+    // refuse rather than write unattributable numbers to the ledger.
+    const modIds = [...new Set(records.map((r) => r.modId).filter((m): m is string => !!m))];
+    const modId = modIds[0] ?? publishedModId ?? undefined;
+    if (!modId) {
+      setError(
+        "These rows aren't tied to a verified MOD. Verify & publish the column mappings above first — " +
+          "that's the step that teaches Data Entry this file's schema.",
+      );
+      return;
+    }
+
     setBusy(true); setError(null);
     try {
       const res = await fetch("/api/ingest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ingestionId, fileName, records, comments, modId: publishedModId ?? undefined }),
+        body: JSON.stringify({ ingestionId, fileName, records, comments, modId }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Publish failed");
       const r = await res.json();

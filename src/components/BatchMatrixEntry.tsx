@@ -158,6 +158,22 @@ export default function BatchMatrixEntry({
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [prefillNote, setPrefillNote] = useState<string | null>(null);
+  /** Row expanded for preview in the shift list (click the row to toggle). */
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  /**
+   * Row currently loaded into the form for revision. Save replaces this row in
+   * place instead of appending a new one — and re-ingesting supersedes the
+   * ledger event, since /api/ingest keys direct entry on date·stage·size·batch.
+   */
+  const [editingId, setEditingId] = useState<string | null>(null);
+  /** Same value as `editingId`, readable synchronously — buildPendingRecord
+   *  runs in the same tick as the "save as a separate entry" decision, so it
+   *  can't wait for a state update to know which id to stamp. */
+  const editingIdRef = useRef<string | null>(null);
+  const setEditing = useCallback((id: string | null) => {
+    editingIdRef.current = id;
+    setEditingId(id);
+  }, []);
   /** Defect sum ≠ Rejected — operator must choose before save (never silent). */
   const [a12, setA12] = useState<{ defectSum: number; reject: number } | null>(null);
   const [a12Choice, setA12Choice] = useState<A12Choice>(null);
@@ -439,7 +455,8 @@ export default function BatchMatrixEntry({
     const canon = toCanonicalSize(size) ?? size;
 
     return {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      // Keep the id when revising so the row is replaced, not duplicated.
+      id: editingIdRef.current ?? `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       date,
       operator: operator.trim(),
       macro,
@@ -469,22 +486,34 @@ export default function BatchMatrixEntry({
     setErr(null);
     setMsg(null);
     try {
+      const revising = saved.some((b) => b.id === rec.id);
       await commitRecord(rec);
       const withSync = { ...rec, synced: true };
-      const next = [withSync, ...saved];
+      const next = revising
+        ? saved.map((b) => (b.id === rec.id ? withSync : b))
+        : [withSync, ...saved];
       setSaved(next);
       persistShift(next);
       localStorage.setItem("rais_hdr_operator", rec.operator);
       localStorage.setItem("rais_hdr_shift", rec.shift);
+      setEditing(null);
       clearFormKeepContext();
-      setMsg(`Batch ${rec.batchId} saved and synced to the ledger.`);
+      setBatchManual(false);
+      setMsg(
+        revising
+          ? `Batch ${rec.batchId} updated — the ledger entry was superseded.`
+          : `Batch ${rec.batchId} saved and synced to the ledger.`,
+      );
       refreshEvents().catch(console.error);
       onSynced?.();
     } catch (e: any) {
       // Still keep local shift buffer even if sync fails
-      const next = [rec, ...saved];
+      const next = saved.some((b) => b.id === rec.id)
+        ? saved.map((b) => (b.id === rec.id ? rec : b))
+        : [rec, ...saved];
       setSaved(next);
       persistShift(next);
+      setEditing(null);
       clearFormKeepContext();
       setErr(`Saved locally, but ledger sync failed: ${e?.message ?? "unknown error"}`);
     } finally {
@@ -497,6 +526,35 @@ export default function BatchMatrixEntry({
   async function submitForm() {
     setErr(null);
     setMsg(null);
+
+    // /api/ingest supersedes direct entry by date · stage · size · batch. If a
+    // revision changes any of those, the OLD ledger row keys differently and
+    // survives — the edit would double-count instead of replacing. Say so.
+    if (editingId) {
+      const orig = saved.find((b) => b.id === editingId);
+      const stageId = resolveStageId(macro, micro);
+      if (
+        orig &&
+        (orig.date !== date ||
+          orig.stageId !== stageId ||
+          orig.sizeCanonical !== (toCanonicalSize(size) ?? size) ||
+          orig.batchId !== batchId.trim().toUpperCase())
+      ) {
+        if (
+          !confirm(
+            `You changed the date, stage, size, or batch ID of a saved entry.\n\n` +
+              `The original ledger row (${orig.date} · ${orig.processName} · ${orig.size} · ${orig.batchId}) ` +
+              `will NOT be replaced — it stays and this becomes a second entry.\n\n` +
+              `Save as a separate entry anyway?`,
+          )
+        ) {
+          return;
+        }
+        // Confirmed: this becomes a NEW entry, so it must not replace the
+        // original row locally either.
+        setEditing(null);
+      }
+    }
 
     // Balance check — warn and require confirm; never rewrite fields silently.
     if (qtyMismatch) {
@@ -541,7 +599,47 @@ export default function BatchMatrixEntry({
     await finalizeSave(rec);
   }
 
+  /** Load a logged row back into the form above for revision. */
+  function editRow(rec: ShiftBatchRecord) {
+    setMacro(rec.macro);
+    setMicro(rec.micro);
+    setDate(rec.date);
+    setSize(rec.size);
+    setOperator(rec.operator);
+    setShift(rec.shift);
+    setBatchId(rec.batchId);
+    setBatchManual(true);
+    setChecked(rec.checked);
+    setTrolleys(rec.trolleys ?? 0);
+    setBin(rec.bin ?? "");
+    setAccept(rec.accept);
+    setHold(rec.hold);
+    setReject(rec.reject);
+    setDefects({ ...(rec.defects ?? {}) });
+    setRemarks(rec.remarks ?? "");
+    // Loaded values are the operator's own numbers — upstream prefill must not
+    // overwrite them, same rule as a restored draft.
+    userTouchedQty.current = true;
+    prefillAppliedKey.current = null;
+    setPrefillNote(null);
+    setA12(null);
+    setA12Choice(null);
+    setEditing(rec.id);
+    setPreviewId(null);
+    setMsg(null);
+    setErr(null);
+    document.getElementById("batch-entry-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function cancelEdit() {
+    setEditing(null);
+    clearFormKeepContext();
+    setBatchManual(false);
+  }
+
   function deleteLocal(id: string) {
+    if (id === editingId) setEditing(null);
+    if (id === previewId) setPreviewId(null);
     if (!confirm("Remove this batch record from the current shift list?")) return;
     const next = saved.filter((b) => b.id !== id);
     setSaved(next);
@@ -607,7 +705,7 @@ export default function BatchMatrixEntry({
   });
 
   return (
-    <div style={panel}>
+    <div style={panel} id="batch-entry-form">
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, paddingBottom: 14, borderBottom: "1px solid var(--border)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -634,11 +732,35 @@ export default function BatchMatrixEntry({
               boxShadow: "0 2px 8px color-mix(in srgb, var(--accent) 30%, transparent)",
             }}
           >
-            {saving ? "Saving…" : "Save Batch Entry"}
+            {saving ? "Saving…" : editingId ? "Update Batch Entry" : "Save Batch Entry"}
           </button>
           <div className="small" style={{ color: "var(--text-2)", fontWeight: 600 }}>{todayLabel}</div>
         </div>
       </div>
+
+      {editingId && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: "10px 14px",
+            borderRadius: 10,
+            border: "1px solid var(--accent)",
+            background: "var(--accent-weak)",
+            fontSize: 12.5,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+          }}
+        >
+          <span>
+            Revising <strong>{saved.find((b) => b.id === editingId)?.batchId}</strong> — saving replaces that
+            entry and supersedes its ledger row.
+          </span>
+          <button type="button" onClick={cancelEdit} style={{ ...btnGhost, marginLeft: "auto" }}>
+            Cancel edit
+          </button>
+        </div>
+      )}
 
       {/* Schema source — plant Excel vs built-in defaults */}
       <div
@@ -1120,8 +1242,18 @@ export default function BatchMatrixEntry({
                     .filter(([, v]) => v > 0)
                     .map(([k, v]) => `${k}:${v}`)
                     .join(", ");
+                  const open = previewId === rec.id;
                   return (
-                    <tr key={rec.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                    <React.Fragment key={rec.id}>
+                    <tr
+                      onClick={() => setPreviewId(open ? null : rec.id)}
+                      style={{
+                        borderBottom: open ? "none" : "1px solid var(--border)",
+                        cursor: "pointer",
+                        background: open ? "var(--surface-2)" : rec.id === editingId ? "var(--accent-weak)" : undefined,
+                      }}
+                      title="Click to preview this entry"
+                    >
                       <td style={tdCell}>
                         {rec.operator}
                         {rec.synced && (
@@ -1154,17 +1286,105 @@ export default function BatchMatrixEntry({
                       </td>
                       <td style={{ ...tdCell, textAlign: "center", fontWeight: 700 }}>{yieldPct}</td>
                       <td style={{ ...tdCell, textAlign: "right" }}>
-                        <button type="button" onClick={() => deleteLocal(rec.id)} style={{ background: "transparent", border: "none", color: "var(--status-bad)", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); deleteLocal(rec.id); }}
+                          style={{ background: "transparent", border: "none", color: "var(--status-bad)", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
+                        >
                           Delete
                         </button>
                       </td>
                     </tr>
+                    {open && (
+                      <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
+                        <td colSpan={11} style={{ padding: "12px 14px" }}>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 20, marginBottom: 10 }}>
+                            <PreviewField label="Date" value={rec.date} mono />
+                            <PreviewField label="Shift" value={rec.shift} />
+                            <PreviewField label="Stage" value={`${rec.processName} · ${rec.stageName}`} />
+                            <PreviewField label="Size" value={rec.size} />
+                            <PreviewField label="Batch ID" value={rec.batchId} mono />
+                            <PreviewField label={qtyHeaderFor(rec.macro)} value={String(rec.checked)} mono />
+                            {rec.macro === "primary" && (
+                              <PreviewField label="Trolleys" value={String(rec.trolleys ?? 0)} mono />
+                            )}
+                            {rec.macro === "secondary" && <PreviewField label="Bin" value={rec.bin || "—"} />}
+                            {rec.macro !== "secondary" && (
+                              <>
+                                <PreviewField label="Accept" value={String(rec.accept)} mono />
+                                {rec.macro === "assembly" && (
+                                  <PreviewField label="Hold" value={String(rec.hold)} mono />
+                                )}
+                                <PreviewField label="Reject" value={String(rec.reject)} mono />
+                              </>
+                            )}
+                            <PreviewField
+                              label="Saved"
+                              value={new Date(rec.savedAt).toLocaleString()}
+                            />
+                            <PreviewField label="Ledger" value={rec.synced ? "Synced" : "Local only"} />
+                          </div>
+
+                          {rec.macro !== "secondary" && (
+                            <div style={{ marginBottom: 10 }}>
+                              <div className="small" style={{ color: "var(--text-3)", fontSize: 10, textTransform: "uppercase", marginBottom: 4 }}>
+                                Rejection log
+                              </div>
+                              {defLog ? (
+                                <div style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>
+                                  {defLog}
+                                  {" — "}
+                                  <span
+                                    style={{
+                                      color:
+                                        Object.values(rec.defects || {}).reduce((a, b) => a + b, 0) === rec.reject
+                                          ? "var(--status-good)"
+                                          : "var(--status-bad)",
+                                      fontWeight: 700,
+                                    }}
+                                  >
+                                    sum {Object.values(rec.defects || {}).reduce((a, b) => a + b, 0)} vs reject {rec.reject}
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="small" style={{ color: "var(--text-3)" }}>No defects logged.</div>
+                              )}
+                            </div>
+                          )}
+
+                          {rec.remarks && (
+                            <div style={{ marginBottom: 10, fontSize: 12 }}>
+                              <span className="small" style={{ color: "var(--text-3)" }}>Remarks: </span>
+                              {rec.remarks}
+                            </div>
+                          )}
+
+                          <button type="button" onClick={() => editRow(rec)} style={btnGhost}>
+                            Edit this entry
+                          </button>
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
             </table>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function PreviewField({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div>
+      <div className="small" style={{ color: "var(--text-3)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 13, fontWeight: 600, fontFamily: mono ? "var(--font-mono)" : undefined }}>
+        {value}
       </div>
     </div>
   );
