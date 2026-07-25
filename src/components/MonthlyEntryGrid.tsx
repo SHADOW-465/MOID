@@ -682,13 +682,19 @@ export default function MonthlyEntryGrid({
                   {c.label}
                 </th>
               ))}
-              {defectCols.map((d) => (
+              {defectCols.map((d, i) => (
                 <th
                   key={d.defectCode}
                   style={eth}
-                  title={d.sources?.length ? `${d.label} — from ${d.sources.join(", ")}` : d.label}
+                  title={
+                    `${i + 1}. ${d.label} (${d.defectCode})` +
+                    (d.sources?.length ? ` — from ${d.sources.join(", ")}` : "")
+                  }
                 >
-                  {d.defectCode}
+                  {/* Schema label, not the code — a rename on Data Schema has to
+                      be visible here, and the ordinal matches the sheet order. */}
+                  <span style={{ color: "var(--text-3)", fontFamily: "var(--font-mono)" }}>{i + 1}. </span>
+                  {d.label}
                 </th>
               ))}
               {defectCols.length > 0 && <th style={eth}>Recon</th>}

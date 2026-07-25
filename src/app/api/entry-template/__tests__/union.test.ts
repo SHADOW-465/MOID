@@ -50,6 +50,49 @@ test("defect columns union across workbooks, with source traceability", () => {
   expect(dent.sources.sort()).toEqual(["feb.xlsx", "jan.xlsx"]);
 });
 
+const catalog = (defects: { defectCode: string; label: string; stages: string[] }[]) => ({
+  stages: [],
+  defects: defects.map((d) => ({ ...d, aliases: [d.defectCode] })),
+  sizes: [],
+  fiscalYearStartMonth: 4,
+  updatedAt: null,
+  lastMergedFrom: null,
+});
+
+test("Data Schema renames, removals, and additions reach the entry template", () => {
+  const rows = [mod("sept.xlsx", ["COAG", "RW"], ["checked", "rejected"])];
+
+  const renamed = templateFrom(
+    rows,
+    catalog([
+      { defectCode: "COAG", label: "Coagulant", stages: ["visual"] },
+      { defectCode: "RW", label: "RW", stages: ["visual"] },
+    ]),
+  );
+  expect(renamed.stages[0].defects.map((d) => d.label)).toEqual(["Coagulant", "RW"]);
+
+  // Deleted on Data Schema → gone from Data Entry.
+  const removed = templateFrom(rows, catalog([{ defectCode: "RW", label: "RW", stages: ["visual"] }]));
+  expect(removed.stages[0].defects.map((d) => d.defectCode)).toEqual(["RW"]);
+
+  // Added on Data Schema → appears, after the Excel-order columns.
+  const added = templateFrom(
+    rows,
+    catalog([
+      { defectCode: "COAG", label: "COAG", stages: ["visual"] },
+      { defectCode: "RW", label: "RW", stages: ["visual"] },
+      { defectCode: "NEW", label: "Hand-added", stages: ["visual"] },
+    ]),
+  );
+  expect(added.stages[0].defects.map((d) => d.defectCode)).toEqual(["COAG", "RW", "NEW"]);
+  expect(added.stages[0].defects[2].sources).toEqual(["Data Schema"]);
+});
+
+test("an empty catalog never strips Excel-taught columns", () => {
+  const t = templateFrom([mod("a.xlsx", ["COAG"], ["checked"])], catalog([]));
+  expect(t.stages[0].defects.map((d) => d.defectCode)).toEqual(["COAG"]);
+});
+
 test("capture columns union and keep canonical order", () => {
   const t = templateFrom([
     mod("a.xlsx", ["X"], ["checked", "rejected"]),

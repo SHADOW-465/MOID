@@ -52,6 +52,19 @@ export interface CatalogStore {
   clear(companyId: string): Promise<void>;
 }
 
+/**
+ * Replace in place if present, append if new. Catalog order is the order the
+ * plant reads its own columns in — Data Entry renders defects in exactly this
+ * sequence — so editing a label must not move the field to the end.
+ */
+function upsertBy<T>(list: T[], item: T, same: (a: T, b: T) => boolean): T[] {
+  const i = list.findIndex((x) => same(x, item));
+  if (i < 0) return [...list, item];
+  const next = [...list];
+  next[i] = item;
+  return next;
+}
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -134,20 +147,17 @@ class MemoryCatalogStore implements CatalogStore {
   }
   async upsertStage(companyId: string, stage: z.infer<typeof StageDef>) {
     const cur = await this.get(companyId);
-    const stages = cur.stages.filter((s) => s.stageId !== stage.stageId);
-    stages.push(stage);
+    const stages = upsertBy(cur.stages, stage, (a, b) => a.stageId === b.stageId);
     return this.put(companyId, { ...cur, stages, lastMergedFrom: cur.lastMergedFrom });
   }
   async upsertDefect(companyId: string, defect: z.infer<typeof DefectDef>) {
     const cur = await this.get(companyId);
-    const defects = cur.defects.filter((d) => d.defectCode !== defect.defectCode);
-    defects.push(defect);
+    const defects = upsertBy(cur.defects, defect, (a, b) => a.defectCode === b.defectCode);
     return this.put(companyId, { ...cur, defects, lastMergedFrom: cur.lastMergedFrom });
   }
   async upsertSize(companyId: string, size: z.infer<typeof SizeDef>) {
     const cur = await this.get(companyId);
-    const sizes = cur.sizes.filter((s) => s.sizeId !== size.sizeId);
-    sizes.push(size);
+    const sizes = upsertBy(cur.sizes, size, (a, b) => a.sizeId === b.sizeId);
     return this.put(companyId, { ...cur, sizes, lastMergedFrom: cur.lastMergedFrom });
   }
   async deleteStage(companyId: string, stageId: string) {
@@ -273,20 +283,17 @@ class SupabaseCatalogStore implements CatalogStore {
 
   async upsertStage(companyId: string, stage: z.infer<typeof StageDef>) {
     const cur = await this.get(companyId);
-    const stages = cur.stages.filter((s) => s.stageId !== stage.stageId);
-    stages.push(stage);
+    const stages = upsertBy(cur.stages, stage, (a, b) => a.stageId === b.stageId);
     return this.put(companyId, { ...cur, stages, lastMergedFrom: cur.lastMergedFrom });
   }
   async upsertDefect(companyId: string, defect: z.infer<typeof DefectDef>) {
     const cur = await this.get(companyId);
-    const defects = cur.defects.filter((d) => d.defectCode !== defect.defectCode);
-    defects.push(defect);
+    const defects = upsertBy(cur.defects, defect, (a, b) => a.defectCode === b.defectCode);
     return this.put(companyId, { ...cur, defects, lastMergedFrom: cur.lastMergedFrom });
   }
   async upsertSize(companyId: string, size: z.infer<typeof SizeDef>) {
     const cur = await this.get(companyId);
-    const sizes = cur.sizes.filter((s) => s.sizeId !== size.sizeId);
-    sizes.push(size);
+    const sizes = upsertBy(cur.sizes, size, (a, b) => a.sizeId === b.sizeId);
     return this.put(companyId, { ...cur, sizes, lastMergedFrom: cur.lastMergedFrom });
   }
   async deleteStage(companyId: string, stageId: string) {

@@ -232,16 +232,20 @@ export default function BatchMatrixEntry({
   // Schema from verified workbooks — same columns Excel taught the app (no re-typing).
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/entry-template")
+    fetch("/api/entry-template", { cache: "no-store" })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.stages?.length) {
+        // The route answers { template: { stages } } — reading data.stages made
+        // this always fall back to the built-in defect list, so Data Schema
+        // edits never showed up here.
+        const tplStages = data.template?.stages;
+        if (!res.ok || !tplStages?.length) {
           if (!cancelled) setSchemaSource("builtin");
           return;
         }
         const map: Record<string, { key: string; name: string }[]> = {};
         let any = false;
-        for (const st of data.stages as { stageId: string; defects?: { defectCode: string; label: string }[] }[]) {
+        for (const st of tplStages as { stageId: string; defects?: { defectCode: string; label: string }[] }[]) {
           if (st.defects?.length) {
             any = true;
             map[st.stageId] = st.defects.map((d) => ({
@@ -1034,10 +1038,14 @@ export default function BatchMatrixEntry({
               alignItems: "stretch",
             }}
           >
-            {activeDefects.map((d) => {
+            {activeDefects.map((d, i) => {
               const val = defects[d.key] || 0;
               const active = val > 0;
-              const title = defectDisplayLabel(d);
+              // Schema-sourced names are shown verbatim. defectDisplayLabel
+              // collapses "Coagulant" back to "COAG" (it treats the code as the
+              // canonical card title), which silently undoes a Data Schema
+              // rename — right for the built-in list, wrong for a schema label.
+              const title = usingModDefects ? d.name || d.key : defectDisplayLabel(d);
               return (
                 <div
                   key={d.key}
@@ -1051,10 +1059,26 @@ export default function BatchMatrixEntry({
                     gap: 8,
                     minHeight: 96,
                     boxSizing: "border-box",
+                    position: "relative",
                   }}
                 >
+                  {/* Position in the schema — the operator finds field 7 by
+                      counting, the same way they do on the paper sheet. */}
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: 4,
+                      left: 6,
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 9,
+                      fontWeight: 700,
+                      color: "var(--text-3)",
+                    }}
+                  >
+                    {i + 1}
+                  </span>
                   <div
-                    title={title}
+                    title={`${i + 1}. ${title}${d.name && d.name !== title ? ` (${d.key})` : ""}`}
                     style={{
                       fontFamily: "var(--font-mono)",
                       fontSize: 12,

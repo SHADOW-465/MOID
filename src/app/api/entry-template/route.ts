@@ -13,6 +13,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getModStore } from "@/core/ontology/store/mod-store";
+import { getCatalogStore, type CompanyCatalog } from "@/core/ontology/store/catalog-store";
 import type { ModRowT, ModDocumentT, ModEntityT } from "@/shared/models/ontology";
 
 const CAPTURE_COLUMNS: Record<string, { key: string; label: string }> = {
@@ -101,7 +102,38 @@ function stageScore(hasLayout: boolean, migrated: boolean, hasEntityDefects: boo
   return (hasLayout ? 4 : 0) + (migrated ? 0 : 2) + (hasEntityDefects ? 1 : 0);
 }
 
-export function templateFrom(rows: ModRowT[]) {
+/**
+ * Data Schema (the company catalog) is the human-owned master; the MOD is what
+ * Excel said. So the catalog OVERRIDES on every field it owns:
+ *   · rename a defect there  → Data Entry shows the new label
+ *   · delete a defect there  → the column disappears from Data Entry
+ *   · add a defect there     → it appears, appended after the Excel-order ones
+ * Column ORDER stays the extraction order from the sheet — that's what the
+ * operator's eye already knows. Catalog-only additions can't have a sheet
+ * position, so they go last.
+ *
+ * An empty catalog never subtracts: a plant that has published MODs but never
+ * opened Data Schema must not lose every column.
+ */
+function applyCatalog(stages: EntryTemplateStage[], catalog: CompanyCatalog): EntryTemplateStage[] {
+  if (catalog.defects.length === 0) return stages;
+  const byCode = new Map(catalog.defects.map((d) => [d.defectCode, d]));
+
+  return stages.map((stage) => {
+    const kept = stage.defects
+      .filter((d) => byCode.has(d.defectCode))
+      .map((d) => ({ ...d, label: byCode.get(d.defectCode)!.label || d.label }));
+
+    const present = new Set(kept.map((d) => d.defectCode));
+    const added = catalog.defects
+      .filter((d) => !present.has(d.defectCode) && (d.stages ?? []).includes(stage.stageId))
+      .map((d) => ({ defectCode: d.defectCode, label: d.label, sources: ["Data Schema"] }));
+
+    return { ...stage, defects: [...kept, ...added] };
+  });
+}
+
+export function templateFrom(rows: ModRowT[], catalog?: CompanyCatalog) {
   const stages = new Map<string, EntryTemplateStage>();
   const sizes = new Map<string, { sizeId: string; label: string }>();
   const validation: { ruleId: string; expr: string; severity: string }[] = [];
@@ -215,7 +247,8 @@ export function templateFrom(rows: ModRowT[]) {
   }
 
   // Strip internal score before shipping to the client.
-  const stageList = [...stages.values()].map(({ _score, ...rest }) => rest);
+  let stageList = [...stages.values()].map(({ _score, ...rest }) => rest);
+  if (catalog) stageList = applyCatalog(stageList, catalog);
 
   return {
     stages: stageList,
@@ -232,6 +265,7 @@ export function templateFrom(rows: ModRowT[]) {
 export async function GET(req: NextRequest) {
   try {
     const store = getModStore();
+    const company = process.env.MOID_COMPANY_ID || "default";
     const modId = req.nextUrl.searchParams.get("modId");
 
     let rows: ModRowT[];
@@ -242,7 +276,6 @@ export async function GET(req: NextRequest) {
       }
       rows = [row];
     } else {
-      const company = process.env.MOID_COMPANY_ID || "default";
       rows = await store.verified(company);
       if (rows.length === 0) {
         return NextResponse.json(
@@ -256,7 +289,10 @@ export async function GET(req: NextRequest) {
       if (real.length > 0) rows = real;
     }
 
-    const template = templateFrom(rows);
+    const catalog = await getCatalogStore()
+      .get(company)
+      .catch(() => undefined);
+    const template = templateFrom(rows, catalog);
     return NextResponse.json({
       template,
       // debug-friendly summary so deploy issues are diagnosable without guessing
