@@ -1,6 +1,5 @@
 // src/app/api/manual-entries/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@/lib/supabase";
 import { getStores } from "@/lib/store";
 import { aggregate } from "@/lib/analytics/rejection";
 
@@ -95,41 +94,66 @@ export async function GET(req: NextRequest) {
   }
 }
 
+/**
+ * Erase one ledger entry outright — the deliberate exception to append-only.
+ *
+ * Beta testing means dummy rows, and a dummy row that can only be *superseded*
+ * still sits in the audit trail forever. So this purges instead: the events of
+ * the entry, plus the corrections and annotations that point at them, so no
+ * orphan provenance is left behind.
+ *
+ * Scope, narrowest first:
+ *   ?ingestionId=X          exactly one save
+ *   ?date=&shift=[&source=] the ledger row as displayed (source guards against
+ *                           a manual delete also taking out uploaded rows that
+ *                           happen to share the day and sheet name)
+ */
 export async function DELETE(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
+    const ingestionId = searchParams.get("ingestionId");
     const date = searchParams.get("date");
     const shift = searchParams.get("shift");
+    const source = searchParams.get("source");
 
-    if (!date || !shift) {
-      return NextResponse.json({ error: "Missing date or shift parameter" }, { status: 400 });
+    if (!ingestionId && (!date || !shift)) {
+      return NextResponse.json(
+        { error: "Pass ingestionId, or both date and shift." },
+        { status: 400 },
+      );
     }
 
-    const db = createServerClient();
-    
-    // First select events to delete to get their IDs
-    const { data: rows, error: selectError } = await db
-      .from("events")
-      .select("event_id, occurred_on, provenance, is_direct_entry");
+    const { events: store } = getStores();
+    // `all`, not `effective` — a superseded event still occupies the row and
+    // must go too, or re-saving the same day resurrects stale numbers.
+    const everything = await store.all({});
 
-    if (selectError) throw selectError;
+    const targeted = everything.filter((e) => {
+      if (ingestionId) return e.ingestionId === ingestionId;
+      if (e.occurredOn?.start !== date) return false;
+      if ((e.provenance?.sheet || "Day Shift") !== shift) return false;
+      if (!source) return true;
+      const isDirect = (e.provenance as any)?.is_direct_entry === true;
+      const rowSource = isDirect ? "Direct Entry" : e.provenance?.file || "Upload";
+      return rowSource === source;
+    });
 
-    const toDelete = (rows || []).filter(e => 
-      e.occurred_on?.start === date && 
-      e.provenance?.sheet === shift
-    );
-
-    const ids = toDelete.map(e => e.event_id);
-    
-    if (ids.length > 0) {
-      const { error: deleteError } = await db
-        .from("events")
-        .delete()
-        .in("event_id", ids);
-      if (deleteError) throw deleteError;
+    const ids = new Set(targeted.map((e) => e.eventId));
+    if (ids.size === 0) {
+      return NextResponse.json({ success: true, deletedCount: 0 });
     }
 
-    return NextResponse.json({ success: true, deletedCount: ids.length });
+    // Sweep up events that only exist to describe the ones being erased.
+    for (const e of everything) {
+      if (ids.has(e.eventId)) continue;
+      const supersedes = (e as any).supersedesEventId;
+      if (supersedes && ids.has(supersedes)) ids.add(e.eventId);
+      const targets: string[] = (e as any).targetEventIds ?? [];
+      if (targets.length > 0 && targets.every((t) => ids.has(t))) ids.add(e.eventId);
+    }
+
+    const deletedCount = await store.purge([...ids]);
+    return NextResponse.json({ success: true, deletedCount });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? "Failed to delete manual entry" }, { status: 500 });
   }

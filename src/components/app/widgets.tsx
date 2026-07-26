@@ -123,7 +123,7 @@ export function ZoomButton({ onClick, children, title }: { onClick: (e: any) => 
 
 
 
-export function AnimatedValue({ value }: { value: string }) {
+function AnimatedValue({ value }: { value: string }) {
   const [displayValue, setDisplayValue] = useState(value);
   const prevValueRef = useRef(value);
   const prevNumRef = useRef<number | null>(null);
@@ -381,7 +381,7 @@ export function Kpi({
   );
 }
 
-export function Spark({ points, tone }: { points: SeriesPoint[]; tone?: "good" | "warn" | "bad" }) {
+function Spark({ points, tone }: { points: SeriesPoint[]; tone?: "good" | "warn" | "bad" }) {
   if (!points || points.length < 2) return null;
   const v = points.map((p) => p.value); 
   const max = Math.max(...v, 1e-6), min = Math.min(...v, 0);
@@ -911,31 +911,6 @@ export function BarsH({ rows, fmt }: { rows: { label: string; value: number; sub
         </div>
       ))}
     </div>
-  );
-}
-
-export function DefectParetoTable({ rows }: { rows: DefectRow[] }) {
-  return (
-    <table style={{ width: "100%", fontSize: 12.5, borderCollapse: "collapse" }}>
-      <thead>
-        <tr style={{ color: "var(--text-3)", textAlign: "left" }}>
-          <th style={cth}>Defect</th>
-          <th style={{ ...cth, textAlign: "right" }}>Rejections</th>
-          <th style={{ ...cth, textAlign: "right" }}>%</th>
-          <th style={{ ...cth, textAlign: "right" }}>Cum %</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r, i) => (
-          <tr key={r.label} style={{ borderTop: "1px solid var(--border)", background: i % 2 === 0 ? "var(--surface-2)" : "transparent" }}>
-            <td style={{ ...ctd, fontWeight: 600 }}>{r.label}</td>
-            <td style={{ ...ctd, textAlign: "right", fontFamily: "var(--font-mono)", fontWeight: 700 }}>{r.rejected.toLocaleString()}</td>
-            <td style={{ ...ctd, textAlign: "right", fontFamily: "var(--font-mono)", color: "var(--text-2)" }}>{r.pct.toFixed(1)}%</td>
-            <td style={{ ...ctd, textAlign: "right", fontFamily: "var(--font-mono)", color: r.cumPct > 80 ? "var(--critical)" : "var(--positive)", fontWeight: 700 }}>{r.cumPct.toFixed(1)}%</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
   );
 }
 

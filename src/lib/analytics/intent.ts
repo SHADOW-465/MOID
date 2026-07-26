@@ -36,7 +36,7 @@ const NAV_HREF: Record<NavKey, string> = {
   staging: "/staging", stage: "/stage-analysis", size: "/size-analysis",
   defect: "/defect-analysis", spc: "/spc", "process-flow": "/process-flow",
   copq: "/copq", reports: "/reports", capa: "/capa", ask: "/chat",
-  audit: "/audit", schema: "/schema", settings: "/settings", "clear-data": "/clear-data",
+  audit: "/audit", schema: "/schema", settings: "/settings",
 };
 
 /** Best fuzzy match of the query against a live entity set (>= 0.7 to count). */

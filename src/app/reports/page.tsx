@@ -692,7 +692,7 @@ export default function ReportsPage() {
           </div>
         ) : !m ? (
           <div className="py-20 text-center text-muted border border-dashed border-hairline rounded-lg no-print">
-            No active quality logs. Ingest FBC sheets in the Staging & Review page to compile the compliance book.
+            No data yet. Import an Excel file, or log a shift on Data Entry, and the report builds itself.
           </div>
         ) : (() => {
           // ponytail: stages with zero records are dropped from the book instead of

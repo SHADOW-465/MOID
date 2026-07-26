@@ -58,27 +58,22 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    title: "Workbooks",
-    items: [
-      { key: "workbooks", label: "Workbooks", icon: "folder", href: "/workbooks" },
-    ],
-  },
-  {
-    title: "Data",
+    title: "Your data",
     items: [
       { key: "data-entry", label: "Data Entry", icon: "file", href: "/data-entry" },
-      { key: "staging", label: "Staging & Review", icon: "upload", href: "/staging" },
+      { key: "staging", label: "Import from Excel", icon: "upload", href: "/staging" },
+      { key: "workbooks", label: "Imported Files", icon: "folder", href: "/workbooks" },
     ],
   },
   {
     title: "Analysis",
     items: [
-      { key: "stage", label: "Stage Analysis", icon: "trend-up", href: "/stage-analysis" },
-      { key: "size", label: "Size Analysis", icon: "tally", href: "/size-analysis" },
-      { key: "defect", label: "Defect Analysis", icon: "spark", href: "/defect-analysis" },
+      { key: "stage", label: "By Stage", icon: "trend-up", href: "/stage-analysis" },
+      { key: "size", label: "By Size", icon: "tally", href: "/size-analysis" },
+      { key: "defect", label: "By Defect", icon: "spark", href: "/defect-analysis" },
       { key: "spc", label: "SPC & Control Charts", icon: "trend-down", href: "/spc" },
       { key: "process-flow", label: "Process Flow", icon: "split", href: "/process-flow" },
-      { key: "copq", label: "COPQ & Savings", icon: "lightning", href: "/copq" },
+      { key: "copq", label: "Cost of Rejection", icon: "lightning", href: "/copq" },
     ],
   },
   {
@@ -88,7 +83,7 @@ const NAV_SECTIONS: NavSection[] = [
       { key: "capa", label: "CAPA & Actions", icon: "check", href: "/capa" },
       { key: "ask", label: "Ask MOID", icon: "comment", href: "/chat", aiBadge: true },
       { key: "audit", label: "Audit Trail", icon: "search", href: "/audit" },
-      { key: "schema", label: "Data Schema", icon: "split", href: "/schema" },
+      { key: "schema", label: "Plant Schema", icon: "split", href: "/schema" },
       { key: "settings", label: "Settings", icon: "external", href: "/settings" },
     ],
   },
@@ -105,6 +100,27 @@ const VIEW_OPTIONS: { id: string; label: string }[] = [
   { id: "valve-integrity", label: "Valve" },
   { id: "final", label: "Final" },
 ];
+
+/**
+ * Which topbar scope controls each screen actually consumes.
+ *
+ * A control that sometimes does nothing teaches people that controls do
+ * nothing — so View / Interval / Range are rendered per page rather than
+ * globally. Anything absent from this map shows no scope controls at all.
+ */
+const SCOPE_CONTROLS: Partial<Record<NavKey, ("view" | "interval" | "range")[]>> = {
+  dashboard: ["view", "interval", "range"],
+  stage: ["view", "interval", "range"],
+  size: ["view", "interval", "range"],
+  defect: ["view", "interval", "range"],
+  spc: ["view", "interval", "range"],
+  "process-flow": ["view", "interval", "range"],
+  copq: ["view", "interval", "range"],
+  "data-entry": ["interval"],
+  reports: ["range"],
+  capa: ["range"],
+  audit: ["range"],
+};
 
 export default function AppShell({
   active, trustScore: trustScoreProp, statusCounts, dateRange, children, presetId,
@@ -128,6 +144,11 @@ export default function AppShell({
   const [banner, setBanner] = useState<NavBanner | null>(null);
 
   useCommandPaletteHotkey(useCallback(() => setPaletteOpen(true), []));
+
+  const scopeControls = SCOPE_CONTROLS[active] ?? [];
+  const showView = scopeControls.includes("view");
+  const showInterval = scopeControls.includes("interval");
+  const showRange = scopeControls.includes("range");
 
   useEffect(() => subscribeNavBanner(setBanner), []);
 
@@ -918,9 +939,9 @@ export default function AppShell({
         zIndex: 50,
         height: "var(--header-h)"
       }}>
-        {/* left filter selectors: Wrapped in a floating pillbox */}
+        {/* Scope selectors — only the ones this screen actually reads. */}
         <div style={{ 
-          display: "flex", 
+          display: scopeControls.length > 0 ? "flex" : "none", 
           alignItems: "center", 
           gap: 12, 
           background: "var(--surface)", 
@@ -930,7 +951,7 @@ export default function AppShell({
           boxShadow: "var(--shadow-sm)",
           height: 38
         }}>
-          {/* Global View Selector */}
+          {showView && (
           <div className="view-picker-container" style={{ display: "flex", alignItems: "center", gap: 6, position: "relative" }}>
             <span className="ui-label">
               View
@@ -994,10 +1015,11 @@ export default function AppShell({
                               </div>
             )}
           </div>
+          )}
 
-          <div style={{ width: 1, height: 16, background: "var(--border)" }} />
+          {showView && showInterval && <div style={{ width: 1, height: 16, background: "var(--border)" }} />}
 
-          {/* D, W, M, FY Segmented Control */}
+          {showInterval && (
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span className="ui-label">
               Interval
@@ -1046,10 +1068,11 @@ export default function AppShell({
               })}
             </div>
           </div>
+          )}
 
-          <div style={{ width: 1, height: 16, background: "var(--border)" }} />
+          {showInterval && showRange && <div style={{ width: 1, height: 16, background: "var(--border)" }} />}
 
-          {/* Interactive Date Range Selector */}
+          {showRange && (
           <div className="date-picker-container" style={{ display: "flex", alignItems: "center", gap: 6, position: "relative" }}>
             <span className="ui-label" style={{ whiteSpace: "nowrap" }}>
               Range
@@ -1189,6 +1212,7 @@ export default function AppShell({
               </div>
             )}
           </div>
+          )}
         </div>
 
         {/* right profile / actions: styled cleanly in pillbox cards */}
@@ -1431,7 +1455,7 @@ export default function AppShell({
             </button>
           </div>
         )}
-        {isConfigured === false && active !== "staging" && active !== "settings" && active !== "clear-data" ? (
+        {isConfigured === false && active !== "staging" && active !== "settings" ? (
           <div style={{
             display: "flex",
             alignItems: "center",

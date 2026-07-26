@@ -15,5 +15,4 @@ export type NavKey =
   | "ask"
   | "audit"
   | "schema"
-  | "settings"
-  | "clear-data";
+  | "settings";

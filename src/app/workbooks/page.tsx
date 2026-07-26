@@ -8,9 +8,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import AppShell from "@/components/app/AppShell";
-import { Card, Empty, Kpi, BarsH, LineChart } from "@/components/app/widgets";
+import { Card, Empty, Kpi, BarsH, LineChart, pct } from "@/components/app/widgets";
 import PageLoader from "@/components/app/PageLoader";
 import FloatingDetailModal, { type SourceRow, type SourceMetricKind } from "@/components/FloatingDetailModal";
+import WorkbookCharts, { bestGrain } from "@/components/WorkbookCharts";
 import Icon from "@/components/editorial/Icon";
 import { useEvents } from "@/components/app/EventsContext";
 import {
@@ -230,7 +231,11 @@ export default function WorkbooksPage() {
 
   const fileStats = useMemo(() => {
     if (fileEvents.length === 0) return null;
-    const scope = { grain: "month" as const };
+    // A file holding one month of daily rows has exactly ONE monthly period —
+    // which is why the trend card used to render "not enough periods" for a
+    // perfectly good workbook. Use the finest grain that actually has a shape.
+    const grain = bestGrain(fileEvents);
+    const scope = { grain };
     const reg = DERIVED_REGISTRY;
     const chk = totalChecked(fileEvents, scope, reg).value;
     const rej = totalRejected(fileEvents, scope).value;
@@ -238,7 +243,7 @@ export default function WorkbooksPage() {
     const stages = byStage(fileEvents, scope, reg);
     const defects = byDefect(fileEvents, scope, reg).slice(0, 10);
     const tr = trend(fileEvents, scope, "rejectionRate", reg);
-    return { chk, rej, rate, stages, defects, tr, n: fileEvents.length };
+    return { chk, rej, rate, stages, defects, tr, grain, n: fileEvents.length };
   }, [fileEvents]);
 
   const fileSourceRows = useMemo(() => toSourceRows(fileEvents), [fileEvents]);
@@ -246,12 +251,12 @@ export default function WorkbooksPage() {
   return (
     <AppShell active="workbooks">
       <h1 style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 800, margin: "0 0 2px" }}>
-        Workbooks
+        Imported Files
       </h1>
       <p className="muted" style={{ fontSize: 13, margin: "0 0 18px", maxWidth: 720, lineHeight: 1.55 }}>
-        Each Excel you imported and the <strong>numbers already on the ledger</strong> (same as Dashboard).
-        Drag files to reorder them. Import more on{" "}
-        <Link href="/staging" style={{ color: "var(--accent)", fontWeight: 600 }}>Staging &amp; Review</Link>.
+        Pick a file to see what it put on the ledger — the same numbers as the Dashboard, for that file
+        alone — then build whatever chart you want from it. Drag files to reorder. Add more on{" "}
+        <Link href="/staging" style={{ color: "var(--accent)", fontWeight: 600 }}>Import from Excel</Link>.
       </p>
 
       {error && (
@@ -263,7 +268,7 @@ export default function WorkbooksPage() {
       {workbooks === null || eventsLoading ? (
         <PageLoader message="Loading workbooks…" minHeight="40vh" />
       ) : workbooks.length === 0 ? (
-        <Empty label="No workbooks yet — use Staging & Review to load a plant file once." />
+        <Empty label="No files yet — import your first Excel on Import from Excel and it will appear here." />
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "300px minmax(0, 1fr)", gap: 18 }}>
           <Card title="Files" sub={`${workbooks.length} upload${workbooks.length !== 1 ? "s" : ""}`}>
@@ -426,14 +431,14 @@ export default function WorkbooksPage() {
                       />
                       <Kpi
                         label="Rej. rate"
-                        value={`${fileStats.rate.toFixed(2)}%`}
+                        value={pct(fileStats.rate)}
                         sub="from ledger"
-                        tone={fileStats.rate > 5 ? "bad" : "good"}
+                        tone={fileStats.rate > 0.05 ? "bad" : "good"}
                         onClick={() => openModal(
                           "Rejection rate",
                           "Rejected ÷ Checked across this file's events.",
                           <Empty label="See View Source below for the row-level trace." />,
-                          { rows: fileSourceRows, value: `${fileStats.rate.toFixed(2)}%` },
+                          { rows: fileSourceRows, value: pct(fileStats.rate) },
                         )}
                       />
                     </div>
@@ -482,7 +487,7 @@ export default function WorkbooksPage() {
                         )}
                       >
                         {fileStats.defects.length === 0 ? (
-                          <Empty label="No defect events" />
+                          <Empty label="This file records totals only — no per-defect columns were mapped from it." />
                         ) : (
                           <BarsH
                             rows={fileStats.defects.map((d) => ({
@@ -496,26 +501,30 @@ export default function WorkbooksPage() {
                     </div>
                     <Card
                       title="Rejection rate trend"
-                      sub="From events attributed to this workbook"
+                      sub={`${fileStats.grain === "day" ? "Daily" : fileStats.grain === "week" ? "Weekly" : "Monthly"} · from this file’s events`}
                       onClick={() => openModal(
                         "Rejection rate trend",
-                        "Monthly rejection rate trend recomputed from this file's raw counts.",
+                        "Rejection rate trend recomputed from this file's raw counts.",
                         <div style={{ minHeight: 280, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                          <LineChart points={fileStats.tr} fmt={(n) => `${n.toFixed(1)}%`} height={260} />
+                          <LineChart points={fileStats.tr} fmt={pct} height={260} />
                         </div>,
-                        { rows: fileSourceRows, value: `${fileStats.rate.toFixed(2)}%` },
+                        { rows: fileSourceRows, value: pct(fileStats.rate) },
                       )}
                     >
                       {fileStats.tr.length < 2 ? (
-                        <Empty label="Not enough periods for a trend" />
+                        <Empty label="Only one period of data in this file — a trend needs at least two." />
                       ) : (
                         <LineChart
                           points={fileStats.tr}
-                          fmt={(n) => `${n.toFixed(1)}%`}
+                          fmt={pct}
                           height={220}
                         />
                       )}
                     </Card>
+
+                    {/* Ask this file your own question, rather than only the
+                        four we picked above. */}
+                    <WorkbookCharts events={fileEvents} fileName={selectedFile ?? "workbook"} />
                   </>
                 )}
               </>

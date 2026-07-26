@@ -6,117 +6,140 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 # Working in this repo
 
-Next.js 16 + React 19 + AI SDK v6. APIs and conventions may differ from your
-training data. Defer to `node_modules/next/dist/docs/` and `node_modules/ai/docs/`
-when in doubt. The Vercel AI Gateway is the default model backend — model
-addressing uses `"provider/model"` strings, not provider-specific packages.
+MOID (repo name: RAIS-Pro) is an Enterprise Manufacturing Intelligence OS for
+GMs / QMs / engineers at a medical-device plant. Next.js 16 + React 19 +
+AI SDK v6. APIs and conventions may differ from your training data; defer to
+`node_modules/next/dist/docs/` and `node_modules/ai/docs/` when in doubt.
+
+## The one-paragraph model of the app
+
+Plant Excel goes in at **Staging**. The workbook is profiled, its columns are
+classified into a **MOD** (Mapping Ontology Document), a human verifies that
+mapping, and publishing the MOD does three things: promotes stages/defects/
+sizes into the **company catalog**, learns the Excel→canonical aliases, and
+unlocks extraction of day-records. Those records are reviewed, then committed
+to an **append-only event ledger**. Every screen — dashboard, analyses,
+reports, audit — is a pure read over that ledger. **Data Entry** is a generated
+view of the same schema, so ongoing manual entry uses the plant's own column
+names instead of a convention the app invented.
+
+## Pipeline (the real one)
+
+```
+Excel ──► core/workbook (reader, header, snapshot-store)
+          └─ core/profiler (column stats)
+              └─ core/ontology/resolver (exact-index → ladder → llm)
+                  └─ core/ontology/builder/build-mod → MOD draft
+                      ↓ POST /api/mods/verify   human decisions
+                      ↓ POST /api/mods          publish (validate → catalog merge → learn)
+   verified MOD ──────┼──► catalog-store  ← ALSO edited by hand on /schema
+                      ├──► GET /api/entry-template ──► Data Entry grids
+                      └──► POST /api/mods/records → extract-from-mod → Staging review
+                                                            ↓
+                                        POST /api/ingest → lib/ingest/emit → events
+                                                            ↓
+                                   lib/store (Supabase | memory) → lib/analytics/* → screens
+```
+
+## Hard invariants
+
+1. **The model never does maths.** AI is used for *classification* (column →
+   canonical role, in the resolver ladder) and *prose* (chat answers, CAPA
+   advice). Every number on every screen comes from deterministic JS over
+   ledger events in `src/lib/analytics/`. Never let a KPI value originate from
+   a model.
+2. **The ledger is append-only and content-addressed.** `lib/contract/hash.ts`
+   hashes each event, so re-ingesting identical data dedups. A changed value is
+   superseded by a `CorrectionEvent`, never mutated in place. Do not add code
+   that hard-deletes ledger rows.
+3. **The MOD is the only ingestion path.** The legacy parsers were deleted.
+   Anything entering the ledger comes from `extract-from-mod` (Excel) or direct
+   entry (`extractedBy: "direct-entry"`).
+4. **The catalog outlives the workbooks.** Deleting an upload removes the file
+   snapshot and MOD lineage only. Master schema is edited exclusively through
+   `/api/schema` (Data Schema page) or `/api/clear-schema`.
+5. **Data Entry is generated, never hardcoded.** `/api/entry-template` unions
+   every verified MOD, then the company catalog overrides it — a rename, delete,
+   or addition on Data Schema wins. The built-in defect lists in
+   `lib/entry/disposafe-matrix.ts` exist only as the fallback when no schema is
+   configured. Column order follows the source sheet; catalog-only additions
+   append after it.
+6. **Extraction requires a verified MOD.** `/api/mods/records` resolves through
+   `activeFor()`; drafts never extract.
+
+## Where things live
+
+- **Ingestion / ontology:** `src/core/` — `workbook/` (read + snapshot),
+  `profiler/` (column stats), `ontology/` (resolver, builder, stores, validate),
+  `ingest/` (extract, reconcile, precedence), `decision/` (rule engine behind
+  `/api/decide`)
+- **Ledger + analytics:** `src/lib/` — `contract/` (Zod event schemas + hash),
+  `ingest/` (emit, review, mass-balance), `store/` (Supabase | memory adapters),
+  `analytics/` (every metric; screens import the `analytics/index.ts` barrel only)
+- **Entry:** `src/lib/entry/` (period, batch-id, validation, draft) plus
+  `src/components/BatchMatrixEntry.tsx` and `MonthlyEntryGrid.tsx`
+- **Design-system primitives:** `src/components/editorial/`; shared chart and
+  layout widgets in `src/components/app/widgets.tsx`
+- **Routes:** `src/app/api/*` — full table in `README.md`
+
+## AI provider chain
+
+All AI calls go through `tryModels(fn, opts)` in [`src/lib/ai.ts`](src/lib/ai.ts).
+Two backends, tried in order: **MiniCPM** (self-hosted, OpenAI-compatible
+endpoint at `MINICPM_BASE_URL`) → **Groq** (`GROQ_API_KEY`). First success wins;
+failures cascade. `RAIS_AI_BACKEND` moves one to the front but is not exclusive.
+Both are addressed through `@ai-sdk/openai-compatible` — do not add
+provider-specific SDK packages. Never call `generateObject` with a raw model
+handle in a route handler; always use `tryModels` so the chain is honored.
+
+`npm run check:ai` pings every configured backend with a real structured-output
+request. Cross-provider schema rules: prefer `.nullable()` over `.optional()`,
+plain ints over literal unions, strings over type-unions for displayed values.
 
 ## Design direction (locked)
 
-Enterprise Manufacturing Intelligence OS for GMs/QMs/engineers — Linear /
-Stripe Dashboard / Vercel register, not editorial. **Geist** for UI and
-headings, **Geist Mono** for technical data (IDs, logs, provenance, cell
-refs). Hierarchy comes from size/weight/spacing, not color. Burnt orange
-`#C8421C` accent reserved for status/accent, not headings. Flat / outlined /
-shadowed cards. **Not glassmorphism.** The old
-`glass-card`/`btn-primary`/`topbar` Tailwind utility classes are gone.
+Linear / Stripe Dashboard / Vercel register, not editorial. **Geist** for UI and
+headings, **Geist Mono** for technical data (IDs, logs, provenance, cell refs) —
+self-hosted via `next/font` in `layout.tsx`. No Google Fonts, no CSS `@import`
+for fonts. Hierarchy comes from size/weight/spacing, not color. Burnt orange
+`#C8421C` accent is reserved for status/accent, never headings. Flat / outlined
+/ shadowed cards. **Not glassmorphism.**
 
 Type scale (`globals.css`): `.kpi` 48px/700 (executive KPI values), `.h1`
 32px/700 (page titles), `.h2` 24px/600 (section titles), `.h3` 16px/500 (card
 titles), `.body` 14px/400, `.small` 13px/400 (secondary/metadata). Tabular
-numerals are on globally (`body { font-variant-numeric: tabular-nums }`).
+numerals are on globally.
 
 Theming flows through `<body data-density / data-bg / data-card /
-data-chart-style>` plus CSS variables (`--paper`, `--ink`, `--accent`,
-`--serif`, etc.) live-painted by `TweaksContext`. New components should
-consume these CSS vars rather than hardcoding hex.
-
-## Where things live
-
-- **Design-system primitives:** `src/components/editorial/`
-- **Domain components:** `src/components/`
-- **AI layer:** `src/lib/ai.ts` (backend resolver), `src/lib/schemas.ts` (Zod), `src/lib/analysis-utils.ts` (prompt builders)
-- **Analysis engine:** `src/lib/metrics.ts` (`inferSheetGraph` heuristic column-role classifier + `computeMetrics` deterministic aggregation), `src/lib/dashboard-builder.ts` (graph reconcile, metrics→KPI/chart mapping, sanity gate, merge-plan derivation), `src/types/metrics.ts` (graph + metric types)
-- **Routes:** `src/app/api/{analyze,chat,sessions}/`
-- **Persistence:** `src/lib/supabase.ts` + `supabase/migrations/`
-
-See `README.md` § "Project layout" for the full map.
-
-## AI provider chain
-
-All AI calls flow through `tryModels(fn, opts)` in [`src/lib/ai.ts`](src/lib/ai.ts). It walks every configured backend in priority order: Gateway → Anthropic → OpenRouter → Google → Groq → Ollama. First success wins; failures cascade. Never call `generateObject` with a raw model handle in route handlers — always use `tryModels` so the chain is honored.
-
-When changing schemas, run `npm run check:ai` to confirm every backend still accepts the new shape. Cross-provider compatibility rules live in the [`src/lib/schemas.ts`](src/lib/schemas.ts) header: use `.nullable()` not `.optional()` (Groq/OpenAI strict mode), plain ints not literal unions (Google), and strings not type-unions for KPI values.
-
-## Pipeline invariants
-
-The analyze route (`src/app/api/analyze/route.ts`) runs three phases:
-**graph → compute → narrative**.
-
-1. **The model never does maths.** AI is used only for *classification* (the
-   per-sheet column-role **graph**) and *narrative* (prose for the dashboard).
-   All numbers come from `computeMetrics()` in `src/lib/metrics.ts` — pure JS
-   arithmetic over the raw rows. Never let KPI or chart values come from the
-   model.
-2. **The graph has a heuristic fallback with a sanity gate.** Phase 1 always
-   computes a heuristic graph via `inferSheetGraph()` per sheet. The LLM graph
-   (Zod `SheetGraphSetSchema`) is `reconcileGraph()`'d against the real columns
-   (hallucinated columns dropped, omitted real ones back-filled), then its
-   metrics are accepted **only if** `metricsSane()` passes vs. the heuristic
-   baseline. Otherwise the golden-tested heuristic wins. The user gets
-   LLM-driven understanding without risking "random numbers."
-3. **Schemas are the contract.** `generateObject` + Zod via `tryModels`. If the
-   model can't produce a valid object, fall back (graph) or surface an error
-   (narrative) — don't silently coerce. Phase 2 returns 422 if no KPIs survive.
-4. **Views are derived deterministically.** `metricsToKpis()` /
-   `metricsToCharts()` / `deriveMergePlan()` in `src/lib/dashboard-builder.ts`
-   map a `MetricsResult` into the `DashboardConfig`. `rejection_rate` leads;
-   `kpi.history` + trend are computed from `monthlyTrend` here, not by the
-   model. Don't add a parallel "history" path elsewhere.
-5. **Verify-mode beam math runs client-side** — KPI `sourceColumn` ref → column
-   header ref → `getBoundingClientRect()` on both, recompute on scroll/resize.
+data-chart-style>` plus CSS variables (`--paper`, `--ink`, `--accent`, …)
+live-painted by `TweaksContext`. Consume these vars rather than hardcoding hex.
 
 ## Hard rules
 
-- Don't add provider-specific AI SDK packages unless explicitly asked. Default
-  to the gateway via `getModel()` in `src/lib/ai.ts`.
+- Don't add provider-specific AI SDK packages. `@ai-sdk/openai-compatible`
+  reaches both backends.
 - Don't reintroduce **Chart.js**, **lucide-react**, or **framer-motion**. They
-  were removed deliberately — the editorial charts are inline SVG and the
-  animations are pure CSS (`pulse-ring`, `blink`, `fade-up`, `draw-line`).
-- Don't add new Tailwind utility classes for theming colors. Use CSS
-  variables instead, so the Tweaks panel keeps working.
-- Don't bypass schemas by writing custom JSON parsers — if validation needs
-  to relax, widen the schema with `.optional()` / `.union()` instead.
+  were removed deliberately — charts are inline SVG
+  (`components/app/widgets.tsx`, `editorial/EditorialCharts.tsx`) and animation
+  is pure CSS (`pulse-ring`, `blink`, `fade-up`, `draw-line`).
+- Don't add new Tailwind utility classes for theming colors. Use CSS variables,
+  or the Tweaks panel stops working.
+- Don't bypass schemas with hand-written JSON parsing — widen the Zod schema.
+- Don't add a second path for something `lib/analytics/` already computes.
 
 ## Testing
 
-`npx jest` runs schema tests + a device-id mock test. Schema tests document
-what the AI is expected to produce; if you change a prompt, update the
-schemas (and the tests) in lockstep.
+`npx jest` runs the suite; `npx tsc --noEmit` for types. Tests run in the node
+environment only — there is no jsdom or testing-library setup, so test logic,
+not rendered components. Non-trivial logic should leave one runnable check
+behind. `jest.setup.ts` forces `MOID_STORE=memory` so tests never touch a live
+Supabase project.
 
 ## Conventions
 
 - File names: `PascalCase.tsx` for components, `kebab-case.ts` for lib utilities.
 - Editorial primitives in `src/components/editorial/` use inline `style={{ … }}`
-  against CSS variables because the design is heavily token-driven. This is
-  intentional — don't refactor into a class-per-element pattern unless a file
-  has genuinely reusable visual logic.
+  against CSS variables because the design is token-driven. This is intentional
+  — don't refactor into a class-per-element pattern.
 - Sticky positioning on the dashboard masthead and verify-panel headers must
   remain — both screens are scroll-heavy.
-
-## Session History (June 18, 2026)
-
-In this session, the following updates were made:
-- **Design System & Typography**: Re-aligned colors and loaded **Fraunces** display serif and **Inter Tight** UI fonts via Google Fonts. Resolved offline build failures from standard google-font pre-fetching by loading fonts via `@import` in `globals.css` and mapping `--font-display`, `--font-sans`, and `--font-mono` directly in the global `:root`.
-- **Factory Staging Grid**: Revamped `/staging` (in `src/app/staging/page.tsx`) to support editable input cells for Checked and Rejected quantities, and a row-level comment log drawer.
-- **Ledger Ingestion & Audit trail**: Wired discrepancy/override comments from the manual entry grid to `/api/ingest`. They are mapped to `StageDayRecord` records and emitted as canonical `AnnotationEvent`s in the append-only events store.
-- **React Compiler Memoization Fixes**: Removed manual `useMemo` for the `resolved` column match in `VerifyPanel.tsx` to solve `react-hooks/preserve-manual-memoization` compiler blockages.
-- **CSR Bailout & Suspense Fixes**: Wrapped the `/chat` page (Ask RAIS) in a React `<Suspense>` boundary to allow build-time prerendering without bailing on Client-Side Rendering hooks (`useSearchParams`).
-- **Reports Page Type Fixes**: Resolved a TypeScript compilation error in `src/app/reports/page.tsx` by correctly referencing the `rejected` field on `DefectRow`.
-- **Codebase Sanitization**: Cleaned up multiple unused imports, variables, and parameters in `Dashboard.tsx`, `ProcessingLoader.tsx`, `AppShell.tsx`, `rejection.ts`, and corresponding unit tests.
-- **D/W/M/FY Grain Architecture**: Wired up the segmented control in the topbar header to dynamically aggregate quality snapshot metrics by the active period (most recent day, week, month, or FY), while trend charts render pruned, clean historical trends (last 15 days, 12 weeks, 12 months, or all FYs) without label clutter.
-- **Dynamic SPC Control Limits**: Custom-rendered a dynamic X-bar control chart showing LCL, Mean, and UCL calculated on-the-fly from active trend points, flagging out-of-spec events and counting Western Electric rules violations in real time.
-- **Layout Scaling & Legibility**: Removed hardcoded `maxWidth` constraints on reports and settings page outer containers to utilize full screen space. Enhanced font readability and color contrast by adjusting muted (`--text-3`) and secondary (`--text-2`) text variables in both light and dark modes.
-- **File Ingestion Error Recovery**: Enhanced client-side file uploading on `/staging` to catch native browser `NotReadableError` / permission exceptions (which occur when the uploaded spreadsheet is open/locked in Microsoft Excel on Windows). The app now intercept this condition and prompts the user with clear instructions to close Excel and retry.
-- **Verification**: Ensured that the application builds successfully and passes all **130 unit tests** successfully.
-

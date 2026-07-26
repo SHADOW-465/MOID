@@ -166,13 +166,22 @@ export default function DataEntryPage() {
 
   const handleDeleteLedgerRecord = async (rec: any) => {
     const isDirect = rec.source === "Direct Entry";
-    const recordType = isDirect ? "manual entry record" : `uploaded record (${rec.source})`;
-    if (!confirm(`Are you sure you want to delete the ${recordType} for ${rec.date} (${rec.shift})?`)) return;
+    const recordType = isDirect ? "manual entry" : `uploaded record (${rec.source})`;
+    if (
+      !confirm(
+        `Permanently delete this ${recordType}?\n\n` +
+          `${rec.date} · ${rec.shift}${rec.batch ? ` · batch ${rec.batch}` : ""}\n\n` +
+          "The numbers leave the dashboard and the audit trail entirely — this is not a correction, " +
+          "it is an erase, and it cannot be undone.",
+      )
+    )
+      return;
     try {
-      const res = await fetch(`/api/manual-entries?date=${rec.date}&shift=${rec.shift}`, {
-        method: "DELETE"
-      });
-      if (!res.ok) throw new Error("Failed to delete record");
+      // Scope by source so deleting a manual test row can never take out
+      // uploaded data that happens to share the same day and sheet name.
+      const qs = new URLSearchParams({ date: rec.date, shift: rec.shift, source: rec.source });
+      const res = await fetch(`/api/manual-entries?${qs}`, { method: "DELETE" });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Failed to delete record");
 
       setSuccess(`Record for ${rec.date} (${rec.shift}) has been deleted successfully.`);
       loadLedger();
@@ -235,20 +244,21 @@ export default function DataEntryPage() {
     <AppShell active="data-entry">
       <h1 style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 800, margin: "0 0 4px" }}>Data Entry</h1>
       <p className="muted" style={{ fontSize: 13, margin: "0 0 16px", maxWidth: 720, lineHeight: 1.5 }}>
-        Primary way to log each shift. Defect columns follow your plant schema after you{" "}
-        <a href="/staging" style={{ color: "var(--accent)", fontWeight: 600 }}>Import from Excel</a> once.
-        Numbers land on the Dashboard with View Source.
+        Log one batch at a time as you inspect it, or fill a whole day/week/month in one grid.
+        The defect columns are your own — they come from the files you{" "}
+        <a href="/staging" style={{ color: "var(--accent)", fontWeight: 600 }}>imported from Excel</a>.
+        Anything you save here appears on the Dashboard immediately.
       </p>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
           <TabButton active={activeTab === "matrix"} onClick={() => switchTab("matrix")} first>
-            Daily batch entry
+            Log a batch
           </TabButton>
           <TabButton active={activeTab === "period"} onClick={() => switchTab("period")}>
-            Calendar grid
+            Fill a period
           </TabButton>
           <TabButton active={activeTab === "ledger"} onClick={() => switchTab("ledger")} last>
-            History
+            What I&apos;ve entered
           </TabButton>
         </div>
       </div>
@@ -267,8 +277,8 @@ export default function DataEntryPage() {
       {activeTab === "period" && (
         <div>
           <p className="small" style={{ color: "var(--text-2)", marginBottom: 12 }}>
-            Calendar-period entry driven by verified MOD templates (D/W/M/FY grain). Prefer{" "}
-            <strong>Batch Matrix</strong> for shop-floor lot entry.
+            One row per day for the period below — good for catching up on a backlog.
+            For live shop-floor entry use <strong>Log a batch</strong> instead.
           </p>
           <div style={{ display: "flex", gap: 14, alignItems: "flex-end", marginBottom: 16, padding: 16, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12 }}>
             <label className="muted" style={{ fontSize: 11, display: "flex", flexDirection: "column", gap: 4 }}>
@@ -398,11 +408,20 @@ export default function DataEntryPage() {
       {activeTab === "ledger" && (
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 16 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <h2 style={{ fontFamily: "var(--font-display)", fontSize: 18, fontWeight: 800, margin: 0 }}>Data Entry & Ingest Ledger</h2>
+            <div>
+              <h2 style={{ fontFamily: "var(--font-display)", fontSize: 18, fontWeight: 800, margin: 0 }}>
+                Everything entered so far
+              </h2>
+              <p className="muted" style={{ fontSize: 12.5, margin: "4px 0 0", maxWidth: 560, lineHeight: 1.5 }}>
+                Every save, manual or imported. <strong>Edit</strong> loads a row back into the grid;{" "}
+                <strong>Delete</strong> erases it from the dashboard and the audit trail for good — useful
+                for clearing out test entries.
+              </p>
+            </div>
             <div style={{ position: "relative", width: 300 }}>
               <input
                 type="text"
-                placeholder="Search ledger..."
+                placeholder="Search by date, batch, operator…"
                 value={ledgerSearch}
                 onChange={(e) => setLedgerSearch(e.target.value)}
                 style={{ ...inp, paddingRight: 32 }}
@@ -488,9 +507,21 @@ export default function DataEntryPage() {
                           >
                             Duplicate
                           </button>
+                          {/* Outlined, not a bare link — an erase must not look
+                              like Edit and Duplicate sitting next to it. */}
                           <button
                             onClick={() => handleDeleteLedgerRecord(rec)}
-                            style={{ background: "transparent", border: "none", color: "var(--status-bad)", cursor: "pointer", fontSize: 12, fontWeight: 700 }}
+                            title="Erase this entry from the ledger — cannot be undone"
+                            style={{
+                              background: "transparent",
+                              border: "1px solid color-mix(in srgb, var(--status-bad) 45%, transparent)",
+                              borderRadius: 9999,
+                              padding: "3px 12px",
+                              color: "var(--status-bad)",
+                              cursor: "pointer",
+                              fontSize: 12,
+                              fontWeight: 700,
+                            }}
                           >
                             Delete
                           </button>

@@ -119,10 +119,27 @@ describe("persona nav filter", () => {
     expect(DEFAULT_PERSONA in PERSONAS).toBe(true);
   });
 
-  it("all roles home to main dashboard", () => {
+  // Roles no longer all land on the dashboard: an operator lands on the form
+  // they are about to fill. The rule that matters is that a role can never be
+  // dropped on a page its own nav filter hides.
+  it("every role lands on a page that role can see", () => {
+    const HOME_NAV: Record<string, string> = {
+      "/": "dashboard",
+      "/data-entry": "data-entry",
+      "/staging": "staging",
+    };
     for (const id of PERSONA_ORDER) {
-      expect(PERSONAS[id].homeHref).toBe("/");
+      const home = PERSONAS[id].homeHref;
+      const navKey = HOME_NAV[home];
+      expect(navKey).toBeDefined();
+      expect(PERSONAS[id].navAllow).toContain(navKey);
     }
+  });
+
+  it("the operator lands on Data Entry, the GM on the dashboard", () => {
+    expect(PERSONAS.operator.homeHref).toBe("/data-entry");
+    expect(PERSONAS.gm.homeHref).toBe("/");
+    expect(PERSONAS.owner.homeHref).toBe("/");
   });
 });
 

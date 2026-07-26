@@ -69,8 +69,28 @@ export class MemoryEventStore implements EventStore {
     return out;
   }
 
+  async all(filter: EventFilter = {}): Promise<Event[]> {
+    const out: Event[] = [];
+    for (const e of this.byId.values()) {
+      if (filter.eventType && e.eventType !== filter.eventType) continue;
+      if (filter.ingestionId && e.ingestionId !== filter.ingestionId) continue;
+      if (filter.stageId && stageOf(e) !== filter.stageId) continue;
+      if (filter.defectCode && defectOf(e) !== filter.defectCode) continue;
+      if (filter.from && e.occurredOn.start < filter.from) continue;
+      if (filter.to && e.occurredOn.end > filter.to) continue;
+      out.push(e);
+    }
+    return out;
+  }
+
   async byIds(ids: string[]): Promise<Event[]> {
     return ids.map((id) => this.byId.get(id)).filter((e): e is Event => !!e);
+  }
+
+  async purge(eventIds: string[]): Promise<number> {
+    let n = 0;
+    for (const id of eventIds) if (this.byId.delete(id)) n++;
+    return n;
   }
 
   /** test/debug helper */

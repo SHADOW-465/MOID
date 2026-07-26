@@ -425,7 +425,7 @@ export default function SchemaPage() {
     }
     if (
       !confirm(
-        `Remove mapping “${m.key}” → ${m.canonicalId} (${MAPPING_KIND_LABEL[m.kind]}) from the system brain?\n\nThe resolver will no longer use this Excel→canonical rule. Ledger facts are not deleted.`,
+        `Remove mapping “${m.key}” → ${m.canonicalId} (${MAPPING_KIND_LABEL[m.kind]}) from what MOID learned?\n\nThe resolver will no longer use this Excel→canonical rule. Ledger facts are not deleted.`,
       )
     ) {
       return;
@@ -557,7 +557,7 @@ export default function SchemaPage() {
                 fontFamily: "var(--font-mono)",
               }}
             >
-              System brain
+              What MOID learned
             </div>
             <h1
               className="h1"
@@ -809,7 +809,7 @@ export default function SchemaPage() {
         ) : brainEmpty ? (
           <Card title="No master schema yet">
             <p className="muted" style={{ fontSize: 14, margin: "0 0 14px", lineHeight: 1.55 }}>
-              The system brain is empty. Verify a workbook on Staging to seed stages, defects, and
+              Nothing learned yet. Import an Excel file and confirm its columns to fill in stages, defects, and
               Excel→canonical mappings, or add them manually here.
             </p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
@@ -1494,11 +1494,11 @@ export default function SchemaPage() {
               </Card>
             )}
 
-            {/* Mappings — full system brain of Excel → canonical rules */}
+            {/* Learned Excel-heading → canonical mappings */}
             {section === "mappings" && (
               <Card
                 title="All Excel → canonical mappings"
-                sub="Every label the resolver understands across the plant. Edit or delete any knowledge row. MOD-sourced rows promote into the brain on save."
+                sub="Every Excel column heading MOID recognises, and what it maps to. Edit or delete any row — your files add to this list when you confirm their columns."
               >
                 <div
                   style={{
@@ -1747,7 +1747,7 @@ export default function SchemaPage() {
               <Empty label="Loading uploads…" />
             ) : workbooks.length === 0 ? (
               <>
-                <Empty label="No Excel uploads yet — import from Staging & Review." />
+                <Empty label="No Excel files imported yet — start on Import from Excel." />
                 <div style={{ marginTop: 8 }}>
                   <Link
                     href="/staging"

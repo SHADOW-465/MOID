@@ -1,4 +1,4 @@
-import { reviewRow, buildReviewRows, reviewSummary, applyEdit, defectKey } from "@/lib/ingest/review";
+import { reviewRow, buildReviewRows, reviewSummary, applyEdit, defectKey, defectMatches } from "@/lib/ingest/review";
 import type { StageDayRecord } from "@/lib/ingest/emit";
 
 function rec(opts: { checked?: number | null; rejected?: number | null; statedPct?: number | null; stageId?: string } = {}): StageDayRecord {
@@ -91,5 +91,36 @@ describe("review — recompute from scratch", () => {
     expect(defectKey("coag")).toBe(defectKey("COAG"));
     expect(defectKey("90/10")).toBe(defectKey("90-10"));
     expect(defectKey("PIN HOLE")).toBe(defectKey("PINHOLE"));
+  });
+});
+
+describe("defect identity — one rule for grid reads and edits", () => {
+  const base = (defects: { raw: string; value: number; cell: string }[]): StageDayRecord => ({
+    occurredOn: { kind: "day", start: "2026-05-01", end: "2026-05-01" },
+    stageId: "visual",
+    size: null,
+    source: { file: "f", fileHash: "h", sheet: "s", tableId: "t1" },
+    checked: { value: 100, cell: "A1", header: "Checked" },
+    acceptedGood: null,
+    rework: null,
+    rejected: { value: 10, cell: "B1", header: "Rejected" },
+    defects,
+    statedPct: null,
+    extractedBy: "mod",
+    ingestionId: "i",
+  });
+
+  test("a stored Excel header matches its schema label and code", () => {
+    expect(defectMatches("Coagulant", "COAG", "Coagulant")).toBe(true);
+    expect(defectMatches("90/10", "9010", "90-10")).toBe(true);
+    expect(defectMatches("RW", "COAG", "Coagulant")).toBe(false);
+  });
+
+  test("editing a header-stored defect updates it instead of duplicating", () => {
+    const recs = [base([{ raw: "Coagulant", value: 4, cell: "F2" }])];
+    // The grid resolves the existing raw first, then edits under that key.
+    const next = applyEdit(recs, 0, "Coagulant", 9);
+    expect(next[0].defects).toHaveLength(1);
+    expect(next[0].defects[0].value).toBe(9);
   });
 });

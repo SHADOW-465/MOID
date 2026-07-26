@@ -10,7 +10,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StageDayRecord } from "@/lib/ingest/emit";
-import { buildReviewRows, applyEdit } from "@/lib/ingest/review";
+import { buildReviewRows, applyEdit, defectMatches } from "@/lib/ingest/review";
 import { useEvents } from "@/components/app/EventsContext";
 import { loadDraft, saveDraft } from "@/lib/entry/draft";
 import { type EntryGrain, resolvePeriod, stepPeriod, periodLabel } from "@/lib/entry/period";
@@ -212,6 +212,7 @@ export default function MonthlyEntryGrid({
    */
   const updateDefect = (date: string, defectCode: string, num: number | null) => {
     setDirty(true);
+    const label = defectCols.find((d) => d.defectCode === defectCode)?.label;
     setRecords((prev) => {
       let idx = prev.findIndex((r) => r.occurredOn.start === date && (r.size ?? "__line__") === rowKey);
       let next = prev;
@@ -226,12 +227,16 @@ export default function MonthlyEntryGrid({
             ? r
             : {
                 ...r,
-                defects: r.defects.filter((d) => d.raw !== defectCode && d.raw.toUpperCase() !== defectCode.toUpperCase()),
+                defects: r.defects.filter((d) => !defectMatches(d.raw, defectCode, label)),
                 extractedBy: "direct-entry",
               },
         );
       } else {
-        next = applyEdit(next, idx, defectCode, num);
+        // Edit the existing entry under ITS OWN raw spelling (which may be the
+        // Excel header, not the code) so applyEdit updates rather than inserts
+        // a second entry for the same physical column.
+        const existing = next[idx].defects.find((d) => defectMatches(d.raw, defectCode, label));
+        next = applyEdit(next, idx, existing?.raw ?? defectCode, num);
       }
 
       if (rejectedStated.current.has(rowId(date))) return next;
@@ -438,13 +443,7 @@ export default function MonthlyEntryGrid({
 
   const defectValue = (rec: StageDayRecord | undefined, d: TemplateDefect): number | null => {
     if (!rec) return null;
-    const hit = rec.defects.find(
-      (x) =>
-        x.raw === d.defectCode ||
-        x.raw === d.label ||
-        x.raw.toUpperCase() === d.defectCode.toUpperCase() ||
-        x.raw.toUpperCase() === d.label.toUpperCase(),
-    );
+    const hit = rec.defects.find((x) => defectMatches(x.raw, d.defectCode, d.label));
     return hit != null ? hit.value : null;
   };
 

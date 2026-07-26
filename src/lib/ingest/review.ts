@@ -16,6 +16,20 @@ export function defectKey(raw: string): string {
   return collapseKey(raw) || raw.trim().toUpperCase();
 }
 
+/**
+ * Does a stored defect entry refer to the same column as this grid cell?
+ *
+ * A stored `raw` may be the Excel header ("Coagulant"), the canonical code
+ * ("COAG"), or an alias spelling — so a cell must be matched against BOTH its
+ * code and its schema label, through the one normalizer. Matching by raw string
+ * equality anywhere else means the grid renders the cell empty and an edit
+ * appends a duplicate entry instead of updating the existing one.
+ */
+export function defectMatches(raw: string, ...candidates: (string | null | undefined)[]): boolean {
+  const key = defectKey(raw);
+  return candidates.some((c) => !!c && defectKey(c) === key);
+}
+
 export type RowStatus = "ok" | "corrected" | "invalid";
 
 export interface ReviewRow {

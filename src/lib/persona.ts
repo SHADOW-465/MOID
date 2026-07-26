@@ -23,7 +23,7 @@ export interface PersonaDef {
   navAllow: readonly NavKey[];
 }
 
-/** Full sidebar — every key used by AppShell NAV_SECTIONS (+ clear-data for palette). */
+/** Full sidebar — every key used by AppShell NAV_SECTIONS. */
 const FULL_NAV: readonly NavKey[] = [
   "dashboard",
   "workbooks",
@@ -41,7 +41,6 @@ const FULL_NAV: readonly NavKey[] = [
   "audit",
   "schema",
   "settings",
-  "clear-data",
 ];
 
 /**
@@ -76,21 +75,22 @@ export const PERSONAS: Record<PersonaId, PersonaDef> = {
       "reports",
       "capa",
       "ask",
-      "clear-data",
-    ],
+        ],
   },
   operator: {
     id: "operator",
     label: "Data Entry Operator",
     title: "Entry & review",
     initial: "D",
-    homeHref: "/",
+    // Lands where the work is. A GM opens the plant's state; an operator opens
+    // the form they are about to fill.
+    homeHref: "/data-entry",
     // Hide under Management: Data Schema, Settings.
     navAllow: [
-      "dashboard",
-      "workbooks",
       "data-entry",
       "staging",
+      "workbooks",
+      "dashboard",
       "stage",
       "size",
       "defect",
@@ -101,8 +101,7 @@ export const PERSONAS: Record<PersonaId, PersonaDef> = {
       "capa",
       "ask",
       "audit",
-      "clear-data",
-    ],
+        ],
   },
 };
 

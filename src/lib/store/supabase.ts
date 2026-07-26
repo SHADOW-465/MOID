@@ -140,6 +140,30 @@ export class SupabaseEventStore implements EventStore {
     });
   }
 
+  async all(filter: EventFilter = {}): Promise<Event[]> {
+    const PAGE = 1000;
+    const rows: any[] = [];
+    for (let from = 0; ; from += PAGE) {
+      let q = this.client.from("events").select("*");
+      if (filter.eventType) q = q.eq("event_type", filter.eventType);
+      if (filter.ingestionId) q = q.eq("ingestion_id", filter.ingestionId);
+      const { data, error } = await q
+        .order("recorded_at", { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      const batch = data || [];
+      rows.push(...batch);
+      if (batch.length < PAGE) break;
+    }
+    return rows.map(mapRowToEvent).filter((e) => {
+      if (filter.stageId && stageOf(e) !== filter.stageId) return false;
+      if (filter.defectCode && defectOf(e) !== filter.defectCode) return false;
+      if (filter.from && e.occurredOn.start < filter.from) return false;
+      if (filter.to && e.occurredOn.end > filter.to) return false;
+      return true;
+    });
+  }
+
   async byIds(ids: string[]): Promise<Event[]> {
     if (ids.length === 0) return [];
     const out: Event[] = [];
@@ -152,6 +176,16 @@ export class SupabaseEventStore implements EventStore {
       out.push(...(rows || []).map(mapRowToEvent));
     }
     return out;
+  }
+
+  async purge(eventIds: string[]): Promise<number> {
+    let n = 0;
+    for (const idsBatch of chunk(eventIds, 100)) {
+      const { error } = await this.client.from("events").delete().in("event_id", idsBatch);
+      if (error) throw error;
+      n += idsBatch.length;
+    }
+    return n;
   }
 }
 

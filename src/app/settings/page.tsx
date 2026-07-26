@@ -384,7 +384,7 @@ export default function SettingsPage() {
               {section === "registry" && (
                 <div className="settings-table-wrap">
                   <p className="settings-field-help" style={{ marginBottom: 12 }}>
-                    Active client definitions used for parsing validation. Managed from verified MOD catalog — not editable here.
+                    The stages, defects and sizes MOID reads your files with. Edit them on Plant Schema.
                   </p>
                   <table className="settings-table">
                     <thead>

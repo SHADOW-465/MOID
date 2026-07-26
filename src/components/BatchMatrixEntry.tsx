@@ -160,6 +160,10 @@ export default function BatchMatrixEntry({
   const [prefillNote, setPrefillNote] = useState<string | null>(null);
   /** Row expanded for preview in the shift list (click the row to toggle). */
   const [previewId, setPreviewId] = useState<string | null>(null);
+  /** Filter over the defect tiles — 21 codes is a lot to scan on a shop floor. */
+  const [defectFilter, setDefectFilter] = useState("");
+  /** Operator asked to see the defect grid even though Reject is still 0. */
+  const [defectsForced, setDefectsForced] = useState(false);
   /**
    * Row currently loaded into the form for revision. Save replaces this row in
    * place instead of appending a new one — and re-ingesting supersedes the
@@ -292,6 +296,7 @@ export default function BatchMatrixEntry({
     setActiveDefects(resolvedDefects);
   }, [resolvedDefects]);
   const usingModDefects = !!(templateDefects[stageId]?.length);
+
   const hideDefects = MATRIX_STAGES[macro].hideDefects;
   const parsed = useMemo(() => parseBatchId(batchId), [batchId]);
   const sizeCanon = useMemo(() => toCanonicalSize(size), [size]);
@@ -337,6 +342,23 @@ export default function BatchMatrixEntry({
     () => Object.values(defects).reduce((a, b) => a + (Number(b) || 0), 0),
     [defects],
   );
+  /**
+   * The defect list is the heaviest thing on this screen (21 tiles at Visual).
+   * It only matters once something was rejected, so it stays shut until then —
+   * an operator logging a clean batch never sees it. Already-entered defects
+   * keep it open so nothing can hide.
+   */
+  const defectsOpen = defectsForced || reject > 0 || defectSum > 0;
+
+  /** Filtered tiles, carrying their ORIGINAL index so the numbering keeps
+   *  matching the schema order the operator counts by. */
+  const visibleDefects = useMemo(() => {
+    const q = defectFilter.trim().toLowerCase();
+    return activeDefects
+      .map((d, i) => ({ d, i }))
+      .filter(({ d }) => !q || d.key.toLowerCase().includes(q) || (d.name ?? "").toLowerCase().includes(q));
+  }, [activeDefects, defectFilter]);
+
   // Balance: Checked = Accept + Hold + Reject (Primary omits Hold; Secondary is qty-only).
   const sumParts = isSecondary
     ? checked
@@ -641,10 +663,42 @@ export default function BatchMatrixEntry({
     setBatchManual(false);
   }
 
-  function deleteLocal(id: string) {
+  /**
+   * Remove a logged batch. A synced row also has to leave the LEDGER — deleting
+   * it from the local shift list alone left the numbers on the dashboard with
+   * no row left to explain them.
+   */
+  async function deleteLocal(id: string) {
+    const rec = saved.find((b) => b.id === id);
+    if (!rec) return;
+    const synced = rec.synced;
+    if (
+      !confirm(
+        synced
+          ? `Permanently delete batch ${rec.batchId}?\n\n` +
+              `${rec.date} · ${rec.processName} · ${rec.size}\n\n` +
+              "It is already synced, so this erases it from the ledger too — the numbers leave " +
+              "the dashboard and the audit trail. This cannot be undone."
+          : `Remove batch ${rec.batchId} from the current shift list?`,
+      )
+    )
+      return;
+
     if (id === editingId) setEditing(null);
     if (id === previewId) setPreviewId(null);
-    if (!confirm("Remove this batch record from the current shift list?")) return;
+
+    if (synced) {
+      try {
+        const qs = new URLSearchParams({ date: rec.date, shift: rec.shift, source: "Direct Entry" });
+        const res = await fetch(`/api/manual-entries?${qs}`, { method: "DELETE" });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Delete failed");
+        refreshEvents().catch(console.error);
+        onSynced?.();
+      } catch (e) {
+        setErr(`Removed from this shift list, but the ledger delete failed: ${e instanceof Error ? e.message : "unknown error"}`);
+      }
+    }
+
     const next = saved.filter((b) => b.id !== id);
     setSaved(next);
     persistShift(next);
@@ -1000,19 +1054,49 @@ export default function BatchMatrixEntry({
         `}</style>
       </div>
 
-      {/* Defect grid */}
-      {!hideDefects && (
+      {/* Defect grid — collapsed until there is something to explain. */}
+      {!hideDefects && !defectsOpen && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: "14px 16px",
+            borderRadius: 10,
+            border: "1px dashed var(--border-strong)",
+            background: "var(--surface-2)",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            fontSize: 13,
+          }}
+        >
+          <span className="muted">
+            No rejects yet — enter a Reject quantity above and the defect list opens here.
+          </span>
+          <button type="button" onClick={() => setDefectsForced(true)} style={{ ...btnGhost, marginLeft: "auto" }}>
+            Open defect list
+          </button>
+        </div>
+      )}
+
+      {!hideDefects && defectsOpen && (
         <div style={{ marginBottom: 16, padding: 16, borderRadius: 10, border: "1px solid var(--border)", background: "var(--surface-2)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border)", paddingBottom: 10, marginBottom: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border)", paddingBottom: 10, marginBottom: 12, gap: 12, flexWrap: "wrap" }}>
             <div>
               <div style={{ fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
                 <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--status-bad)", display: "inline-block" }} />
-                Log Rejection Defects
+                Which defects made up those {reject || 0} rejects?
               </div>
               <div className="small" style={{ color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600, fontSize: 10 }}>
                 {processLabel(macro, micro)}
               </div>
             </div>
+            <input
+              value={defectFilter}
+              onChange={(e) => setDefectFilter(e.target.value)}
+              placeholder={`Find a defect (${activeDefects.length})`}
+              style={{ ...inp, width: 190, marginLeft: "auto" }}
+              aria-label="Filter defect list"
+            />
             <span
               style={{
                 ...badge(defectMismatch ? "amber" : defectSum === reject && reject > 0 ? "green" : "blue"),
@@ -1038,7 +1122,7 @@ export default function BatchMatrixEntry({
               alignItems: "stretch",
             }}
           >
-            {activeDefects.map((d, i) => {
+            {visibleDefects.map(({ d, i }) => {
               const val = defects[d.key] || 0;
               const active = val > 0;
               // Schema-sourced names are shown verbatim. defectDisplayLabel
@@ -1162,6 +1246,7 @@ export default function BatchMatrixEntry({
         </div>
       )}
 
+
       {/* A12 — defect sum ≠ Rejected: choose before save (never silent fix) */}
       {a12 && (
         <div
@@ -1221,6 +1306,62 @@ export default function BatchMatrixEntry({
       {msg && (
         <div style={{ marginBottom: 12, padding: "10px 12px", borderRadius: 8, background: "var(--positive-weak)", color: "var(--positive)", fontSize: 13 }}>{msg}</div>
       )}
+
+      {/* Sticky save bar. The header Save is far from the last field an
+          operator touches — on a small shop-floor screen it is off-screen
+          entirely — so the commit action follows them down the form. */}
+      <div
+        style={{
+          position: "sticky",
+          bottom: 0,
+          zIndex: 5,
+          margin: "16px -16px -16px",
+          padding: "12px 16px",
+          borderTop: "1px solid var(--border-strong)",
+          background: "var(--surface)",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>
+          {checked === 0 ? (
+            <>Enter the {qtyLabel} quantity to save.</>
+          ) : (
+            <>
+              <strong style={{ fontFamily: "var(--font-mono)" }}>{batchId}</strong> · {processLabel(macro, micro)} ·{" "}
+              {size} · {qtyLabel} {checked}
+              {!isSecondary && defectMismatch && (
+                <span style={{ color: "var(--status-bad)", fontWeight: 700 }}>
+                  {" "}· defects {defectSum} of {reject}
+                </span>
+              )}
+            </>
+          )}
+        </div>
+        {editingId && (
+          <button type="button" onClick={cancelEdit} style={btnGhost}>
+            Cancel edit
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={submitForm}
+          disabled={saving || !!a12 || checked === 0}
+          style={{
+            ...btnPrimary,
+            marginLeft: "auto",
+            padding: "10px 22px",
+            fontSize: 14,
+            fontWeight: 700,
+            opacity: saving || !!a12 || checked === 0 ? 0.5 : 1,
+            cursor: saving || !!a12 || checked === 0 ? "not-allowed" : "pointer",
+          }}
+        >
+          {saving ? "Saving…" : editingId ? "Update batch entry" : "Save batch entry"}
+        </button>
+      </div>
 
       {/* Shift list */}
       <div>
@@ -1313,7 +1454,8 @@ export default function BatchMatrixEntry({
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); deleteLocal(rec.id); }}
-                          style={{ background: "transparent", border: "none", color: "var(--status-bad)", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
+                          style={btnDanger}
+                          title={rec.synced ? "Erase from the ledger too" : "Remove from this shift list"}
                         >
                           Delete
                         </button>
@@ -1533,6 +1675,19 @@ const btnPrimary: React.CSSProperties = {
   borderRadius: 9999,
   padding: "10px 24px",
   fontSize: 13,
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
+/** Destructive actions must not read as ordinary links — an erase and an edit
+ *  should never look the same at a glance. */
+const btnDanger: React.CSSProperties = {
+  background: "transparent",
+  color: "var(--status-bad)",
+  border: "1px solid color-mix(in srgb, var(--status-bad) 45%, transparent)",
+  borderRadius: 9999,
+  padding: "4px 12px",
+  fontSize: 12,
   fontWeight: 700,
   cursor: "pointer",
 };

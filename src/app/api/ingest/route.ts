@@ -7,8 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { emitMany, type StageDayRecord } from "@/lib/ingest/emit";
 import { checkRecord } from "@/lib/entry/validate-entry";
 import { massBalanceIssues } from "@/lib/ingest/mass-balance";
-import { getStores, shouldUseSupabase } from "@/lib/store";
-import { createServerClient } from "@/lib/supabase";
+import { getStores } from "@/lib/store";
 
 interface IngestBody {
   ingestionId: string;
@@ -28,61 +27,6 @@ export async function POST(req: NextRequest) {
     const records = body.records ?? [];
     if (records.length === 0) {
       return NextResponse.json({ error: "No records to ingest." }, { status: 400 });
-    }
-
-    // Replace prior direct-entry rows that this payload is superseding.
-    // EventStore has no delete(); we talk to Supabase only when configured.
-    // Memory-store runs skip this — CorrectionEvent supersede still keeps
-    // re-edits correct without pruning stale rows.
-    //
-    // Batch matrix (customFields.batch present): replace only matching
-    // date · stage · size · batch so multi-batch shifts don't wipe each other.
-    // Period grid (no batch): keep the prior full date + sheet replace.
-    const isDirectEntry = records.some(r => r.extractedBy === "direct-entry") && shouldUseSupabase();
-    if (isDirectEntry) {
-      const db = createServerClient();
-      // Domain fields live on payload JSON (stageId/size/batchNo/customFields),
-      // not top-level columns — see getPayload() / mapRowToEvent().
-      const { data: rows } = await db
-        .from("events")
-        .select("event_id, occurred_on, provenance, is_direct_entry, payload")
-        .eq("is_direct_entry", true);
-
-      const hasBatchKeys = records.some((r) => {
-        const b = r.customFields?.batch ?? r.customFields?.batchId;
-        return typeof b === "string" && b.trim().length > 0;
-      });
-
-      const replaceKeys = new Set(
-        records.map((r) => {
-          const batch = String(r.customFields?.batch ?? r.customFields?.batchId ?? "").trim();
-          const size = r.size ?? "";
-          return `${r.occurredOn.start}|${r.stageId}|${size}|${batch}`;
-        }),
-      );
-
-      const date = records[0].occurredOn.start;
-      const shift = records[0].source.sheet;
-
-      const toDelete = (rows || []).filter((e) => {
-        if (hasBatchKeys) {
-          const payload = (e as any).payload || {};
-          const cf = payload.customFields || {};
-          const batch = String(cf.batch ?? cf.batchId ?? payload.batchNo ?? "").trim();
-          const size = payload.size ?? "";
-          const stageId = payload.stageId ?? "";
-          const day = e.occurred_on?.start;
-          return replaceKeys.has(`${day}|${stageId}|${size}|${batch}`);
-        }
-        return e.occurred_on?.start === date && e.provenance?.sheet === shift;
-      });
-
-      const ids = toDelete.map((e) => e.event_id);
-
-      if (ids.length > 0) {
-        const { error: delErr } = await db.from("events").delete().in("event_id", ids);
-        if (delErr) throw delErr;
-      }
     }
 
     // Attach comments to records (keyed by stageId or by row index)
@@ -166,6 +110,14 @@ export async function POST(req: NextRequest) {
           evidenceEventIds: matchingEventIds.length > 0 ? matchingEventIds : [`conflict-${c.stageId}-${c.day}`]
         });
 
+        // The source cell of the value that conflicts. Provenance.cells is
+        // `.min(1)`, so an empty array threw here and 500'd the whole ingest —
+        // meaning every correction to an already-saved Rejected value failed.
+        const source = recordsWithComments.find(
+          (r) => r.stageId === c.stageId && (r.size ?? null) === c.size && r.occurredOn.start === c.day,
+        );
+        const cell = source?.rejected?.cell || `${c.stageId}!${c.day}`;
+
         return Finding.parse({
           findingId,
           schemaVersion: "1.0.0",
@@ -177,14 +129,14 @@ export async function POST(req: NextRequest) {
           detail: `Existing rejected count is ${c.existing}, but incoming uploaded/entered count is ${c.incoming}.`,
           evidence: {
             eventIds: matchingEventIds.length > 0 ? matchingEventIds : [`conflict-${c.stageId}-${c.day}`],
-            cells: [c.size ? `${c.size}!` : "A1"],
+            cells: [cell],
             provenance: {
-              file: body.fileName,
-              fileHash: "local",
-              sheet: c.size || "Unknown",
-              tableId: "t1",
-              cells: [],
-              headerPath: [],
+              file: source?.source.file ?? body.fileName,
+              fileHash: source?.source.fileHash ?? "local",
+              sheet: source?.source.sheet ?? c.size ?? "Unknown",
+              tableId: source?.source.tableId ?? "t1",
+              cells: [cell],
+              headerPath: ["Rejected Qty"],
               rowLabel: null,
               formulaText: null,
               cachedValue: null,
@@ -228,10 +180,35 @@ export async function POST(req: NextRequest) {
     const events = emitMany(toWrite, activeRegistry);
 
     // Upsert reconcile: when a re-ingest changes a value, supersede the prior
-    // event for the same stage·day·size·kind so totals UPDATE instead of doubling.
-    // Byte-identical re-ingests fall through to content-hash dedup (no churn).
+    // event for the same stage·day·size·batch·kind so totals UPDATE instead of
+    // doubling. Byte-identical re-ingests fall through to content-hash dedup.
+    //
+    // A *removal* (operator clears a defect, or deletes a row) has no incoming
+    // event to point at, so it supersedes with a null replacement. That is what
+    // used to require a hard DELETE against the events table — which broke the
+    // append-only guarantee, ran only when Supabase was configured, and pruned
+    // just records[0]'s date, leaving the rest of a month-long save behind.
+    //
+    // `slice` is the (day · stage · size · batch · sheet) cell a payload owns.
+    // Only direct entry claims a slice: re-saving a Data Entry day must never
+    // supersede events extracted from a workbook for that same day.
     const PRIMARY = new Set(["production", "inspection", "rejection"]);
-    const sk = (e: any) => `${e.eventType}|${e.stageId}|${e.occurredOn.start}|${e.disposition ?? ""}|${e.defectCode ?? e.defectCodeRaw ?? ""}|${e.size ?? ""}`;
+    const sk = (e: any) => `${e.eventType}|${e.stageId}|${e.occurredOn.start}|${e.disposition ?? ""}|${e.defectCode ?? e.defectCodeRaw ?? ""}|${e.size ?? ""}|${e.batchNo ?? ""}`;
+    const sliceOf = (e: any) =>
+      `${e.occurredOn.start}|${e.stageId ?? ""}|${e.size ?? ""}|${e.batchNo ?? ""}|${e.provenance?.sheet ?? ""}`;
+    // Built from the RECORDS, not the emitted events: a row whose Rejected was
+    // just cleared to nothing emits no rejection event, but it still owns its
+    // slice — that is exactly the row whose stale event must be superseded.
+    const ownedSlices = new Set(
+      recordsWithComments
+        .filter((r) => r.extractedBy === "direct-entry")
+        .map((r) => {
+          const cf = r.customFields ?? {};
+          const batch = String(cf.batch ?? cf.batchId ?? cf.batchNo ?? "").trim();
+          return `${r.occurredOn.start}|${r.stageId}|${r.size ?? ""}|${batch}|${r.source.sheet}`;
+        }),
+    );
+
     const incomingByKey = new Map<string, string[]>();
     for (const e of events as any[]) {
       if (!PRIMARY.has(e.eventType)) continue;
@@ -241,13 +218,23 @@ export async function POST(req: NextRequest) {
     const { hashEvent } = require("@/lib/contract/hash");
     const { CorrectionEvent } = require("@/lib/contract/d1");
     const corrections: any[] = [];
+    const supersede = (e: any, replacementEventId: string | null, reason: string) => {
+      const payload = { supersedesEventId: e.eventId, replacementEventId, reason, authorisedBy: "ingest:auto-reconcile" };
+      const eventId = hashEvent({ eventType: "correction", occurredOn: e.occurredOn, provenance: e.provenance, payload });
+      corrections.push(CorrectionEvent.parse({ eventId, schemaVersion: "1.0.0", ingestionId: body.ingestionId, occurredOn: e.occurredOn, provenance: e.provenance, confidence: { score: 1, basis: "exact" }, extractedBy: "ingest:auto-reconcile", recordedAt: new Date().toISOString(), supersededBy: null, eventType: "correction", ...payload }));
+    };
     for (const e of existingEvents as any[]) {
       if (!PRIMARY.has(e.eventType)) continue;
       const ids = incomingByKey.get(sk(e));
-      if (!ids || ids.includes(e.eventId)) continue; // not re-ingested, or identical → keep as-is
-      const payload = { supersedesEventId: e.eventId, replacementEventId: ids[0], reason: "Re-ingest updated this value", authorisedBy: "ingest:auto-reconcile" };
-      const eventId = hashEvent({ eventType: "correction", occurredOn: e.occurredOn, provenance: e.provenance, payload });
-      corrections.push(CorrectionEvent.parse({ eventId, schemaVersion: "1.0.0", ingestionId: body.ingestionId, occurredOn: e.occurredOn, provenance: e.provenance, confidence: { score: 1, basis: "exact" }, extractedBy: "ingest:auto-reconcile", recordedAt: new Date().toISOString(), supersededBy: null, eventType: "correction", ...payload }));
+      if (ids) {
+        if (ids.includes(e.eventId)) continue; // identical → keep as-is
+        supersede(e, ids[0], "Re-ingest updated this value");
+        continue;
+      }
+      // Not in the payload. Only a removal if this payload owns the slice.
+      if (e.extractedBy !== "direct-entry") continue;
+      if (!ownedSlices.has(sliceOf(e))) continue;
+      supersede(e, null, "Cleared by re-entry — value removed from this slice");
     }
     const { inserted, deduped } = await store.append([...events, ...corrections]);
 

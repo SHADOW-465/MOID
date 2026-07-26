@@ -37,7 +37,16 @@ export interface EventStore {
   append(events: Event[]): Promise<{ inserted: number; deduped: number }>;
   /** Effective set = all events minus those superseded by a Correction. */
   effective(filter?: EventFilter): Promise<Event[]>;
+  /** Every event, superseded ones included. Needed to purge an entry cleanly. */
+  all(filter?: EventFilter): Promise<Event[]>;
   byIds(ids: string[]): Promise<Event[]>;
+  /**
+   * Erase events outright. This is the ONE exception to the append-only rule:
+   * a normal correction supersedes, leaving history intact, but test data has
+   * to be able to leave without a trace. Only ever reached from an explicit
+   * operator "delete" on the Data Entry ledger.
+   */
+  purge(eventIds: string[]): Promise<number>;
 }
 
 export type FindingWithState = FindingT & { state: FindingStateT };
