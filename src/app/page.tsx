@@ -8,6 +8,7 @@ import { useEvents } from "@/components/app/EventsContext";
 import { useRegistry } from "@/components/app/RegistryContext";
 import Icon from "@/components/editorial/Icon";
 import FloatingDetailModal, { type SourceRow, type SourceMetricKind } from "@/components/FloatingDetailModal";
+import ChartBuilder from "@/components/ChartBuilder";
 import CapaComposerModal from "@/components/CapaComposerModal";
 import { draftFromRecommendation, blankDraft, titleFromText, type CapaRecord } from "@/lib/capa-store";
 import { useTweaks } from "@/components/editorial/TweaksContext";
@@ -1137,6 +1138,22 @@ export default function Dashboard() {
           </div>
           </>
           )}
+
+          {/* Ask the ledger your own question. Inherits the topbar's date range
+              and stage View so it always answers within the same window as the
+              tiles above it. */}
+          <div style={{ marginTop: "var(--gap-grid)" }}>
+            <ChartBuilder
+              events={events ?? []}
+              storageId="dashboard"
+              base={{ dateFrom: scope.dateFrom, dateTo: scope.dateTo, stageIds: scope.stageIds }}
+              sub={
+                scope.dateFrom && scope.dateTo
+                  ? `Anything the tiles above don't answer. Follows the top bar's range (${scope.dateFrom} to ${scope.dateTo}).`
+                  : "Anything the tiles above don't answer. Follows the range and View in the top bar."
+              }
+            />
+          </div>
         </div>
       )}
 

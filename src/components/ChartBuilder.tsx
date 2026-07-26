@@ -1,16 +1,19 @@
 "use client";
 
-// Per-workbook chart builder.
+// Chart builder — shared by Imported Files (one workbook) and the Dashboard
+// (the whole ledger).
 //
 // The GM's ask was "let me pick the columns I care about and get a graph for
 // those". Excel row/column selection doesn't translate — by the time a sheet is
 // on the ledger it's events, not cells — so the equivalent question is asked in
 // the plant's own terms instead: WHAT number, broken down BY what, filtered to
-// which stages/sizes. Every combination is answered from this file's events by
-// the same deterministic selectors the Dashboard uses; nothing new is computed
-// here, so a chart can never disagree with the KPI above it.
+// which stages/sizes. Every combination is answered by the same deterministic
+// selectors the KPI tiles use; nothing new is computed here, so a built chart
+// can never disagree with the numbers above it.
 //
-// Charts the GM pins are remembered per file in localStorage.
+// On the Dashboard the topbar's date range and stage View are inherited as a
+// `baseScope`, so a built chart always answers the same question the rest of
+// the page is answering. Pinned charts are remembered per surface.
 
 import { useEffect, useMemo, useState } from "react";
 import { Card, Empty, BarsH, LineChart, Donut } from "@/components/app/widgets";
@@ -71,10 +74,26 @@ export function describeSpec(spec: ChartSpec): string {
   return `${metric} · ${group}`;
 }
 
-function scopeFor(spec: ChartSpec) {
+/** Scope filters the host page already applies (Dashboard topbar range/View). */
+export interface BaseScope {
+  dateFrom?: string;
+  dateTo?: string;
+  stageIds?: string[];
+}
+
+export function scopeFor(spec: ChartSpec, base?: BaseScope) {
+  // The builder's own stage picks NARROW the inherited View; they never widen
+  // it, or a chart could show a stage the page above it has filtered out.
+  const own = spec.stageIds.length ? spec.stageIds : undefined;
+  const inherited = base?.stageIds?.length ? base.stageIds : undefined;
+  const stageIds =
+    own && inherited ? own.filter((s) => inherited.includes(s)) : (own ?? inherited);
+
   return {
     grain: spec.group === "time" ? spec.grain : ("month" as Grain),
-    stageIds: spec.stageIds.length ? spec.stageIds : undefined,
+    dateFrom: base?.dateFrom,
+    dateTo: base?.dateTo,
+    stageIds,
     sizes: spec.sizes.length ? spec.sizes : undefined,
   };
 }
@@ -91,8 +110,8 @@ export function bestGrain(events: Event[]): Grain {
   return "day";
 }
 
-function ChartBody({ events, spec }: { events: Event[]; spec: ChartSpec }) {
-  const scope = scopeFor(spec);
+function ChartBody({ events, spec, base }: { events: Event[]; spec: ChartSpec; base?: BaseScope }) {
+  const scope = scopeFor(spec, base);
   const fmt = fmtValue(spec.metric);
   const reg = DERIVED_REGISTRY;
 
@@ -183,20 +202,33 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
   );
 }
 
-export default function WorkbookCharts({
+export default function ChartBuilder({
   events,
-  fileName,
+  storageId,
+  base,
+  title = "Build your own chart",
+  sub = "Pick what you want to see. Pin the ones you want to keep.",
 }: {
   events: Event[];
-  fileName: string;
+  /** Namespaces the pinned charts — one workbook, or the whole dashboard. */
+  storageId: string;
+  base?: BaseScope;
+  title?: string;
+  sub?: string;
 }) {
-  const storageKey = `moid_wb_charts:${fileName}`;
+  const storageKey = `moid_charts:${storageId}`;
 
-  const stageOptions = useMemo(
-    () => byStage(events, { grain: "month" }, DERIVED_REGISTRY).filter((s) => s.checked > 0 || s.rejected > 0),
-    [events],
+  /** Options come from the events AS THE HOST PAGE SCOPED THEM, so the chips
+   *  can't offer a stage or size the current range has nothing for. */
+  const optionScope = useMemo(
+    () => ({ grain: "month" as Grain, dateFrom: base?.dateFrom, dateTo: base?.dateTo, stageIds: base?.stageIds }),
+    [base?.dateFrom, base?.dateTo, base?.stageIds],
   );
-  const sizeOptions = useMemo(() => bySize(events, { grain: "month" }), [events]);
+  const stageOptions = useMemo(
+    () => byStage(events, optionScope, DERIVED_REGISTRY).filter((s) => s.checked > 0 || s.rejected > 0),
+    [events, optionScope],
+  );
+  const sizeOptions = useMemo(() => bySize(events, optionScope), [events, optionScope]);
   const defaultGrain = useMemo(() => bestGrain(events), [events]);
 
   const [draft, setDraft] = useState<ChartSpec>(() => ({
@@ -246,10 +278,7 @@ export default function WorkbookCharts({
 
   return (
     <>
-      <Card
-        title="Build your own chart"
-        sub="Pick what you want to see from this file. Pin the ones you want to keep."
-      >
+      <Card title={title} sub={sub}>
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <Row label="Show me">
             {METRICS.map((m) => (
@@ -336,7 +365,7 @@ export default function WorkbookCharts({
                 Pin this chart
               </button>
             </div>
-            <ChartBody events={events} spec={draft} />
+            <ChartBody events={events} spec={draft} base={base} />
           </div>
         </div>
       </Card>
@@ -356,7 +385,7 @@ export default function WorkbookCharts({
                   .join(" · ") || "All stages and sizes"
               }
             >
-              <ChartBody events={events} spec={spec} />
+              <ChartBody events={events} spec={spec} base={base} />
               <button
                 type="button"
                 onClick={() => persist(pinned.filter((p) => p.id !== spec.id))}

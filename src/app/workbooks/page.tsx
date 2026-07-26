@@ -11,7 +11,7 @@ import AppShell from "@/components/app/AppShell";
 import { Card, Empty, Kpi, BarsH, LineChart, pct } from "@/components/app/widgets";
 import PageLoader from "@/components/app/PageLoader";
 import FloatingDetailModal, { type SourceRow, type SourceMetricKind } from "@/components/FloatingDetailModal";
-import WorkbookCharts, { bestGrain } from "@/components/WorkbookCharts";
+import ChartBuilder, { bestGrain } from "@/components/ChartBuilder";
 import Icon from "@/components/editorial/Icon";
 import { useEvents } from "@/components/app/EventsContext";
 import {
@@ -524,7 +524,11 @@ export default function WorkbooksPage() {
 
                     {/* Ask this file your own question, rather than only the
                         four we picked above. */}
-                    <WorkbookCharts events={fileEvents} fileName={selectedFile ?? "workbook"} />
+                    <ChartBuilder
+                      events={fileEvents}
+                      storageId={`wb:${selectedFile ?? "workbook"}`}
+                      sub="Pick what you want to see from this file. Pin the ones you want to keep."
+                    />
                   </>
                 )}
               </>
