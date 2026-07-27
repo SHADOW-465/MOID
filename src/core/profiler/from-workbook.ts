@@ -6,10 +6,14 @@ import {
   normalizeHeaders,
   colIndexToLabel,
 } from "@/core/workbook/header";
+import { chooseSplit, type ColumnInput, type BlockEvidence } from "./split-regions";
 import type { ProfilingCell, ProfilingTable } from "./types";
 
 const DEFAULT_MAX_SAMPLE_ROWS = 60;
 const DATE_HEADER_RE = /\b(date|day)\b/i;
+
+const isNumericish = (v: unknown) =>
+  typeof v === "number" ? Number.isFinite(v) : typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v.replace(/[, ]/g, "")));
 
 /**
  * Build one ProfilingTable per TABLE REGION of a workbook, reusing the existing
@@ -90,11 +94,60 @@ export function buildProfilingTables(
       if (!dead && start === null) start = c;
       if (dead && start !== null) { runs.push({ start, end: c }); start = null; }
     }
-    const regions = runs.filter((r) => {
+    const gapRegions = runs.filter((r) => {
       let count = 0;
       for (let c = r.start; c < r.end; c++) if (named(c)) count++;
       return count >= 2;
     });
+
+    // The sheet's date column (usually col A) — inherited by regions without one.
+    let dateIdx = -1;
+    for (let c = 0; c < width; c++) {
+      if (named(c) && DATE_HEADER_RE.test(normalizedHeader[c])) { dateIdx = c; break; }
+    }
+
+    // ── Stage-block split ────────────────────────────────────────────────────
+    // A blank column is not the only thing separating two stages. Sheets like
+    // ASSEMBLY pack Visual│Balloon│Valve│Final side by side with NO gap, and
+    // their bare "REJ QTY"/"REJ %" headers only mean something relative to the
+    // stage on their left. Splitting each gap-region further by stage keeps one
+    // stage per region — which is what everything downstream already assumes.
+    const columnInput = (r: { start: number; end: number }): ColumnInput[] => {
+      const out: ColumnInput[] = [];
+      for (let c = r.start; c < r.end; c++) {
+        if (!named(c)) continue;
+        out.push({
+          index: c,
+          header: normalizedHeader[c],
+          hasNumericData: dataRows.some((row) => isNumericish(row?.[c])),
+        });
+      }
+      return out;
+    };
+
+    // Candidate readings are SCORED against the sheet's own arithmetic rather
+    // than trusting the header text — the reading under which checked =
+    // accepted + rework + rejected (and the stage cascade) holds on the most
+    // rows is the true one. Header heuristics only propose; the numbers decide.
+    const regions: {
+      start: number;
+      end: number;
+      columns: number[];
+      stageLabel: string | null;
+      evidence: BlockEvidence | null;
+    }[] = [];
+    for (const r of gapRegions) {
+      const chosen = chooseSplit(columnInput(r), dataRows as unknown[][], { dateIndex: dateIdx });
+      chosen.blocks.forEach((block, i) => {
+        regions.push({
+          start: r.start,
+          end: r.end,
+          columns: block.columns,
+          stageLabel: block.label,
+          evidence: chosen.evidence[i] ?? null,
+        });
+      });
+    }
 
     if (regions.length <= 1) {
       // Single region — identical to the pre-split behavior (whole sheet).
@@ -105,13 +158,6 @@ export function buildProfilingTables(
       if (!hasData) continue;
       tables.push({ sheetName, tableId: "t1", regionLabel: null, header: normalizedHeader, colLetters, firstDataRow, rows });
       continue;
-    }
-
-    // ── Multi-region sheet ───────────────────────────────────────────────────
-    // The sheet's date column (usually col A) — inherited by regions without one.
-    let dateIdx = -1;
-    for (let c = 0; c < width; c++) {
-      if (named(c) && DATE_HEADER_RE.test(normalizedHeader[c])) { dateIdx = c; break; }
     }
 
     // Group-header text above the header block (e.g. the "VALVE INTEGRITY" band),
@@ -129,13 +175,8 @@ export function buildProfilingTables(
     };
 
     regions.forEach((r, i) => {
-      const cols: number[] = [];
-      let hasDate = false;
-      for (let c = r.start; c < r.end; c++) {
-        if (!named(c)) continue;
-        if (DATE_HEADER_RE.test(normalizedHeader[c])) hasDate = true;
-        cols.push(c);
-      }
+      const cols = [...r.columns];
+      const hasDate = cols.some((c) => DATE_HEADER_RE.test(normalizedHeader[c]));
       if (!hasDate && dateIdx >= 0 && !cols.includes(dateIdx)) cols.unshift(dateIdx);
 
       const rows: ProfilingCell[][] = dataRows.map((_, rIdx) => cols.map((cIdx) => readCell(rIdx, cIdx)));
@@ -144,7 +185,10 @@ export function buildProfilingTables(
       tables.push({
         sheetName,
         tableId: `t${i + 1}`,
-        regionLabel: labelFor(r),
+        // A stage word found in the block's own headers beats the band row
+        // above it: on a packed sheet the band spans every stage at once.
+        regionLabel: r.stageLabel ?? labelFor(r),
+        evidence: r.evidence,
         header: cols.map((c) => normalizedHeader[c]),
         colLetters: cols.map((c) => colLetters[c]),
         firstDataRow,

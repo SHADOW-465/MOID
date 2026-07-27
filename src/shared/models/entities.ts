@@ -30,6 +30,21 @@ export const MappingProposal = z.object({
   resolvedBy: ResolvedBy,
   reason: z.string(),
   alternatives: z.array(ProposalAlternative),
+  /**
+   * How well this region's reading satisfies the sheet's OWN arithmetic —
+   * attached to the region's stage proposal. This is what a steward should
+   * actually verify against: not whether a header "looks like" Checked, but
+   * whether reading it that way makes the sheet add up. Optional because only
+   * region-level proposals carry it, and only when something was checkable.
+   */
+  evidence: z
+    .object({
+      agreement: z.number(),
+      applicable: z.number(),
+      failingRows: z.array(z.number()),
+    })
+    .nullable()
+    .optional(),
 });
 
 /** What the LLM rung returns for a whole profile (never applied silently). */

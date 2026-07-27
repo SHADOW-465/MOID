@@ -45,6 +45,13 @@ export interface ProfilingTable {
   /** Group-header text spanning this region (e.g. "VALVE INTEGRITY"), if any.
    *  The strongest stage-identity signal a region carries. */
   regionLabel?: string | null;
+  /** How well this region's reading satisfies the sheet's own arithmetic —
+   *  the evidence the chosen split is the true one, shown at verification. */
+  evidence?: {
+    agreement: number;
+    applicable: number;
+    invariants: { invariant: string; applicable: number; agreeing: number; failing: number[] }[];
+  } | null;
   header: string[];        // normalized header, by column index
   colLetters: string[];    // Excel column letter, by column index (TRUE sheet letters)
   firstDataRow: number;    // 1-based sheet row number of rows[0]

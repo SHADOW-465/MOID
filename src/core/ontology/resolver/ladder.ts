@@ -8,6 +8,7 @@
 // Every profiled column and every sheet gets a proposal — nothing is omitted.
 
 import type { ColumnProfile } from "@/core/profiler/types";
+import { roleOf } from "@/core/profiler/split-regions";
 import type { MappingProposalT } from "@/shared/models/entities";
 import type { OntologyConcept } from "@/core/ontology/global-ontology";
 import type { KnowledgeStore } from "@/core/ontology/store/knowledge-store";
@@ -22,6 +23,8 @@ export interface ResolverSheet {
   /** Group-header text spanning this region (e.g. "VALVE INTEGRITY") — the
    *  strongest stage signal a multi-table sheet carries. */
   regionLabel?: string | null;
+  /** How well this region's reading satisfies the sheet's own arithmetic. */
+  evidence?: { agreement: number; applicable: number; invariants: { failing: number[] }[] } | null;
   columns: ColumnProfile[];
 }
 
@@ -56,6 +59,38 @@ const FILE_STAGE_RULES: { re: RegExp; stageId: string; label: string }[] = [
   { re: /rejection\s*analysis/i, stageId: "final", label: "Final Inspection" },
   { re: /assembly\s*rejection/i, stageId: "visual", label: "Visual Inspection" },
 ];
+
+/**
+ * Stage words as they appear in a REGION's own name — either a band row above
+ * the block ("VALVE INTEGRITY", "BALLOON ISPECTION REPORT") or the stage token
+ * the splitter found in the block's headers ("Visual", "Balloon", …).
+ *
+ * Looser than FILE_STAGE_RULES on purpose: a file name has to say "visual
+ * inspection" to be trusted, but a region that calls itself "Visual" IS the
+ * visual block. Valve is tested before balloon so a "balloon & valve" heading
+ * lands on valve-integrity, matching the file-name precedence.
+ */
+const STAGE_LABEL_RULES: { re: RegExp; stageId: string }[] = [
+  { re: /\bvalve\b/i, stageId: "valve-integrity" },
+  { re: /\bballoon\b/i, stageId: "balloon" },
+  { re: /\bvisual\b/i, stageId: "visual" },
+  { re: /\bfinal\b/i, stageId: "final" },
+  { re: /\beye\s*punch/i, stageId: "eye-punching" },
+];
+
+/** Infer STAGE:* from a region's own label. The strongest signal a packed
+ *  multi-stage sheet carries — the only one that differs per region. */
+export function stageFromRegionLabel(label: string): { canonical: string; reason: string } | null {
+  for (const rule of STAGE_LABEL_RULES) {
+    if (rule.re.test(label)) {
+      return {
+        canonical: `STAGE:${rule.stageId}`,
+        reason: `this block of columns is headed "${label.trim().slice(0, 40)}"`,
+      };
+    }
+  }
+  return null;
+}
 
 /** Infer STAGE:* from workbook file name when sheet/region labels don't name a gate. */
 export function stageFromFileName(fileName: string): { canonical: string; reason: string } | null {
@@ -123,6 +158,38 @@ function globalHit(header: string, role: ColumnProfile["role"], concepts: Ontolo
 }
 
 /** Rung 4: structural rules over the profiler's deterministic column profile. */
+/** Canonical measure for a header whose ROLE the splitter already reads. */
+const ROLE_CANONICAL: Record<string, string> = {
+  checked: "CHECKED_QTY",
+  accepted: "ACCEPTED_QTY",
+  rework: "REWORK_QTY",
+  rejected: "REJECTED_QTY",
+  pct: "STATED_PCT",
+};
+
+/**
+ * Header-shape rung, sharing `roleOf` with the region splitter.
+ *
+ * The global ontology matches vocabulary ("checked", "accept", …) and misses
+ * headers that carry the meaning positionally: on a packed multi-stage sheet
+ * the input column is written "VISUAL QTY", never "VISUAL CHECKED QTY". The
+ * splitter must already understand that to group the block correctly, so the
+ * resolver reads it through the SAME function — one definition of what a
+ * header means, rather than two that can drift apart.
+ */
+function headerShapeHit(col: ColumnProfile): Hit | null {
+  const role = roleOf(col.name);
+  const canonical = ROLE_CANONICAL[role];
+  if (!canonical) return null;
+  return {
+    canonical,
+    kind: role === "pct" ? "derived" : "measure",
+    confidence: 0.6,
+    resolvedBy: "rule",
+    reason: `header reads as this stage's ${role} column`,
+  };
+}
+
 function ruleHit(col: ColumnProfile): Hit | null {
   if (col.role === "dimension-date") {
     return { canonical: "DATE", kind: "date", confidence: 0.75, resolvedBy: "rule", reason: "column typed as the table's date axis" };
@@ -203,9 +270,31 @@ export async function resolveWorkbook(sheets: ResolverSheet[], ctx: ResolverCont
       stageHits.push({ canonical: aliasHit.canonicalId, kind: "stage", confidence: aliasHit.confidence, resolvedBy: "knowledge", reason: `learned company alias (from MOD ${aliasHit.learnedFrom ?? "unknown"})` });
     }
     // Month-tab books (APRIL 25, …): stage is in the file name, not the tab.
+    //
+    // Last resort only. A file name names ONE stage, so on a sheet that carries
+    // several stage blocks it would stamp every region with the same stage —
+    // which is how a four-stage ASSEMBLY workbook came out entirely as "visual".
+    // A region that named itself already has better evidence than the file does.
+    const regionLabel = sheet.regionLabel?.trim() ?? "";
+    if (regionLabel && (stageHits.length === 0 || stageHits.every((h) => h.canonical == null))) {
+      const fromRegion = stageFromRegionLabel(regionLabel);
+      if (fromRegion) {
+        stageHits.unshift({
+          canonical: fromRegion.canonical,
+          kind: "stage",
+          confidence: 0.88,
+          resolvedBy: "rule",
+          reason: fromRegion.reason,
+        });
+      }
+    }
     if (stageHits.length === 0 || stageHits.every((h) => h.canonical == null)) {
       const fromFile = stageFromFileName(sheet.fileName);
-      if (fromFile) {
+      // A file name names ONE stage. On a sheet split into several stage
+      // blocks it would stamp them all identically — which is how a four-stage
+      // ASSEMBLY workbook came out entirely as "visual". Only trust it for a
+      // region that could not name itself.
+      if (fromFile && !regionLabel) {
         stageHits.unshift({
           canonical: fromFile.canonical,
           kind: "stage",
@@ -220,8 +309,16 @@ export async function resolveWorkbook(sheets: ResolverSheet[], ctx: ResolverCont
     }
     // EVERY region gets a stage proposal (possibly unresolved) — nothing is
     // omitted; a size tab's stage usually resolves via the file-name alias.
-    proposals.push(toProposal(`stage:${sheet.sheetName}${idSuffix}`,
-      { sheet: sheet.sheetName, tableId, colLetter: null, header: stageLabel }, stageHits));
+    const stageProposal = toProposal(`stage:${sheet.sheetName}${idSuffix}`,
+      { sheet: sheet.sheetName, tableId, colLetter: null, header: stageLabel }, stageHits);
+    if (sheet.evidence && sheet.evidence.applicable > 0) {
+      stageProposal.evidence = {
+        agreement: sheet.evidence.agreement,
+        applicable: sheet.evidence.applicable,
+        failingRows: [...new Set(sheet.evidence.invariants.flatMap((i) => i.failing))].sort((a, b) => a - b),
+      };
+    }
+    proposals.push(stageProposal);
 
     // ---- Column entities ----
     for (const col of sheet.columns) {
@@ -236,6 +333,9 @@ export async function resolveWorkbook(sheets: ResolverSheet[], ctx: ResolverCont
       }
       const g = globalHit(col.name, col.role, ctx.concepts);
       if (g) hits.push(g);
+      // Below the ontology, above the generic "unresolved measure" rung.
+      const shape = headerShapeHit(col);
+      if (shape) hits.push(shape);
       const r = ruleHit(col);
       if (r) hits.push(r);
 

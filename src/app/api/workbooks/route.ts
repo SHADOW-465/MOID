@@ -104,6 +104,7 @@ export async function POST(req: NextRequest) {
         sheetName: s.table.sheetName,
         tableId: s.table.tableId,
         regionLabel: s.table.regionLabel,
+        evidence: s.table.evidence,
         columns: s.columns,
       }));
 

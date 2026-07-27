@@ -5,7 +5,7 @@
 // approve-records grid) + sticky confirm action so operators never scroll a
 // thousand-row meaning list to reach "Confirm & load numbers".
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import React, { useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { MappingProposalT } from "@/shared/models/entities";
 
 export interface UploadedMod {
@@ -16,6 +16,26 @@ export interface UploadedMod {
 }
 
 const PAGE_SIZE = 20;
+
+/** sheet::tableId — the unit that carries exactly one stage. */
+const regionOf = (p: MappingProposalT) => `${p.original.sheet}::${p.original.tableId ?? "t1"}`;
+
+/** Human name for a region: the stage the steward resolved for it, else the
+ *  block's own header text, else just the sheet. */
+function regionLabelFor(mod: { proposals: MappingProposalT[] }, p: MappingProposalT): string {
+  const stage = mod.proposals.find(
+    (x) => regionOf(x) === regionOf(p) && x.kind === "stage",
+  );
+  const canonical = stage?.canonical?.startsWith("STAGE:") ? stage.canonical.slice("STAGE:".length) : null;
+  if (canonical) return canonical.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return stage?.original.header?.trim() || p.original.sheet;
+}
+
+/** The stage proposal carries the region's arithmetic evidence. */
+function regionEvidence(mod: { proposals: MappingProposalT[] }, p: MappingProposalT) {
+  const stage = mod.proposals.find((x) => regionOf(x) === regionOf(p) && x.kind === "stage");
+  return stage?.evidence ?? null;
+}
 
 function confidenceTone(score: number): { label: string; color: string } {
   if (score >= 0.9) return { label: `${Math.round(score * 100)}%`, color: "var(--positive)" };
@@ -342,11 +362,58 @@ export default function MappingVerificationPanel({
               </tr>
             </thead>
             <tbody>
-              {pageSlice.map((p) => {
+              {pageSlice.map((p, i) => {
                 const tone = confidenceTone(p.confidence);
                 const value = edits[p.entityId] ?? p.canonical ?? "";
+                // A wide sheet holds several stage blocks side by side, and a
+                // column only means anything inside its own block. Heading each
+                // run of rows with its region is what lets a steward SEE that
+                // balloon's Checked landed under balloon — the misassignment
+                // this panel exists to catch.
+                const region = regionOf(p);
+                const newRegion = i === 0 || regionOf(pageSlice[i - 1]) !== region;
                 return (
-                  <tr key={p.entityId} style={{ borderTop: "1px solid var(--border)" }}>
+                  <React.Fragment key={p.entityId}>
+                  {newRegion && (
+                    <tr>
+                      <td colSpan={5} style={{ ...td, background: "var(--surface-2)", borderTop: "1px solid var(--border-strong)" }}>
+                        <span style={{ fontWeight: 700, fontSize: 11.5 }}>
+                          {regionLabelFor(activeMod!, p)}
+                        </span>
+                        <span className="muted" style={{ fontSize: 11, marginLeft: 8, fontFamily: "var(--font-mono)" }}>
+                          {p.original.sheet}
+                          {(p.original.tableId ?? "t1") !== "t1" ? ` · block ${p.original.tableId}` : ""}
+                        </span>
+                        {/* The real thing to verify is not whether a header
+                            "looks like" Checked, but whether reading it that
+                            way makes the sheet add up. */}
+                        {(() => {
+                          const ev = regionEvidence(activeMod!, p);
+                          if (!ev || ev.applicable === 0) return null;
+                          const agrees = Math.round(ev.agreement * ev.applicable);
+                          const clean = agrees === ev.applicable;
+                          return (
+                            <span
+                              style={{
+                                marginLeft: 10,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                color: clean ? "var(--positive)" : "var(--status-warn, #d97706)",
+                              }}
+                              title={
+                                clean
+                                  ? "Every row satisfies checked = accepted + rework + rejected under this reading."
+                                  : `${ev.applicable - agrees} row(s) don't add up under this reading — either the mapping is wrong, or the spreadsheet is.`
+                              }
+                            >
+                              {clean ? "✓" : "▲"} {agrees}/{ev.applicable} rows add up
+                            </span>
+                          );
+                        })()}
+                      </td>
+                    </tr>
+                  )}
+                  <tr style={{ borderTop: "1px solid var(--border)" }}>
                     <td
                       style={{
                         ...td,
@@ -389,6 +456,7 @@ export default function MappingVerificationPanel({
                       <span style={{ color: "var(--text-3)", fontSize: 11 }}> · {p.resolvedBy}</span>
                     </td>
                   </tr>
+                  </React.Fragment>
                 );
               })}
             </tbody>
