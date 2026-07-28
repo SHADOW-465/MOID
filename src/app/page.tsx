@@ -33,6 +33,8 @@ import { EMPTY_REGISTRY } from "@/core/ontology/empty-registry";
 import PageLoader from "@/components/app/PageLoader";
 import ParetoChart from "@/components/ParetoChart";
 import { safeBolden } from "@/components/app/widgets";
+import PageExportMenu from "@/components/export/PageExportMenu";
+import type { ExportSection } from "@/lib/export/page-export";
 import { calculatePareto } from "@/lib/analytics/pareto";
 import {
   rejectionRate,
@@ -548,6 +550,51 @@ export default function Dashboard() {
 
       {m && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <PageExportMenu
+              page="dashboard"
+              sections={
+                [
+                  {
+                    id: "kpis",
+                    label: "Executive KPIs",
+                    kind: "kpi",
+                    getData: () => ({
+                      overallRejection: m.rate,
+                      totalRejected: m.rejected,
+                      totalChecked: m.checked,
+                      fpy: m.fpy,
+                      copq: m.copq,
+                      period: m.latestPeriodLabel,
+                    }),
+                  },
+                  {
+                    id: "stages",
+                    label: "Stage rejection",
+                    kind: "table",
+                    getData: () =>
+                      m.stages.map((s) => ({
+                        stage: s.label,
+                        rejRate: s.rejRate,
+                        rejected: s.rejected,
+                        checked: s.checked,
+                      })),
+                  },
+                  {
+                    id: "defects",
+                    label: "Top defects",
+                    kind: "table",
+                    getData: () =>
+                      m.defects.map((d) => ({
+                        defect: d.label,
+                        rejected: d.rejected,
+                        pct: d.pct,
+                      })),
+                  },
+                ] satisfies ExportSection[]
+              }
+            />
+          </div>
           {activeView !== "cumulative" ? (
             (
               <StationView

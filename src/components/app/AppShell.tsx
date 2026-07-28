@@ -23,14 +23,13 @@ export type { NavKey };
 import {
   PERSONAS,
   PERSONA_ORDER,
-  DEFAULT_PERSONA,
-  readStoredPersona,
-  writeStoredPersona,
   personaAllowsNav,
   type PersonaId,
 } from "@/lib/persona";
 import CommandPalette, { useCommandPaletteHotkey } from "@/components/app/CommandPalette";
 import { subscribeNavBanner, type NavBanner } from "@/lib/analytics/nav-banner";
+import { usePersona } from "@/components/app/PersonaContext";
+import NotificationsPanel from "@/components/app/NotificationsPanel";
 
 interface NavItem {
   key: NavKey;
@@ -136,9 +135,9 @@ export default function AppShell({
   const router = useRouter();
   const { events } = useEvents();
   const { t, setTweak } = useTweaks();
+  const { persona, setPersona, canConfigure } = usePersona();
   const [mounted, setMounted] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
-  const [persona, setPersona] = useState<PersonaId>(DEFAULT_PERSONA);
   const [showPersonaMenu, setShowPersonaMenu] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [banner, setBanner] = useState<NavBanner | null>(null);
@@ -158,19 +157,13 @@ export default function AppShell({
     return () => window.clearTimeout(timer);
   }, [banner]);
 
-  useEffect(() => {
-    setPersona(readStoredPersona());
-  }, []);
-
   const setPersonaAndStore = (id: PersonaId) => {
     if (id === persona) {
       setShowPersonaMenu(false);
       return;
     }
     setPersona(id);
-    writeStoredPersona(id);
     setShowPersonaMenu(false);
-    // Role switch is chrome-only; land on the main dashboard for a consistent view.
     router.push(PERSONAS[id].homeHref);
   };
 
@@ -1367,7 +1360,9 @@ export default function AppShell({
             )}
           </div>
 
-          {/* Export Action: Pillbox Card Button */}
+          <NotificationsPanel />
+
+          {/* Export Action: Pillbox Card Button — full plant audit package */}
           <button 
             onClick={handleExport} 
             disabled={exporting} 

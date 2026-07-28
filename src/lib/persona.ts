@@ -9,6 +9,16 @@ export type { NavKey };
 /** Dashboard role views: GM (full), Owner, Data Entry Operator. */
 export type PersonaId = "gm" | "owner" | "operator";
 
+/** Capability bits beyond chrome nav. Interim until real auth. */
+export interface PersonaCapabilities {
+  /** May mutate plant data (save entry, ingest, verify, CAPA create, …). */
+  write: boolean;
+  /** May approve edit requests / ack operational notifications (GM). */
+  approve: boolean;
+  /** May change schema, settings, clear data. */
+  configure: boolean;
+}
+
 export interface PersonaDef {
   id: PersonaId;
   /** Short label in the switcher */
@@ -21,6 +31,7 @@ export interface PersonaDef {
   homeHref: string;
   /** Nav keys this persona may see (deny by omission). */
   navAllow: readonly NavKey[];
+  capabilities: PersonaCapabilities;
 }
 
 /** Full sidebar — every key used by AppShell NAV_SECTIONS. */
@@ -55,15 +66,16 @@ export const PERSONAS: Record<PersonaId, PersonaDef> = {
     initial: "G",
     homeHref: "/",
     navAllow: FULL_NAV,
+    capabilities: { write: true, approve: true, configure: true },
   },
   owner: {
     id: "owner",
     label: "Owner",
-    title: "Executive view",
+    title: "View only",
     initial: "O",
     homeHref: "/",
     // Hide: Workbooks category, Data category, and under Management:
-    // Audit Trail, Data Schema, Settings.
+    // Audit Trail, Data Schema, Settings. Analysis + reports only.
     navAllow: [
       "dashboard",
       "stage",
@@ -75,7 +87,9 @@ export const PERSONAS: Record<PersonaId, PersonaDef> = {
       "reports",
       "capa",
       "ask",
-        ],
+    ],
+    // View-only: no mutations, no approvals, no config.
+    capabilities: { write: false, approve: false, configure: false },
   },
   operator: {
     id: "operator",
@@ -101,7 +115,8 @@ export const PERSONAS: Record<PersonaId, PersonaDef> = {
       "capa",
       "ask",
       "audit",
-        ],
+    ],
+    capabilities: { write: true, approve: false, configure: false },
   },
 };
 
@@ -143,4 +158,20 @@ export function filterNavKeys(
   keys: readonly NavKey[]
 ): NavKey[] {
   return keys.filter((k) => personaAllowsNav(persona, k));
+}
+
+export function personaCapabilities(persona: PersonaId): PersonaCapabilities {
+  return PERSONAS[persona].capabilities;
+}
+
+export function canWrite(persona: PersonaId): boolean {
+  return PERSONAS[persona].capabilities.write;
+}
+
+export function canApprove(persona: PersonaId): boolean {
+  return PERSONAS[persona].capabilities.approve;
+}
+
+export function canConfigure(persona: PersonaId): boolean {
+  return PERSONAS[persona].capabilities.configure;
 }

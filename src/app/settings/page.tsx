@@ -14,12 +14,20 @@ import Icon from "@/components/editorial/Icon";
 import { EMPTY_REGISTRY } from "@/core/ontology/empty-registry";
 import { useEvents } from "@/components/app/EventsContext";
 import { useRegistry } from "@/components/app/RegistryContext";
+import { usePersona } from "@/components/app/PersonaContext";
+import {
+  DEFAULT_SHIFT_WINDOWS,
+  readShiftWindowConfig,
+  writeShiftWindowConfig,
+  type ShiftWindowConfig,
+} from "@/lib/entry/shift-window";
 
-type SectionId = "quality" | "valuation" | "registry" | "custom" | "admin";
+type SectionId = "quality" | "valuation" | "shifts" | "registry" | "custom" | "admin";
 
 const SECTIONS: { id: SectionId; label: string; hint: string }[] = [
   { id: "quality", label: "Quality thresholds", hint: "Rejection limits & status badges" },
   { id: "valuation", label: "Financial valuation", hint: "Unit cost & stage weights" },
+  { id: "shifts", label: "Shift windows", hint: "When operators may edit without GM grant" },
   { id: "registry", label: "Defect registry", hint: "Read-only plant catalog" },
   { id: "custom", label: "Custom codes", hint: "Plant-specific aliases" },
   { id: "admin", label: "Administrative", hint: "Purge & schema reset" },
@@ -28,6 +36,7 @@ const SECTIONS: { id: SectionId; label: string; hint: string }[] = [
 export default function SettingsPage() {
   const { refreshEvents } = useEvents();
   const { registry } = useRegistry();
+  const { canConfigure } = usePersona();
   const activeRegistry = registry || EMPTY_REGISTRY;
   const [section, setSection] = useState<SectionId>("quality");
   const [targetRej, setTargetRej] = useState("10.00");
@@ -40,9 +49,14 @@ export default function SettingsPage() {
     "valve-integrity": "0.90",
     final: "1.00",
   });
+  const [shiftCfg, setShiftCfg] = useState<ShiftWindowConfig>(DEFAULT_SHIFT_WINDOWS);
 
   const [saved, setSaved] = useState(false);
   const [resetSaved, setResetSaved] = useState(false);
+
+  useEffect(() => {
+    setShiftCfg(readShiftWindowConfig());
+  }, []);
 
   const [showClearModal, setShowClearModal] = useState(false);
   const [clearConfirmText, setClearConfirmText] = useState("");
@@ -378,6 +392,83 @@ export default function SettingsPage() {
                       ))}
                     </ul>
                   </div>
+                </div>
+              )}
+
+              {section === "shifts" && (
+                <div className="settings-field-stack">
+                  <p className="settings-field-help" style={{ marginBottom: 12 }}>
+                    Operators may create or edit batch entries only inside these windows (plant local time).
+                    Outside the window they must request GM approval. Default: Day Shift 08:00–20:00 Asia/Kolkata.
+                  </p>
+                  {!canConfigure && (
+                    <p className="settings-field-help" style={{ color: "var(--status-warn)" }}>
+                      View-only — only GM can change shift windows.
+                    </p>
+                  )}
+                  <label className="settings-field">
+                    <span className="settings-field-label">Timezone</span>
+                    <input
+                      className="settings-input"
+                      value={shiftCfg.timezone}
+                      disabled={!canConfigure}
+                      onChange={(e) => setShiftCfg((c) => ({ ...c, timezone: e.target.value }))}
+                    />
+                  </label>
+                  <label className="settings-field">
+                    <span className="settings-field-label">Day Shift start</span>
+                    <input
+                      type="time"
+                      className="settings-input"
+                      disabled={!canConfigure}
+                      value={shiftCfg.windows["Day Shift"]?.start ?? "08:00"}
+                      onChange={(e) =>
+                        setShiftCfg((c) => ({
+                          ...c,
+                          windows: {
+                            ...c.windows,
+                            "Day Shift": {
+                              start: e.target.value,
+                              end: c.windows["Day Shift"]?.end ?? "20:00",
+                            },
+                          },
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="settings-field">
+                    <span className="settings-field-label">Day Shift end</span>
+                    <input
+                      type="time"
+                      className="settings-input"
+                      disabled={!canConfigure}
+                      value={shiftCfg.windows["Day Shift"]?.end ?? "20:00"}
+                      onChange={(e) =>
+                        setShiftCfg((c) => ({
+                          ...c,
+                          windows: {
+                            ...c.windows,
+                            "Day Shift": {
+                              start: c.windows["Day Shift"]?.start ?? "08:00",
+                              end: e.target.value,
+                            },
+                          },
+                        }))
+                      }
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="settings-btn settings-btn--primary"
+                    disabled={!canConfigure}
+                    onClick={() => {
+                      writeShiftWindowConfig(shiftCfg);
+                      setSaved(true);
+                      window.setTimeout(() => setSaved(false), 2500);
+                    }}
+                  >
+                    Save shift windows
+                  </button>
                 </div>
               )}
 

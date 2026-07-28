@@ -425,6 +425,30 @@ export default function MonthlyEntryGrid({
         body: JSON.stringify({ ingestionId, fileName: `Data Entry ${rangeLabel}`, records: payload }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Save failed");
+      if (mismatches.length > 0 && reason.trim().length >= 4) {
+        // Alert GM for each unreconciled day so they can intervene.
+        for (const m of mismatches) {
+          fetch("/api/notifications", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "entry_exception",
+              title: "Monthly entry reconcile exception",
+              body: `${rangeLabel} · ${m.date}: defects ${m.defectSum} vs rejected ${m.rejected}. ${reason}`,
+              createdBy: "data-entry",
+              targetPersona: "gm",
+              payload: {
+                kind: "reconcile",
+                date: m.date,
+                defectSum: m.defectSum,
+                reject: m.rejected,
+                reason,
+                path: "/data-entry",
+              },
+            }),
+          }).catch(() => {});
+        }
+      }
       setSuccess(
         `${payload.length} day(s) saved for ${rangeLabel}.` +
           (mismatches.length ? ` ${mismatches.length} logged as unreconciled with your reason.` : ""),

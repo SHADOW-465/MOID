@@ -6,6 +6,7 @@ import "./globals.css";
 import { TweaksProvider } from "@/components/editorial/TweaksContext";
 import { EventsProvider } from "@/components/app/EventsContext";
 import { RegistryProvider } from "@/components/app/RegistryContext";
+import { PersonaProvider } from "@/components/app/PersonaContext";
 import { BRAND_NAME, BRAND_TAGLINE } from "@/lib/brand";
 
 export const metadata: Metadata = {
@@ -36,11 +37,13 @@ export default function RootLayout({
           }}
         />
         <TweaksProvider>
-          <EventsProvider>
-            <RegistryProvider>
-              {children}
-            </RegistryProvider>
-          </EventsProvider>
+          <PersonaProvider>
+            <EventsProvider>
+              <RegistryProvider>
+                {children}
+              </RegistryProvider>
+            </EventsProvider>
+          </PersonaProvider>
         </TweaksProvider>
       </body>
     </html>

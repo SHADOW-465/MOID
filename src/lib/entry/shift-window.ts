@@ -1,0 +1,101 @@
+// Shift edit windows — when an operator may create/edit without GM grant.
+// Default plant window: Day Shift 08:00–20:00 Asia/Kolkata.
+
+export type ShiftWindow = { start: string; end: string }; // "HH:MM" 24h
+
+export type ShiftWindowConfig = {
+  timezone: string;
+  windows: Record<string, ShiftWindow>;
+};
+
+export const SHIFT_WINDOW_STORAGE_KEY = "moid_shift_windows";
+
+export const DEFAULT_SHIFT_WINDOWS: ShiftWindowConfig = {
+  timezone: "Asia/Kolkata",
+  windows: {
+    "Day Shift": { start: "08:00", end: "20:00" },
+  },
+};
+
+/** Parse "HH:MM" → minutes from midnight. */
+export function parseHm(hm: string): number {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hm.trim());
+  if (!m) return NaN;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h < 0 || h > 23 || min < 0 || min > 59) return NaN;
+  return h * 60 + min;
+}
+
+/**
+ * Local wall-clock minutes in `timezone` for `at`.
+ * Uses Intl so we don't depend on process TZ.
+ */
+export function localMinutes(at: Date, timezone: string): number {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: timezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(at);
+  const hour = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
+  const minute = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
+  return hour * 60 + minute;
+}
+
+/**
+ * Whether `at` falls inside the window for `shiftLabel`.
+ * End is exclusive (20:00 means last editable moment is 19:59).
+ * Unknown shift labels → closed (must request grant).
+ * Overnight windows (start > end) wrap midnight.
+ */
+export function isWithinShiftWindow(
+  shiftLabel: string,
+  at: Date = new Date(),
+  config: ShiftWindowConfig = DEFAULT_SHIFT_WINDOWS,
+): boolean {
+  const win = config.windows[shiftLabel];
+  if (!win) return false;
+  const start = parseHm(win.start);
+  const end = parseHm(win.end);
+  if (Number.isNaN(start) || Number.isNaN(end)) return false;
+  const now = localMinutes(at, config.timezone);
+  if (start === end) return true; // 24h open
+  if (start < end) return now >= start && now < end;
+  // overnight: e.g. 22:00–06:00
+  return now >= start || now < end;
+}
+
+export function readShiftWindowConfig(): ShiftWindowConfig {
+  if (typeof window === "undefined") return DEFAULT_SHIFT_WINDOWS;
+  try {
+    const raw = localStorage.getItem(SHIFT_WINDOW_STORAGE_KEY);
+    if (!raw) return DEFAULT_SHIFT_WINDOWS;
+    const parsed = JSON.parse(raw) as ShiftWindowConfig;
+    if (!parsed?.windows || typeof parsed.windows !== "object") return DEFAULT_SHIFT_WINDOWS;
+    return {
+      timezone: parsed.timezone || DEFAULT_SHIFT_WINDOWS.timezone,
+      windows: { ...DEFAULT_SHIFT_WINDOWS.windows, ...parsed.windows },
+    };
+  } catch {
+    return DEFAULT_SHIFT_WINDOWS;
+  }
+}
+
+export function writeShiftWindowConfig(config: ShiftWindowConfig): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(SHIFT_WINDOW_STORAGE_KEY, JSON.stringify(config));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function describeShiftWindow(
+  shiftLabel: string,
+  config: ShiftWindowConfig = DEFAULT_SHIFT_WINDOWS,
+): string {
+  const win = config.windows[shiftLabel];
+  if (!win) return `${shiftLabel}: no window configured`;
+  return `${shiftLabel} ${win.start}–${win.end} (${config.timezone})`;
+}

@@ -33,6 +33,11 @@ export const FRENCH_SIZES = [
   "20Fr", "22Fr", "24Fr", "26Fr", "28Fr",
 ] as const;
 
+/** FBC product variants on the shop floor (filter also offers "All Type"). */
+export const PRODUCT_TYPES = ["2 way", "3 way", "Female"] as const;
+export type ProductType = (typeof PRODUCT_TYPES)[number];
+export const PRODUCT_TYPE_STORAGE_KEY = "moid_product_type";
+
 export const DEFAULT_OPERATORS = [
   "MB Lakshun",
   "Operator 2",
@@ -209,6 +214,8 @@ export type ShiftBatchRecord = {
   processName: string;
   size: string;          // display "14Fr"
   sizeCanonical: string; // "Fr14"
+  /** 2 way | 3 way | Female */
+  productType: ProductType | string;
   batchId: string;
   /**
    * Quantity Produced (Primary) / Quantity (Secondary) / Checked (Assembly).

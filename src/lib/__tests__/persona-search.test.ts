@@ -5,6 +5,9 @@ import {
   filterNavKeys,
   isPersonaId,
   DEFAULT_PERSONA,
+  canWrite,
+  canApprove,
+  canConfigure,
 } from "../persona";
 import { searchJumpTargets } from "../analytics/search-index";
 import type { Event } from "@/lib/store/types";
@@ -140,6 +143,21 @@ describe("persona nav filter", () => {
     expect(PERSONAS.operator.homeHref).toBe("/data-entry");
     expect(PERSONAS.gm.homeHref).toBe("/");
     expect(PERSONAS.owner.homeHref).toBe("/");
+  });
+
+  it("GM has full capabilities; owner is view-only; operator can write but not approve/configure", () => {
+    expect(canWrite("gm")).toBe(true);
+    expect(canApprove("gm")).toBe(true);
+    expect(canConfigure("gm")).toBe(true);
+
+    expect(canWrite("owner")).toBe(false);
+    expect(canApprove("owner")).toBe(false);
+    expect(canConfigure("owner")).toBe(false);
+    expect(PERSONAS.owner.title).toMatch(/view only/i);
+
+    expect(canWrite("operator")).toBe(true);
+    expect(canApprove("operator")).toBe(false);
+    expect(canConfigure("operator")).toBe(false);
   });
 });
 

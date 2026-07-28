@@ -11,12 +11,15 @@ import {
   DEFAULT_OPERATORS,
   SECONDARY_BINS,
   SHIFT_STORAGE_KEY,
+  PRODUCT_TYPES,
+  PRODUCT_TYPE_STORAGE_KEY,
   defectsFor,
   defectDisplayLabel,
   processLabel,
   resolveStageId,
   previousAssemblyStageId,
   type MacroId,
+  type ProductType,
   type ShiftBatchRecord,
 } from "@/lib/entry/disposafe-matrix";
 import {
@@ -25,9 +28,17 @@ import {
   toCanonicalSize,
   toDisplaySize,
 } from "@/lib/entry/batch-id";
+import {
+  describeShiftWindow,
+  isWithinShiftWindow,
+  readShiftWindowConfig,
+} from "@/lib/entry/shift-window";
+import { entryKey, hasValidGrant } from "@/lib/entry/edit-grants";
 import type { StageDayRecord } from "@/lib/ingest/emit";
 import { useEvents } from "@/components/app/EventsContext";
+import { usePersona } from "@/components/app/PersonaContext";
 import QtyInput from "@/components/entry/QtyInput";
+import ExceptionModal from "@/components/entry/ExceptionModal";
 import { loadDraft, saveDraft } from "@/lib/entry/draft";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -37,6 +48,7 @@ const DRAFT_KEY = "moid_entry_draft_batch";
 
 interface BatchDraft {
   macro: MacroId; micro: string; date: string; size: string;
+  productType?: string;
   operator: string; shift: string; batchId: string; batchManual: boolean;
   checked: number; trolleys: number; bin: string;
   accept: number; hold: number; reject: number;
@@ -117,6 +129,7 @@ function toStageDayRecord(rec: ShiftBatchRecord, ingestionId: string): StageDayR
       shift: rec.shift,
       notes: rec.remarks,
       product: "FBC",
+      productType: rec.productType || "2 way",
       macro: rec.macro,
       process: rec.processName,
       matrixId: rec.id,
@@ -136,15 +149,23 @@ export default function BatchMatrixEntry({
   onSynced?: () => void;
 }) {
   const { events, refreshEvents } = useEvents();
+  const { canWrite, persona } = usePersona();
 
   const [macro, setMacro] = useState<MacroId>("assembly");
   const [micro, setMicro] = useState("p15-visual");
   const [date, setDate] = useState(today);
   const [size, setSize] = useState("14Fr");
+  const [productType, setProductType] = useState<ProductType | string>("2 way");
+  const [typeFilter, setTypeFilter] = useState<string>("All Type");
   const [operator, setOperator] = useState<string>(DEFAULT_OPERATORS[0]);
   const [shift, setShift] = useState("Day Shift");
   const [batchId, setBatchId] = useState(() => buildBatchId(today(), "14Fr") ?? "");
   const [batchManual, setBatchManual] = useState(false);
+  const [exceptionOpen, setExceptionOpen] = useState(false);
+  const [exceptionKind, setExceptionKind] = useState<"qty" | "defect" | null>(null);
+  const [exceptionReason, setExceptionReason] = useState("");
+  const [tick, setTick] = useState(0);
+  const [requestingEdit, setRequestingEdit] = useState(false);
   const [checked, setChecked] = useState(0);
   const [trolleys, setTrolleys] = useState(0);
   const [bin, setBin] = useState("");
@@ -199,10 +220,13 @@ export default function BatchMatrixEntry({
     if (op) setOperator(op);
     const sh = localStorage.getItem("rais_hdr_shift");
     if (sh) setShift(sh);
+    const pt = localStorage.getItem(PRODUCT_TYPE_STORAGE_KEY);
+    if (pt && (PRODUCT_TYPES as readonly string[]).includes(pt)) setProductType(pt);
 
     const d = loadDraft<BatchDraft>(DRAFT_KEY);
     if (d) {
       setMacro(d.macro); setMicro(d.micro); setDate(d.date); setSize(d.size);
+      if (d.productType) setProductType(d.productType);
       if (d.operator) setOperator(d.operator);
       if (d.shift) setShift(d.shift);
       setBatchId(d.batchId); setBatchManual(d.batchManual);
@@ -216,6 +240,12 @@ export default function BatchMatrixEntry({
     draftReady.current = true;
   }, []);
 
+  // Re-evaluate shift window every minute.
+  useEffect(() => {
+    const id = window.setInterval(() => setTick((t) => t + 1), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
   // Autosave the in-progress form. Cheap (one small JSON write per keystroke)
   // and it is the only thing standing between a half-filled shift and a tab switch.
   useEffect(() => {
@@ -227,10 +257,10 @@ export default function BatchMatrixEntry({
       DRAFT_KEY,
       empty
         ? null
-        : { macro, micro, date, size, operator, shift, batchId, batchManual,
+        : { macro, micro, date, size, productType, operator, shift, batchId, batchManual,
             checked, trolleys, bin, accept, hold, reject, defects, remarks },
     );
-  }, [macro, micro, date, size, operator, shift, batchId, batchManual,
+  }, [macro, micro, date, size, productType, operator, shift, batchId, batchManual,
       checked, trolleys, bin, accept, hold, reject, defects, remarks]);
 
   // Schema from verified workbooks — same columns Excel taught the app (no re-typing).
@@ -370,6 +400,30 @@ export default function BatchMatrixEntry({
     !hideDefects && !isSecondary && (reject > 0 || defectSum > 0) && defectSum !== reject;
   const qtyLabel = isPrimary ? "Quantity Produced" : isSecondary ? "Quantity" : "Checked";
 
+  const shiftConfig = useMemo(() => readShiftWindowConfig(), [tick]);
+  const withinShift = useMemo(
+    () => isWithinShiftWindow(shift, new Date(), shiftConfig),
+    [shift, shiftConfig, tick],
+  );
+  const currentEntryKey = useMemo(
+    () =>
+      entryKey({
+        date,
+        batchId: batchId.trim().toUpperCase(),
+        stageId,
+        size: sizeCanon ?? size,
+        productType: String(productType),
+      }),
+    [date, batchId, stageId, sizeCanon, size, productType],
+  );
+  const hasGrant = useMemo(
+    () => hasValidGrant(currentEntryKey),
+    [currentEntryKey, tick],
+  );
+  // Owner: canWrite false. Operator: needs open shift window or GM grant. GM: always.
+  const mayEdit =
+    canWrite && (persona !== "operator" || withinShift || hasGrant);
+
   const fieldGridColumns = isPrimary
     ? "minmax(140px, 1.2fr) minmax(90px, 0.7fr) minmax(140px, 1.1fr) minmax(100px, 0.85fr) minmax(100px, 0.85fr) minmax(80px, 0.7fr) minmax(80px, 0.7fr)"
     : isSecondary
@@ -492,6 +546,7 @@ export default function BatchMatrixEntry({
       processName: procName,
       size: toDisplaySize(size) ?? size,
       sizeCanonical: canon,
+      productType: productType || "2 way",
       batchId: batchId.trim().toUpperCase(),
       checked,
       accept: isSecondary ? 0 : accept,
@@ -522,6 +577,7 @@ export default function BatchMatrixEntry({
       persistShift(next);
       localStorage.setItem("rais_hdr_operator", rec.operator);
       localStorage.setItem("rais_hdr_shift", rec.shift);
+      if (rec.productType) localStorage.setItem(PRODUCT_TYPE_STORAGE_KEY, String(rec.productType));
       setEditing(null);
       clearFormKeepContext();
       setBatchManual(false);
@@ -549,20 +605,106 @@ export default function BatchMatrixEntry({
     }
   }
 
+  async function postNotification(body: Record<string, unknown>) {
+    try {
+      await fetch("/api/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    } catch {
+      /* non-blocking for save path */
+    }
+  }
+
+  async function notifyException(opts: {
+    kind: "qty_mismatch" | "defect_mismatch";
+    reason: string;
+    defectSum?: number;
+    reject?: number;
+  }) {
+    const partsLabel = isPrimary ? `Accept+Reject=${sumParts}` : `Accept+Hold+Reject=${sumParts}`;
+    await postNotification({
+      type: "entry_exception",
+      title: opts.kind === "qty_mismatch" ? "Data entry qty mismatch" : "Data entry defect mismatch",
+      body: `${batchId} · ${processLabel(macro, micro)} · ${size} · ${opts.reason}`,
+      createdBy: operator.trim() || "operator",
+      targetPersona: "gm",
+      payload: {
+        kind: opts.kind,
+        date,
+        batchId: batchId.trim().toUpperCase(),
+        stageId,
+        stageName: MATRIX_STAGES[macro].name,
+        size,
+        productType,
+        operator: operator.trim(),
+        checked,
+        accept,
+        hold,
+        reject: opts.reject ?? reject,
+        defectSum: opts.defectSum,
+        reason: opts.reason,
+        path: "/data-entry",
+        detail: `${qtyLabel}=${checked}, ${partsLabel}`,
+      },
+    });
+  }
+
+  async function requestEditPermission() {
+    setRequestingEdit(true);
+    setErr(null);
+    try {
+      await postNotification({
+        type: "edit_request",
+        title: "Edit permission requested",
+        body: `${operator.trim() || "Operator"} wants to edit ${batchId} (${processLabel(macro, micro)}, ${size}) outside ${describeShiftWindow(shift, shiftConfig)}.`,
+        createdBy: operator.trim() || "operator",
+        targetPersona: "gm",
+        payload: {
+          entryKey: currentEntryKey,
+          date,
+          batchId: batchId.trim().toUpperCase(),
+          stageId,
+          stageName: MATRIX_STAGES[macro].name,
+          size: sizeCanon ?? size,
+          productType,
+          operator: operator.trim(),
+          shift,
+          path: "/data-entry",
+        },
+      });
+      setMsg("Edit request sent to GM. You can edit this entry after approval.");
+    } catch (e: any) {
+      setErr(e?.message ?? "Could not request edit permission");
+    } finally {
+      setRequestingEdit(false);
+    }
+  }
+
   async function submitForm() {
     setErr(null);
     setMsg(null);
+
+    if (!canWrite) {
+      setErr("Your role is view-only. Switch to GM or Operator to save entries.");
+      return;
+    }
+    if (!mayEdit) {
+      setErr(`Shift closed (${describeShiftWindow(shift, shiftConfig)}). Request edit permission from GM.`);
+      return;
+    }
 
     // /api/ingest supersedes direct entry by date · stage · size · batch. If a
     // revision changes any of those, the OLD ledger row keys differently and
     // survives — the edit would double-count instead of replacing. Say so.
     if (editingId) {
       const orig = saved.find((b) => b.id === editingId);
-      const stageId = resolveStageId(macro, micro);
+      const sid = resolveStageId(macro, micro);
       if (
         orig &&
         (orig.date !== date ||
-          orig.stageId !== stageId ||
+          orig.stageId !== sid ||
           orig.sizeCanonical !== (toCanonicalSize(size) ?? size) ||
           orig.batchId !== batchId.trim().toUpperCase())
       ) {
@@ -576,24 +718,17 @@ export default function BatchMatrixEntry({
         ) {
           return;
         }
-        // Confirmed: this becomes a NEW entry, so it must not replace the
-        // original row locally either.
         setEditing(null);
       }
     }
 
-    // Balance check — warn and require confirm; never rewrite fields silently.
-    if (qtyMismatch) {
-      const partsLabel = isPrimary
-        ? `Accept+Reject: ${sumParts}`
-        : `Accept+Hold+Reject: ${sumParts}`;
-      if (
-        !confirm(
-          `Warning: Quantity sums do not match (${qtyLabel}: ${checked}, ${partsLabel}). Do you still wish to save?`,
-        )
-      ) {
-        return;
-      }
+    // Balance check — popup + mandatory reason; never rewrite fields silently.
+    // qtyMismatch with checked===0 is blocked by the save button.
+    if (!isSecondary && checked > 0 && checked !== sumParts) {
+      setExceptionKind("qty");
+      setExceptionReason("");
+      setExceptionOpen(true);
+      return;
     }
 
     // Defect vs Rejected (A12) — always present both options; never auto-apply.
@@ -606,9 +741,53 @@ export default function BatchMatrixEntry({
     await finalizeSave(buildPendingRecord());
   }
 
+  async function confirmExceptionAndSave() {
+    const reason = exceptionReason.trim();
+    if (reason.length < 4) return;
+
+    if (exceptionKind === "qty") {
+      // After qty exception, still need A12 if defects disagree.
+      if (defectMismatch) {
+        setExceptionOpen(false);
+        setA12({ defectSum, reject });
+        setA12Choice(null);
+        // Stash reason into remarks so it survives A12 path.
+        setRemarks((r) => (r ? `${r} | Exception: ${reason}` : `Exception: ${reason}`));
+        await notifyException({ kind: "qty_mismatch", reason });
+        setExceptionKind(null);
+        return;
+      }
+      const rec = buildPendingRecord();
+      rec.remarks = (rec.remarks ? rec.remarks + " | " : "") + `Qty mismatch exception: ${reason}`;
+      setExceptionOpen(false);
+      setExceptionKind(null);
+      await notifyException({ kind: "qty_mismatch", reason });
+      await finalizeSave(rec);
+      return;
+    }
+
+    if (exceptionKind === "defect" && a12 && a12Choice === "keep-incomplete") {
+      const rec = buildPendingRecord();
+      rec.remarks =
+        (rec.remarks ? rec.remarks + " | " : "") +
+        `A12: Kept Rejected=${a12.reject}; defects incomplete (sum ${a12.defectSum}). Reason: ${reason}`;
+      setExceptionOpen(false);
+      setExceptionKind(null);
+      await notifyException({ kind: "defect_mismatch", reason, defectSum: a12.defectSum, reject: a12.reject });
+      await finalizeSave(rec);
+    }
+  }
+
   async function applyA12AndSave() {
     if (!a12 || !a12Choice) {
       setErr("Choose how to resolve the defect / reject mismatch.");
+      return;
+    }
+    if (a12Choice === "keep-incomplete") {
+      // Mandatory reason via modal — never save incomplete defects silently.
+      setExceptionKind("defect");
+      setExceptionReason("");
+      setExceptionOpen(true);
       return;
     }
     let nextReject = reject;
@@ -619,18 +798,21 @@ export default function BatchMatrixEntry({
     const rec = buildPendingRecord(nextReject);
     rec.remarks =
       (rec.remarks ? rec.remarks + " | " : "") +
-      (a12Choice === "set-reject"
-        ? `A12: Rejected set to defect sum (${a12.defectSum})`
-        : `A12: Kept Rejected=${a12.reject}; defects incomplete (sum ${a12.defectSum})`);
+      `A12: Rejected set to defect sum (${a12.defectSum})`;
     await finalizeSave(rec);
   }
 
   /** Load a logged row back into the form above for revision. */
   function editRow(rec: ShiftBatchRecord) {
+    if (!canWrite) {
+      setErr("View-only role — editing is disabled.");
+      return;
+    }
     setMacro(rec.macro);
     setMicro(rec.micro);
     setDate(rec.date);
     setSize(rec.size);
+    if (rec.productType) setProductType(rec.productType);
     setOperator(rec.operator);
     setShift(rec.shift);
     setBatchId(rec.batchId);
@@ -714,7 +896,7 @@ export default function BatchMatrixEntry({
     const defectHeaders = Array.from(uniqueDefects);
 
     let csv =
-      "Date,Operator,Stage,Process,Size,Batch ID,Quantity/Checked,Trolleys,Bin,Accept,Hold,Reject,Yield %,Remarks,Synced";
+      "Date,Operator,Stage,Process,Size,Type,Batch ID,Quantity/Checked,Trolleys,Bin,Accept,Hold,Reject,Yield %,Remarks,Synced";
     defectHeaders.forEach((dh) => {
       csv += `,Defect_${dh}`;
     });
@@ -731,7 +913,8 @@ export default function BatchMatrixEntry({
       const acceptVal = isSec ? "" : b.accept;
       const holdVal = isPri || isSec ? "" : b.hold;
       const rejectVal = isSec ? "" : b.reject;
-      let row = `${b.date},${b.operator},"${b.stageName}","${b.processName}",${b.size},${b.batchId},${b.checked},${trolleyVal},${binVal},${acceptVal},${holdVal},${rejectVal},${yieldPct},${escRem},${b.synced ? "yes" : "no"}`;
+      const typeVal = b.productType || "2 way";
+      let row = `${b.date},${b.operator},"${b.stageName}","${b.processName}",${b.size},${typeVal},${b.batchId},${b.checked},${trolleyVal},${binVal},${acceptVal},${holdVal},${rejectVal},${yieldPct},${escRem},${b.synced ? "yes" : "no"}`;
       defectHeaders.forEach((dh) => {
         row += `,${isSec ? 0 : b.defects[dh] || 0}`;
       });
@@ -817,6 +1000,40 @@ export default function BatchMatrixEntry({
           <button type="button" onClick={cancelEdit} style={{ ...btnGhost, marginLeft: "auto" }}>
             Cancel edit
           </button>
+        </div>
+      )}
+
+      {!canWrite && (
+        <div style={{ marginBottom: 12, padding: "10px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--surface-2)", fontSize: 12.5, color: "var(--text-2)" }}>
+          View-only role — data entry is read-only. Switch to GM or Operator to save.
+        </div>
+      )}
+      {canWrite && persona === "operator" && !withinShift && !hasGrant && (
+        <div
+          style={{
+            marginBottom: 12,
+            padding: "10px 14px",
+            borderRadius: 10,
+            border: "1px solid var(--status-warn, #d97706)",
+            background: "color-mix(in srgb, var(--status-warn, #d97706) 12%, var(--surface))",
+            fontSize: 12.5,
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 10,
+            alignItems: "center",
+          }}
+        >
+          <span style={{ flex: 1 }}>
+            Shift closed ({describeShiftWindow(shift, shiftConfig)}). Entries are locked until GM approves an edit request.
+          </span>
+          <button type="button" onClick={requestEditPermission} disabled={requestingEdit} style={btnPrimary}>
+            {requestingEdit ? "Requesting…" : "Request edit permission"}
+          </button>
+        </div>
+      )}
+      {hasGrant && persona === "operator" && !withinShift && (
+        <div style={{ marginBottom: 12, padding: "10px 14px", borderRadius: 10, border: "1px solid var(--positive)", background: "color-mix(in srgb, var(--positive) 10%, var(--surface))", fontSize: 12.5, color: "var(--text-2)" }}>
+          Temporary edit grant active for this batch/stage.
         </div>
       )}
 
@@ -932,11 +1149,29 @@ export default function BatchMatrixEntry({
           </FieldCol>
 
           <FieldCol label="Catheter Size">
-            <select value={size} onChange={(e) => { setBatchManual(false); setSize(e.target.value); }} style={{ ...inp, fontWeight: 700 }}>
+            <select
+              value={size}
+              disabled={!mayEdit}
+              onChange={(e) => { setBatchManual(false); setSize(e.target.value); }}
+              style={{ ...inp, fontWeight: 700 }}
+            >
               {FRENCH_SIZES.map((s) => (
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>
+            <label className="small" style={{ display: "block", marginTop: 8, color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", fontSize: 9 }}>
+              Type
+              <select
+                value={productType}
+                disabled={!mayEdit}
+                onChange={(e) => setProductType(e.target.value)}
+                style={{ ...inp, marginTop: 4, fontWeight: 700 }}
+              >
+                {PRODUCT_TYPES.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </label>
           </FieldCol>
 
           <FieldCol label="Batch ID Generation">
@@ -1348,34 +1583,83 @@ export default function BatchMatrixEntry({
         <button
           type="button"
           onClick={submitForm}
-          disabled={saving || !!a12 || checked === 0}
+          disabled={saving || !!a12 || checked === 0 || !mayEdit}
           style={{
             ...btnPrimary,
             marginLeft: "auto",
             padding: "10px 22px",
             fontSize: 14,
             fontWeight: 700,
-            opacity: saving || !!a12 || checked === 0 ? 0.5 : 1,
-            cursor: saving || !!a12 || checked === 0 ? "not-allowed" : "pointer",
+            opacity: saving || !!a12 || checked === 0 || !mayEdit ? 0.5 : 1,
+            cursor: saving || !!a12 || checked === 0 || !mayEdit ? "not-allowed" : "pointer",
           }}
         >
           {saving ? "Saving…" : editingId ? "Update batch entry" : "Save batch entry"}
         </button>
       </div>
 
+      <ExceptionModal
+        open={exceptionOpen}
+        title={
+          exceptionKind === "defect"
+            ? "Defect sum does not match Rejected"
+            : "Quantity balance mismatch"
+        }
+        lines={
+          exceptionKind === "defect" && a12
+            ? [
+                { label: "Defect sum", value: String(a12.defectSum) },
+                { label: "Rejected", value: String(a12.reject) },
+                { label: "Batch", value: batchId },
+                { label: "Type", value: String(productType) },
+              ]
+            : [
+                { label: qtyLabel, value: String(checked) },
+                { label: isPrimary ? "Accept+Reject" : "Accept+Hold+Reject", value: String(sumParts) },
+                { label: "Batch", value: batchId },
+                { label: "Type", value: String(productType) },
+              ]
+        }
+        reason={exceptionReason}
+        onReasonChange={setExceptionReason}
+        onConfirm={() => void confirmExceptionAndSave()}
+        onCancel={() => {
+          setExceptionOpen(false);
+          setExceptionKind(null);
+        }}
+        busy={saving}
+      />
+
       {/* Shift list */}
       <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
           <div>
             <div style={{ fontWeight: 700, fontSize: 13 }}>Saved Batches (This Shift)</div>
             <div className="small" style={{ color: "var(--text-3)" }}>Logged this session — kept in local storage; synced rows are in the event ledger.</div>
           </div>
-          <button type="button" onClick={exportCSV} style={btnGhost}>Export Session CSV</button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              style={{ ...inp, width: "auto", minWidth: 110, fontSize: 12, height: 32 }}
+              aria-label="Filter by type"
+            >
+              <option value="All Type">All Type</option>
+              {PRODUCT_TYPES.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+            <button type="button" onClick={exportCSV} style={btnGhost}>Export Session CSV</button>
+          </div>
         </div>
 
         {saved.length === 0 ? (
           <div style={{ textAlign: "center", padding: 32, color: "var(--text-3)", fontSize: 12, border: "1px dashed var(--border)", borderRadius: 10 }}>
             No entries logged in this shift yet.
+          </div>
+        ) : saved.filter((b) => typeFilter === "All Type" || (b.productType || "2 way") === typeFilter).length === 0 ? (
+          <div style={{ textAlign: "center", padding: 32, color: "var(--text-3)", fontSize: 12, border: "1px dashed var(--border)", borderRadius: 10 }}>
+            No batches for type &quot;{typeFilter}&quot;.
           </div>
         ) : (
           <div style={{ overflowX: "auto", borderRadius: 10, border: "1px solid var(--border)" }}>
@@ -1384,6 +1668,7 @@ export default function BatchMatrixEntry({
                 <tr style={thRow}>
                   <th style={th}>Operator</th>
                   <th style={th}>Stage & Process</th>
+                  <th style={th}>Type</th>
                   <th style={th}>Batch ID</th>
                   <th style={{ ...th, textAlign: "center" }}>Qty</th>
                   <th style={{ ...th, textAlign: "center" }}>Trolleys</th>
@@ -1396,7 +1681,9 @@ export default function BatchMatrixEntry({
                 </tr>
               </thead>
               <tbody>
-                {saved.map((rec) => {
+                {saved
+                  .filter((b) => typeFilter === "All Type" || (b.productType || "2 way") === typeFilter)
+                  .map((rec) => {
                   const primaryRow = rec.macro === "primary";
                   const secondaryRow = rec.macro === "secondary";
                   const yieldPct =
@@ -1429,6 +1716,7 @@ export default function BatchMatrixEntry({
                         <div style={{ fontWeight: 600 }}>{rec.processName}</div>
                         <div className="small" style={{ color: "var(--text-3)", fontSize: 9, textTransform: "uppercase" }}>{rec.stageName}</div>
                       </td>
+                      <td style={tdCell}>{rec.productType || "2 way"}</td>
                       <td style={{ ...tdCell, fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--accent)" }}>{rec.batchId}</td>
                       <td style={{ ...tdCell, textAlign: "center" }}>{rec.checked}</td>
                       <td style={{ ...tdCell, textAlign: "center" }}>{primaryRow ? (rec.trolleys ?? 0) : "—"}</td>
@@ -1463,12 +1751,13 @@ export default function BatchMatrixEntry({
                     </tr>
                     {open && (
                       <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
-                        <td colSpan={11} style={{ padding: "12px 14px" }}>
+                        <td colSpan={12} style={{ padding: "12px 14px" }}>
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 20, marginBottom: 10 }}>
                             <PreviewField label="Date" value={rec.date} mono />
                             <PreviewField label="Shift" value={rec.shift} />
                             <PreviewField label="Stage" value={`${rec.processName} · ${rec.stageName}`} />
                             <PreviewField label="Size" value={rec.size} />
+                            <PreviewField label="Type" value={rec.productType || "2 way"} />
                             <PreviewField label="Batch ID" value={rec.batchId} mono />
                             <PreviewField label={qtyHeaderFor(rec.macro)} value={String(rec.checked)} mono />
                             {rec.macro === "primary" && (
