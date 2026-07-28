@@ -84,6 +84,20 @@ export interface StageBlock {
   label: string | null;
   /** Absolute column indices belonging to this block, in sheet order. */
   columns: number[];
+  /**
+   * Roles supplied by the proposer rather than inferred from header text.
+   * A grouping alone is useless on headers our vocabulary cannot read — the
+   * scorer needs to know WHICH column is checked to check anything. This is
+   * where a language model does the part no arithmetic can: naming. The
+   * arithmetic then decides whether the naming was right.
+   */
+  roles?: {
+    checked?: number;
+    accepted?: number;
+    rework?: number;
+    rejected?: number;
+    pct?: number;
+  };
 }
 
 /**
@@ -151,7 +165,7 @@ export function splitStageBlocks(
 }
 
 /** Which boundary signals a candidate split was allowed to use. */
-export type SplitStrategy = "stage-and-role" | "stage-only" | "role-only" | "whole";
+export type SplitStrategy = "stage-and-role" | "stage-only" | "role-only" | "whole" | "assisted";
 
 /**
  * The candidate readings of one column run, for the scorer to choose between.
@@ -221,6 +235,20 @@ export function assignRoles(
   block: StageBlock,
   headers: Map<number, string>,
 ): { checked?: number; accepted?: number; rework?: number; rejected?: number; pct?: number; defects: number[] } {
+  // A proposer that named the roles outright is trusted to have read headers
+  // we cannot — but only as a CANDIDATE; scoring still has the last word.
+  if (block.roles) {
+    const r = block.roles;
+    const inBlock = (i?: number) => (i !== undefined && block.columns.includes(i) ? i : undefined);
+    return {
+      checked: inBlock(r.checked),
+      accepted: inBlock(r.accepted),
+      rework: inBlock(r.rework),
+      rejected: inBlock(r.rejected),
+      pct: inBlock(r.pct),
+      defects: [],
+    };
+  }
   const out: ReturnType<typeof assignRoles> = { defects: [] };
   for (const c of block.columns) {
     const role = roleOf(headers.get(c) ?? "");
@@ -267,10 +295,24 @@ export interface ChosenSplit {
 export function chooseSplit(
   cols: ColumnInput[],
   rows: unknown[][],
-  opts: { stageTokens?: { re: RegExp; label: string }[]; dateIndex?: number } = {},
+  opts: {
+    stageTokens?: { re: RegExp; label: string }[];
+    dateIndex?: number;
+    /**
+     * Extra readings from outside the heuristics — today, the LLM's. They are
+     * scored on exactly the same footing as everything else: a model proposal
+     * wins only by making the sheet's arithmetic add up better, never by being
+     * a model proposal. That is what keeps a non-deterministic component from
+     * making the pipeline non-deterministic.
+     */
+    extraCandidates?: StageBlock[][];
+  } = {},
 ): ChosenSplit {
   const headers = new Map(cols.map((c) => [c.index, c.header]));
-  const candidates = candidateSplits(cols, opts);
+  const candidates = [
+    ...candidateSplits(cols, opts),
+    ...(opts.extraCandidates ?? []).map((blocks) => ({ strategy: "assisted" as SplitStrategy, blocks })),
+  ];
 
   // Quantity columns the reading OUGHT to account for. A candidate that leaves
   // most of them unassigned must not win by checking only the few it kept.

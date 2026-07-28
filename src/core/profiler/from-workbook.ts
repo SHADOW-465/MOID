@@ -6,7 +6,7 @@ import {
   normalizeHeaders,
   colIndexToLabel,
 } from "@/core/workbook/header";
-import { chooseSplit, type ColumnInput, type BlockEvidence } from "./split-regions";
+import { chooseSplit, type ColumnInput, type BlockEvidence, type StageBlock } from "./split-regions";
 import type { ProfilingCell, ProfilingTable } from "./types";
 
 const DEFAULT_MAX_SAMPLE_ROWS = 60;
@@ -35,7 +35,15 @@ const isNumericish = (v: unknown) =>
 export function buildProfilingTables(
   data: ArrayBuffer | Buffer,
   _fileName: string,
-  opts: { maxRows?: number } = {},
+  opts: {
+    maxRows?: number;
+    /**
+     * Extra readings to score alongside the heuristic ones, keyed by sheet
+     * name — see `llmLayout`. They only widen the candidate set; the sheet's
+     * arithmetic still decides which reading wins.
+     */
+    extraCandidates?: Record<string, StageBlock[][]>;
+  } = {},
 ): ProfilingTable[] {
   // _fileName is unused here — callers (e.g. src/lib/dataset/from-workbooks.ts)
   // already track fileName separately alongside each returned ProfilingTable.
@@ -137,7 +145,14 @@ export function buildProfilingTables(
       evidence: BlockEvidence | null;
     }[] = [];
     for (const r of gapRegions) {
-      const chosen = chooseSplit(columnInput(r), dataRows as unknown[][], { dateIndex: dateIdx });
+      // Only offer an assisted reading to the run it actually describes.
+      const extras = (opts.extraCandidates?.[sheetName] ?? []).filter((blocks) =>
+        blocks.every((b) => b.columns.every((c) => c >= r.start && c < r.end)),
+      );
+      const chosen = chooseSplit(columnInput(r), dataRows as unknown[][], {
+        dateIndex: dateIdx,
+        extraCandidates: extras.length > 0 ? extras : undefined,
+      });
       chosen.blocks.forEach((block, i) => {
         regions.push({
           start: r.start,

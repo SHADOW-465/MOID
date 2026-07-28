@@ -6,11 +6,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readWorkbookSnapshot } from "@/core/workbook/reader";
 import { getSnapshotStore } from "@/core/workbook/snapshot-store";
-import { buildProfilingTables } from "@/core/profiler/from-workbook";
+import { buildProfilingTablesAssisted } from "@/core/profiler/assisted-profile";
 import { profileTable } from "@/core/profiler/profile";
 import { resolveWorkbook, type ResolverSheet } from "@/core/ontology/resolver/ladder";
 import { buildExactIndex } from "@/core/ontology/resolver/exact-index";
 import { llmResolve } from "@/core/ontology/resolver/llm";
+import { llmLayout } from "@/core/ontology/resolver/llm-layout";
 import { buildModDocument, type ProfiledSheet } from "@/core/ontology/builder/build-mod";
 import { getModStore } from "@/core/ontology/store/mod-store";
 import { getKnowledgeStore } from "@/core/ontology/store/knowledge-store";
@@ -95,7 +96,16 @@ export async function POST(req: NextRequest) {
       const snapshot = await readWorkbookSnapshot(buf, file.name);
       await getSnapshotStore().put(snapshot);
 
-      const sheets: ProfiledSheet[] = buildProfilingTables(buf, file.name).map((table) => ({
+      // The model is asked about layout ONLY for sheets whose arithmetic the
+      // deterministic pass could not settle, and its proposal still has to win
+      // on the same invariants. A well-formed sheet never reaches it.
+      const { tables, assistedSheets } = await buildProfilingTablesAssisted(buf, file.name, {
+        assist: useLlm ? llmLayout : undefined,
+      });
+      if (assistedSheets.length > 0) {
+        console.log(`[workbooks] layout assist consulted for: ${assistedSheets.join(", ")}`);
+      }
+      const sheets: ProfiledSheet[] = tables.map((table) => ({
         table,
         columns: profileTable(table).columns,
       }));
