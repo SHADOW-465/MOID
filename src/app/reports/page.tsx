@@ -24,7 +24,7 @@ export default function ReportsPage() {
 
   const scope: Scope = useMemo(
     () => resolveScope(events ?? [], t),
-    [events, t.grain, t.dateFrom, t.dateTo, t.datePreset, t.stageView],
+    [events, t],
   );
 
   const periodLabel = useMemo(() => {

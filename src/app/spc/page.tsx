@@ -238,7 +238,7 @@ export default function SpcPage() {
 
   const scope: Scope = useMemo(
     () => resolveScope(events ?? [], t),
-    [events, t.grain, t.datePreset, t.dateFrom, t.dateTo, t.stageView],
+    [events, t],
   );
 
   const srcRows = (filter: Parameters<typeof toSourceRows>[1] = {}): SourceRow[] =>

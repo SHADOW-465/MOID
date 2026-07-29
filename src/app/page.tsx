@@ -144,7 +144,7 @@ export default function Dashboard() {
 
   const scope: Scope = useMemo(
     () => resolveScope(events ?? [], t),
-    [events, t.grain, t.datePreset, t.dateFrom, t.dateTo, t.stageView],
+    [events, t],
   );
 
   const m = useMemo(() => {

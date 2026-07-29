@@ -181,15 +181,9 @@ export default function SchemaPage() {
     if (!events || events.length === 0) {
       return { state: "ok" as const, reason: "", integrityIssues: [] as IntegrityIssue[] };
     }
-    const scope = resolveScope(events, {
-      grain: t.grain,
-      datePreset: t.datePreset,
-      dateFrom: t.dateFrom,
-      dateTo: t.dateTo,
-      stageView: t.stageView,
-    });
+    const scope = resolveScope(events, t);
     return qualityStatus(events, scope);
-  }, [events, t.grain, t.datePreset, t.dateFrom, t.dateTo, t.stageView]);
+  }, [events, t]);
 
   const load = useCallback(async () => {
     setLoading(true);

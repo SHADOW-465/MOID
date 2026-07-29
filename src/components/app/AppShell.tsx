@@ -149,7 +149,7 @@ export default function AppShell({
    *  so a report always answers the same question the page is answering. */
   const reportScope = useMemo(
     () => resolveScope(events ?? [], t),
-    [events, t.grain, t.datePreset, t.dateFrom, t.dateTo, t.stageView, t.includeExcel, t.includeDirectEntry, t.excelFiles],
+    [events, t],
   );
 
   useCommandPaletteHotkey(useCallback(() => setPaletteOpen(true), []));
@@ -413,10 +413,16 @@ export default function AppShell({
   const fallbackTrustScore = useMemo(() => {
     if (!events) return null;
     const scope = resolveScope(events, {
-      grain: suggestedGrain, datePreset: t.datePreset, dateFrom: t.dateFrom, dateTo: t.dateTo,
+      grain: suggestedGrain,
+      datePreset: t.datePreset,
+      dateFrom: t.dateFrom,
+      dateTo: t.dateTo,
+      includeExcel: t.includeExcel,
+      includeDirectEntry: t.includeDirectEntry,
+      excelFiles: t.excelFiles,
     });
     return computeTrustScore(events, scope).pct;
-  }, [events, suggestedGrain, t.datePreset, t.dateFrom, t.dateTo]);
+  }, [events, suggestedGrain, t.datePreset, t.dateFrom, t.dateTo, t.includeExcel, t.includeDirectEntry, t.excelFiles]);
   const trustScore = trustScoreProp !== undefined ? trustScoreProp : fallbackTrustScore;
 
   useEffect(() => {
