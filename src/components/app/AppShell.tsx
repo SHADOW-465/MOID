@@ -7,6 +7,7 @@ import { useTweaks } from "@/components/editorial/TweaksContext";
 import { useEvents } from "@/components/app/EventsContext";
 import {
   rejectionRate,
+  stagesFor,
   totalRejected,
   totalChecked,
   fpy,
@@ -703,7 +704,13 @@ export default function AppShell({
   // already-fetched `events`, mapped through viewStages for labels) so the
   // dropdown never shows an empty station. Uses the exact same visibility
   // filter as before for dataset tabs (computed in the effect above).
-  const stationCandidates = viewStages.length ? viewStages : VIEW_OPTIONS.slice(1);
+  // Stages the ledger has but the catalog never learned (Production etc. — no
+  // workbook described them) get their own station view, upstream of the gates.
+  // Same union the metrics use, so the dropdown can't disagree with the KPIs.
+  const stationCandidates = viewStages.length
+    ? stagesFor(events ?? [], { stages: viewStages.map((v) => ({ stageId: v.id, label: v.label })), defects: [], sizes: [], fiscalYearStartMonth: 4 })
+        .map((s) => ({ id: s.stageId, label: s.label || s.stageId }))
+    : VIEW_OPTIONS.slice(1);
   const stagesWithData = new Set((events ?? []).map((e: any) => e.stageId).filter(Boolean));
   const stationOptions = stationCandidates.filter((v) => stagesWithData.has(v.id));
   const allViewOptions = [{ id: "cumulative", label: "Factory Overview" }, ...stationOptions];

@@ -5,7 +5,7 @@
 import { templateFrom } from "../route";
 import type { ModRowT } from "@/shared/models/ontology";
 
-function mod(fileName: string, defectCodes: string[], captures: string[]): ModRowT {
+function mod(fileName: string, defectCodes: string[], captures: string[], letters?: string[]): ModRowT {
   return {
     modId: `mod-${fileName}`,
     version: 1,
@@ -24,11 +24,11 @@ function mod(fileName: string, defectCodes: string[], captures: string[]): ModRo
           verified: true,
           original: { sheet: "S1", tableId: "t1", header: "Visual" },
         },
-        ...defectCodes.map((c) => ({
+        ...defectCodes.map((c, i) => ({
           kind: "defect" as const,
           canonical: `DEFECT:${c}`,
           verified: true,
-          original: { sheet: "S1", tableId: "t1", header: c },
+          original: { sheet: "S1", tableId: "t1", header: c, colLetter: letters?.[i] ?? null },
         })),
       ],
     },
@@ -91,6 +91,18 @@ test("Data Schema renames, removals, and additions reach the entry template", ()
 test("an empty catalog never strips Excel-taught columns", () => {
   const t = templateFrom([mod("a.xlsx", ["COAG"], ["checked"])], catalog([]));
   expect(t.stages[0].defects.map((d) => d.defectCode)).toEqual(["COAG"]);
+});
+
+test("defect order follows the sheet column, not entity array order", () => {
+  // Entities arrive shuffled (alphabetical); columns H..K say COAG, SD, TT, BL.
+  const rows = [mod("apr.xlsx", ["BL", "COAG", "SD", "TT"], ["checked", "rejected"], ["K", "H", "I", "J"])];
+  expect(templateFrom(rows).stages[0].defects.map((d) => d.defectCode)).toEqual(["COAG", "SD", "TT", "BL"]);
+  // …and the catalog override keeps that order.
+  const withCatalog = templateFrom(
+    rows,
+    catalog(["BL", "COAG", "SD", "TT"].map((c) => ({ defectCode: c, label: c, stages: ["visual"] }))),
+  );
+  expect(withCatalog.stages[0].defects.map((d) => d.defectCode)).toEqual(["COAG", "SD", "TT", "BL"]);
 });
 
 test("capture columns union and keep canonical order", () => {

@@ -11,15 +11,32 @@ export type Registry = { stages: any[]; defects: any[]; sizes: any[]; fiscalYear
  *  (first-appearance order). Never a hardcoded company (MOD v2 Phase 5). */
 export const DERIVED_REGISTRY: Registry = { stages: [], defects: [], sizes: [], fiscalYearStartMonth: 4 };
 
-function stagesFor(events: Event[], registry: Registry = DERIVED_REGISTRY): { stageId: string; label?: string }[] {
-  if (registry.stages.length > 0) return registry.stages;
+/**
+ * Stage list for every metric: the catalog's stages UNION the stages that
+ * actually appear in the ledger.
+ *
+ * The catalog only knows what a verified MOD taught it — i.e. the Excel
+ * workbooks, which cover the assembly gates (Visual/Balloon/Valve/Final).
+ * Direct entry also writes upstream stages ("production", "secondary") that no
+ * workbook ever described. Dropping those made the dashboard disagree with the
+ * report; counting them is the precise figure.
+ *
+ * ponytail: event-only stages are PREPENDED — anything Excel never described is
+ * upstream of the gates at this plant. If a downstream stage ever arrives the
+ * same way, give the catalog an explicit order instead of guessing here.
+ */
+export function stagesFor(events: Event[], registry: Registry = DERIVED_REGISTRY): { stageId: string; label?: string }[] {
+  const known = new Set(registry.stages.map((s: any) => s.stageId));
   const seen = new Set<string>();
-  const out: { stageId: string }[] = [];
+  const derived: { stageId: string; label: string }[] = [];
   for (const e of events) {
     const id = stageOf(e);
-    if (id && !seen.has(id)) { seen.add(id); out.push({ stageId: id }); }
+    if (id && !known.has(id) && !seen.has(id)) {
+      seen.add(id);
+      derived.push({ stageId: id, label: id.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) });
+    }
   }
-  return out;
+  return [...derived, ...registry.stages];
 }
 
 function qty(e: Event): number {

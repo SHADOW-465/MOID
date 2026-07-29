@@ -43,11 +43,16 @@ const scope: Scope = { grain: "month" };
 describe("registry-dependent selectors — custom (non-hardcoded) stage visibility", () => {
   const events = emitMany([customStageRecord()]);
 
-  it("with the DEFAULT (hardcoded) registry, the custom stage's data is invisible", () => {
-    expect(rejectionRate(events, scope, REG).value).toBe(0); // was silently 0 — the bug
-    expect(totalChecked(events, scope, REG).value).toBe(0);
-    expect(fpy(events, scope, REG).value).toBe(1); // "no stages" -> defaults to perfect yield
-    expect(byStage(events, scope, REG)).toHaveLength(0); // event totally absent from the breakdown
+  // A stage the catalog never learned (direct entry writes "production"; no
+  // workbook ever described it) must STILL count — otherwise the dashboard and
+  // the report disagree. It is unioned in, ahead of the catalog's own stages.
+  it("a stage missing from the registry is still counted, and sorts upstream", () => {
+    expect(rejectionRate(events, scope, REG).value).toBeCloseTo(0.2, 6);
+    expect(totalChecked(events, scope, REG).value).toBe(100);
+    expect(fpy(events, scope, REG).value).toBeCloseTo(0.8, 6);
+    const stages = byStage(events, scope, REG);
+    expect(stages).toHaveLength(1);
+    expect(stages[0].stageId).toBe(CUSTOM_STAGE_ID);
   });
 
   it("with the ACTUAL active registry passed in, the custom stage's data is correctly visible", () => {
@@ -62,8 +67,7 @@ describe("registry-dependent selectors — custom (non-hardcoded) stage visibili
   });
 
   it("trend() and weeklyTrend() also see the custom stage once a registry is threaded through", () => {
-    const withoutRegistry = trend(events, scope, "rejectionRate", REG);
-    expect(withoutRegistry.every((p) => p.value === 0)).toBe(true);
+    expect(trend(events, scope, "rejectionRate", REG).some((p) => p.value > 0)).toBe(true);
 
     const withRegistry = trend(events, scope, "rejectionRate", customRegistry);
     expect(withRegistry.some((p) => p.value > 0)).toBe(true);

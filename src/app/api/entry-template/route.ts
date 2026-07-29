@@ -55,6 +55,18 @@ function regionKey(e: { original: { sheet: string; tableId?: string | null } }):
   return `${e.original.sheet}::${e.original.tableId ?? "t1"}`;
 }
 
+/** Excel column letter → 0-based index ("A"→0, "Z"→25, "AA"→26). */
+function colIndex(letter: string | null | undefined): number {
+  if (!letter) return Number.MAX_SAFE_INTEGER; // sheet-level entity — sorts last
+  let n = 0;
+  for (const ch of letter.toUpperCase()) {
+    const v = ch.charCodeAt(0) - 64;
+    if (v < 1 || v > 26) return Number.MAX_SAFE_INTEGER;
+    n = n * 26 + v;
+  }
+  return n - 1;
+}
+
 function humanize(name: string): string {
   return name.trim().replace(/\s+/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -73,7 +85,9 @@ function defectsFromEntities(
   stageId: string,
   stageOfRegion: Map<string, string>,
 ): { defectCode: string; label: string; sources: string[] }[] {
-  const out = new Map<string, { defectCode: string; label: string; sources: string[] }>();
+  // Sheet column order is what the operator's eye knows (COAG, SD, TT, …).
+  // Entity array order is not reliable — sort by the verbatim column letter.
+  const out = new Map<string, { defectCode: string; label: string; sources: string[]; _col: number }>();
   const catalogByCode = new Map((doc.defects ?? []).map((d) => [d.defectCode, d]));
 
   for (const e of doc.entities) {
@@ -90,10 +104,13 @@ function defectsFromEntities(
         defectCode: code,
         label: e.original.header?.trim() || catalog?.label || humanize(code),
         sources: [doc.workbook.fileName],
+        _col: colIndex(e.original.colLetter),
       });
     }
   }
-  return [...out.values()];
+  return [...out.values()]
+    .sort((a, b) => a._col - b._col)
+    .map(({ _col, ...d }) => d);
 }
 
 function stageScore(hasLayout: boolean, migrated: boolean, hasEntityDefects: boolean): number {
