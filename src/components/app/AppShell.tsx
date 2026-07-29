@@ -15,7 +15,7 @@ import {
   trustScore,
 } from "@/lib/analytics";
 import type { DashboardConfig } from "@/types/dashboard";
-import { resolveScope, listExcelSourceFiles, countBySourceChannel } from "@/lib/analytics/scope";
+import { resolveScope } from "@/lib/analytics/scope";
 import { trustScore as computeTrustScore } from "@/lib/analytics/trust";
 
 import type { NavKey } from "@/lib/nav-keys";
@@ -28,6 +28,7 @@ import {
 } from "@/lib/persona";
 import CommandPalette, { useCommandPaletteHotkey } from "@/components/app/CommandPalette";
 import ReportPanel from "@/components/report/ReportPanel";
+import SourcesScopePanel from "@/components/app/SourcesScopePanel";
 import { canReport } from "@/lib/report/blocks";
 import { subscribeNavBanner, type NavBanner } from "@/lib/analytics/nav-banner";
 import { usePersona } from "@/components/app/PersonaContext";
@@ -159,20 +160,17 @@ export default function AppShell({
   const showInterval = scopeControls.includes("interval");
   const showRange = scopeControls.includes("range");
   const showSources = scopeControls.includes("sources");
-  const [showSourcesMenu, setShowSourcesMenu] = useState(false);
-
-  const excelFileOptions = useMemo(
-    () => listExcelSourceFiles(events ?? []),
-    [events],
-  );
-  const sourceCounts = useMemo(
-    () => countBySourceChannel(events ?? []),
-    [events],
-  );
+  const [showSourcesPanel, setShowSourcesPanel] = useState(false);
 
   const sourcesLabel = useMemo(() => {
     const ex = t.includeExcel;
     const de = t.includeDirectEntry;
+    const batches = t.batchIds;
+
+    // Batch selection wins the chip label when set — that's the primary intent.
+    if (batches.length === 1) return batches[0];
+    if (batches.length > 1) return `${batches.length} batches`;
+
     if (ex && de && t.excelFiles.length === 0) return "All sources";
     if (ex && de && t.excelFiles.length > 0) {
       return `Entry + ${t.excelFiles.length} file${t.excelFiles.length === 1 ? "" : "s"}`;
@@ -184,7 +182,34 @@ export default function AppShell({
     }
     if (!ex && de) return "Data entry only";
     return "No sources";
-  }, [t.includeExcel, t.includeDirectEntry, t.excelFiles]);
+  }, [t.includeExcel, t.includeDirectEntry, t.excelFiles, t.batchIds]);
+
+  /** Compact label for the merged date-window chip next to D/W/M/FY. */
+  const rangeLabel = useMemo(() => {
+    switch (t.datePreset) {
+      case "all":
+        return "All data";
+      case "last-90-days":
+        return "Last 90d";
+      case "last-12-months":
+        return "Last 12mo";
+      case "this-fy":
+        return "This FY";
+      case "custom":
+        if (t.dateFrom && t.dateTo) {
+          // Short ISO → "Apr 1 – Jun 30" when same year, else keep ISO slices
+          const fmt = (iso: string) => {
+            const d = new Date(iso + "T00:00:00");
+            if (Number.isNaN(d.getTime())) return iso;
+            return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+          };
+          return `${fmt(t.dateFrom)} – ${fmt(t.dateTo)}`;
+        }
+        return "Custom";
+      default:
+        return "Range";
+    }
+  }, [t.datePreset, t.dateFrom, t.dateTo]);
 
   useEffect(() => subscribeNavBanner(setBanner), []);
 
@@ -420,9 +445,10 @@ export default function AppShell({
       includeExcel: t.includeExcel,
       includeDirectEntry: t.includeDirectEntry,
       excelFiles: t.excelFiles,
+      batchIds: t.batchIds,
     });
     return computeTrustScore(events, scope).pct;
-  }, [events, suggestedGrain, t.datePreset, t.dateFrom, t.dateTo, t.includeExcel, t.includeDirectEntry, t.excelFiles]);
+  }, [events, suggestedGrain, t.datePreset, t.dateFrom, t.dateTo, t.includeExcel, t.includeDirectEntry, t.excelFiles, t.batchIds]);
   const trustScore = trustScoreProp !== undefined ? trustScoreProp : fallbackTrustScore;
 
   useEffect(() => {
@@ -542,14 +568,21 @@ export default function AppShell({
 
   useEffect(() => {
     if (!showPicker) return;
-    const handler = (e: MouseEvent) => {
+    const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       if (!target.closest(".date-picker-container")) {
         setShowPicker(false);
       }
     };
-    window.addEventListener("click", handler);
-    return () => window.removeEventListener("click", handler);
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowPicker(false);
+    };
+    window.addEventListener("click", handleClick);
+    window.addEventListener("keydown", handleKey);
+    return () => {
+      window.removeEventListener("click", handleClick);
+      window.removeEventListener("keydown", handleKey);
+    };
   }, [showPicker]);
 
   // Load persisted sidebar section collapse state once on mount.
@@ -657,18 +690,6 @@ export default function AppShell({
       window.removeEventListener("keydown", handleKey);
     };
   }, [showViewMenu]);
-
-  useEffect(() => {
-    if (!showSourcesMenu) return;
-    const handleClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest(".sources-picker-container")) {
-        setShowSourcesMenu(false);
-      }
-    };
-    window.addEventListener("click", handleClick);
-    return () => window.removeEventListener("click", handleClick);
-  }, [showSourcesMenu]);
 
   const isDark = t.theme === "dark";
   const toggleTheme = () => {
@@ -991,21 +1012,24 @@ export default function AppShell({
         <div style={{ 
           display: scopeControls.length > 0 ? "flex" : "none", 
           alignItems: "center", 
-          gap: 12, 
+          gap: 8, 
           background: "var(--surface)", 
           border: "1px solid var(--border-strong)", 
           borderRadius: "30px", 
-          padding: "4px 12px", 
+          padding: "4px 10px", 
           boxShadow: "var(--shadow-sm)",
           height: 38
         }}>
           {showView && (
-          <div className="view-picker-container" style={{ display: "flex", alignItems: "center", gap: 6, position: "relative" }}>
-            <span className="ui-label">
-              View
-            </span>
+          <div className="view-picker-container" style={{ display: "flex", alignItems: "center", position: "relative" }}>
             <div
-              onClick={(e) => { e.stopPropagation(); setShowViewMenu(!showViewMenu); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowViewMenu(!showViewMenu);
+                setShowPicker(false);
+                setShowSourcesPanel(false);
+              }}
+              title="View"
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -1014,14 +1038,15 @@ export default function AppShell({
                 fontWeight: 600,
                 borderRadius: "20px",
                 padding: "3px 8px",
-                background: "var(--surface-2)",
+                background: showViewMenu ? "var(--accent-weak)" : "var(--surface-2)",
+                color: showViewMenu ? "var(--accent)" : "var(--text)",
                 cursor: "pointer",
-                minWidth: 130,
+                maxWidth: 160,
               }}
             >
-              <Icon name="table" size={11} style={{ color: "var(--text-3)" }} />
-              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentView.label}</span>
-              <Icon name="arrow-right" size={9} style={{ transform: "rotate(90deg)", color: "var(--text-3)" }} />
+              <Icon name="table" size={11} style={{ color: "var(--text-3)", flexShrink: 0 }} />
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentView.label}</span>
+              <Icon name="arrow-right" size={9} style={{ transform: "rotate(90deg)", color: "var(--text-3)", flexShrink: 0 }} />
             </div>
 
             {showViewMenu && (
@@ -1060,31 +1085,36 @@ export default function AppShell({
                   activeId={t.stageView}
                   onSelect={(id) => { setTweak("stageView", id); setShowViewMenu(false); }}
                 />
-                              </div>
+              </div>
             )}
           </div>
           )}
 
-          {showView && showInterval && <div style={{ width: 1, height: 16, background: "var(--border)" }} />}
+          {showView && (showInterval || showRange) && (
+            <div style={{ width: 1, height: 16, background: "var(--border)" }} />
+          )}
 
-          {showInterval && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span className="ui-label">
-              Interval
-            </span>
-            <div style={{ 
+          {/* Period: grain (D/W/M/FY) + date window as one control */}
+          {(showInterval || showRange) && (
+          <div
+            className="date-picker-container"
+            style={{ display: "flex", alignItems: "center", gap: 4, position: "relative" }}
+          >
+            {showInterval && (
+            <div style={{
               display: "flex",
-              borderRadius: "20px", 
-              padding: 2, 
+              borderRadius: "20px",
+              padding: 2,
               background: "var(--surface-2)",
-              alignItems: "center"
+              alignItems: "center",
             }}>
               {(["day", "week", "month", "fy"] as const).map((g) => {
-                const active = t.grain === g;
+                const activeGrain = t.grain === g;
                 const isSuggested = suggestedGrain === g;
                 return (
                   <button
                     key={g}
+                    type="button"
                     onClick={() => setTweak("grain", g)}
                     title={isSuggested ? `${g.toUpperCase()} (Suggested)` : g.toUpperCase()}
                     style={{
@@ -1092,11 +1122,14 @@ export default function AppShell({
                       fontSize: 10,
                       fontWeight: 700,
                       borderRadius: 10,
-                      background: active ? "var(--accent)" : "transparent",
-                      color: active ? "var(--text-invert)" : "var(--text-2)",
+                      background: activeGrain ? "var(--accent)" : "transparent",
+                      color: activeGrain ? "var(--text-invert)" : "var(--text-2)",
                       transition: "all 0.12s ease",
                       textTransform: "uppercase",
-                      position: "relative"
+                      position: "relative",
+                      border: "none",
+                      cursor: "pointer",
+                      fontFamily: "inherit",
                     }}
                   >
                     {g === "fy" ? "FY" : g[0]}
@@ -1108,50 +1141,48 @@ export default function AppShell({
                         width: 4,
                         height: 4,
                         borderRadius: "50%",
-                        background: active ? "var(--text-invert)" : "var(--accent)",
+                        background: activeGrain ? "var(--text-invert)" : "var(--accent)",
                       }} />
                     )}
                   </button>
                 );
               })}
             </div>
-          </div>
-          )}
+            )}
 
-          {showInterval && showRange && <div style={{ width: 1, height: 16, background: "var(--border)" }} />}
-
-          {showRange && (
-          <div className="date-picker-container" style={{ display: "flex", alignItems: "center", gap: 6, position: "relative" }}>
-            <span className="ui-label" style={{ whiteSpace: "nowrap" }}>
-              Range
-            </span>
-            <div 
-              onClick={(e) => { e.stopPropagation(); setShowPicker(!showPicker); }}
-              style={{ 
+            {showRange && (
+            <>
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowPicker(!showPicker);
+                setShowViewMenu(false);
+                setShowSourcesPanel(false);
+              }}
+              title="Date range"
+              style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 6,
-                fontSize: 12, 
-                fontWeight: 600, 
-                borderRadius: "20px", 
-                padding: "3px 8px", 
-                background: "var(--surface-2)",
-                cursor: "pointer"
+                gap: 5,
+                fontSize: 12,
+                fontWeight: 600,
+                borderRadius: "20px",
+                padding: "3px 8px",
+                background: showPicker ? "var(--accent-weak)" : "var(--surface-2)",
+                color: showPicker ? "var(--accent)" : "var(--text)",
+                cursor: "pointer",
+                maxWidth: 180,
               }}
             >
-              <Icon name="file" size={11} style={{ color: "var(--text-3)" }} />
-              <span>
-                {t.datePreset === "all" && "All Data"}
-                {t.datePreset === "last-90-days" && "Last 90 Days"}
-                {t.datePreset === "last-12-months" && "Last 12 Months"}
-                {t.datePreset === "this-fy" && "This FY"}
-                {t.datePreset === "custom" && (t.dateFrom && t.dateTo ? `${t.dateFrom} to ${t.dateTo}` : "Custom Range")}
+              <Icon name="file" size={11} style={{ color: "var(--text-3)", flexShrink: 0 }} />
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {rangeLabel}
               </span>
-              <Icon name="arrow-right" size={9} style={{ transform: "rotate(90deg)", color: "var(--text-3)" }} />
+              <Icon name="arrow-right" size={9} style={{ transform: "rotate(90deg)", color: "var(--text-3)", flexShrink: 0 }} />
             </div>
 
             {showPicker && (
-              <div 
+              <div
                 onClick={(e) => e.stopPropagation()}
                 style={{
                   position: "absolute",
@@ -1164,23 +1195,22 @@ export default function AppShell({
                   boxShadow: "var(--shadow-lg)",
                   padding: 12,
                   zIndex: 200,
-                  width: 240,
+                  width: 260,
                   display: "flex",
                   flexDirection: "column",
-                  gap: 8
+                  gap: 8,
                 }}
               >
-                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--text-3)", marginBottom: 4 }}>
-                  Select Range
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-3)" }}>
+                  Date range
                 </div>
                 {(["all", "last-90-days", "last-12-months", "this-fy", "custom"] as const).map((preset) => (
                   <button
                     key={preset}
+                    type="button"
                     onClick={() => {
                       setTweak("datePreset", preset);
-                      if (preset !== "custom") {
-                        setShowPicker(false);
-                      }
+                      if (preset !== "custom") setShowPicker(false);
                     }}
                     style={{
                       padding: "6px 8px",
@@ -1192,22 +1222,23 @@ export default function AppShell({
                       borderRadius: "var(--radius-sm)",
                       textAlign: "left",
                       cursor: "pointer",
-                      width: "100%"
+                      width: "100%",
+                      fontFamily: "inherit",
                     }}
                   >
-                    {preset === "all" && "All Data"}
-                    {preset === "last-90-days" && "Last 90 Days"}
-                    {preset === "last-12-months" && "Last 12 Months"}
+                    {preset === "all" && "All data"}
+                    {preset === "last-90-days" && "Last 90 days"}
+                    {preset === "last-12-months" && "Last 12 months"}
                     {preset === "this-fy" && "This FY"}
-                    {preset === "custom" && "Custom Range..."}
+                    {preset === "custom" && "Custom range…"}
                   </button>
                 ))}
 
                 {t.datePreset === "custom" && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8, borderTop: "1px solid var(--border)", paddingTop: 8 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4, borderTop: "1px solid var(--border)", paddingTop: 8 }}>
                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                       <span style={{ fontSize: 10, color: "var(--text-3)", width: 30 }}>From</span>
-                      <input 
+                      <input
                         type="date"
                         value={t.dateFrom}
                         onChange={(e) => setTweak("dateFrom", e.target.value)}
@@ -1218,13 +1249,14 @@ export default function AppShell({
                           border: "1px solid var(--border-strong)",
                           borderRadius: "var(--radius-sm)",
                           background: "var(--surface)",
-                          color: "var(--text)"
+                          color: "var(--text)",
+                          fontFamily: "inherit",
                         }}
                       />
                     </div>
                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                       <span style={{ fontSize: 10, color: "var(--text-3)", width: 30 }}>To</span>
-                      <input 
+                      <input
                         type="date"
                         value={t.dateTo}
                         onChange={(e) => setTweak("dateTo", e.target.value)}
@@ -1235,22 +1267,25 @@ export default function AppShell({
                           border: "1px solid var(--border-strong)",
                           borderRadius: "var(--radius-sm)",
                           background: "var(--surface)",
-                          color: "var(--text)"
+                          color: "var(--text)",
+                          fontFamily: "inherit",
                         }}
                       />
                     </div>
                     <button
+                      type="button"
                       onClick={() => setShowPicker(false)}
                       style={{
                         marginTop: 4,
-                        padding: "4px 8px",
+                        padding: "6px 8px",
                         fontSize: 11,
                         fontWeight: 700,
                         background: "var(--accent)",
                         color: "var(--text-invert)",
                         border: "none",
                         borderRadius: "var(--radius-sm)",
-                        cursor: "pointer"
+                        cursor: "pointer",
+                        fontFamily: "inherit",
                       }}
                     >
                       Apply
@@ -1258,6 +1293,8 @@ export default function AppShell({
                   </div>
                 )}
               </div>
+            )}
+            </>
             )}
           </div>
           )}
@@ -1267,170 +1304,47 @@ export default function AppShell({
           )}
 
           {showSources && (
-          <div className="sources-picker-container" style={{ display: "flex", alignItems: "center", gap: 6, position: "relative" }}>
-            <span className="ui-label" style={{ whiteSpace: "nowrap" }}>Sources</span>
-            <div
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowSourcesMenu(!showSourcesMenu);
-                setShowPicker(false);
-                setShowViewMenu(false);
-              }}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                fontSize: 12,
-                fontWeight: 600,
-                borderRadius: "20px",
-                padding: "3px 10px",
-                background: "var(--surface-2)",
-                cursor: "pointer",
-                maxWidth: 200,
-              }}
-              title="Filter Excel uploads vs Data Entry"
-            >
-              <Icon name="split" size={11} style={{ color: "var(--text-3)", flexShrink: 0 }} />
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {sourcesLabel}
-              </span>
-            </div>
-            {showSourcesMenu && (
-              <div
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  position: "absolute",
-                  top: "100%",
-                  left: 0,
-                  marginTop: 8,
-                  width: 300,
-                  maxHeight: 360,
-                  overflowY: "auto",
-                  background: "var(--surface)",
-                  border: "1px solid var(--border-strong)",
-                  borderRadius: 12,
-                  boxShadow: "var(--shadow-lg)",
-                  padding: 12,
-                  zIndex: 230,
-                }}
-              >
-                <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-3)", marginBottom: 8 }}>
-                  Data channels
-                </div>
-                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, marginBottom: 8, cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={t.includeExcel}
-                    onChange={(e) => {
-                      setTweak("includeExcel", e.target.checked);
-                      if (!e.target.checked) setTweak("excelFiles", []);
-                    }}
-                  />
-                  <span style={{ flex: 1 }}>Excel uploads</span>
-                  <span className="muted" style={{ fontSize: 11, fontFamily: "var(--font-mono)" }}>{sourceCounts.excel}</span>
-                </label>
-                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, marginBottom: 12, cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={t.includeDirectEntry}
-                    onChange={(e) => setTweak("includeDirectEntry", e.target.checked)}
-                  />
-                  <span style={{ flex: 1 }}>Data entry</span>
-                  <span className="muted" style={{ fontSize: 11, fontFamily: "var(--font-mono)" }}>{sourceCounts.directEntry}</span>
-                </label>
-
-                {t.includeExcel && excelFileOptions.length > 0 && (
-                  <>
-                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-3)", marginBottom: 6, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
-                      Excel files {t.excelFiles.length === 0 ? "(all)" : `(${t.excelFiles.length} selected)`}
-                    </div>
-                    <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                      <button
-                        type="button"
-                        onClick={() => setTweak("excelFiles", [])}
-                        style={{ fontSize: 11, fontWeight: 600, border: "1px solid var(--border)", borderRadius: 6, padding: "3px 8px", background: t.excelFiles.length === 0 ? "var(--accent-weak)" : "var(--surface)", cursor: "pointer", fontFamily: "inherit" }}
-                      >
-                        All files
-                      </button>
-                    </div>
-                    {excelFileOptions.map((f) => {
-                      const checked =
-                        t.excelFiles.length === 0 || t.excelFiles.includes(f);
-                      return (
-                        <label
-                          key={f}
-                          style={{
-                            display: "flex",
-                            alignItems: "flex-start",
-                            gap: 8,
-                            fontSize: 12,
-                            marginBottom: 6,
-                            cursor: "pointer",
-                            lineHeight: 1.3,
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            style={{ marginTop: 2 }}
-                            onChange={() => {
-                              // empty excelFiles means "all". First toggle off of one
-                              // file means "all except that one" → select the rest.
-                              if (t.excelFiles.length === 0) {
-                                setTweak(
-                                  "excelFiles",
-                                  excelFileOptions.filter((x) => x !== f),
-                                );
-                              } else if (t.excelFiles.includes(f)) {
-                                const next = t.excelFiles.filter((x) => x !== f);
-                                setTweak("excelFiles", next);
-                              } else {
-                                const next = [...t.excelFiles, f];
-                                // selecting everything → store empty (= all)
-                                setTweak(
-                                  "excelFiles",
-                                  next.length === excelFileOptions.length ? [] : next,
-                                );
-                              }
-                            }}
-                          />
-                          <span style={{ wordBreak: "break-word" }}>{f}</span>
-                        </label>
-                      );
-                    })}
-                  </>
-                )}
-
-                {t.includeExcel && excelFileOptions.length === 0 && (
-                  <div className="muted" style={{ fontSize: 11.5, marginTop: 4 }}>
-                    No Excel-sourced events in the ledger yet.
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTweak("includeExcel", true);
-                    setTweak("includeDirectEntry", true);
-                    setTweak("excelFiles", []);
-                  }}
-                  style={{
-                    marginTop: 10,
-                    width: "100%",
-                    padding: "6px 10px",
-                    fontSize: 11.5,
-                    fontWeight: 600,
-                    border: "1px solid var(--border-strong)",
-                    borderRadius: 8,
-                    background: "var(--surface)",
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                  }}
-                >
-                  Reset to all sources
-                </button>
-              </div>
-            )}
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowSourcesPanel(true);
+              setShowPicker(false);
+              setShowViewMenu(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setShowSourcesPanel(true);
+              }
+            }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12,
+              fontWeight: 600,
+              borderRadius: "20px",
+              padding: "3px 10px",
+              background:
+                showSourcesPanel || t.batchIds.length > 0 || t.excelFiles.length > 0
+                  ? "var(--accent-weak)"
+                  : "var(--surface-2)",
+              color:
+                showSourcesPanel || t.batchIds.length > 0 || t.excelFiles.length > 0
+                  ? "var(--accent)"
+                  : "var(--text)",
+              cursor: "pointer",
+              maxWidth: 180,
+            }}
+            title="Sources, batches & Excel files"
+          >
+            <Icon name="split" size={11} style={{ color: "var(--text-3)", flexShrink: 0 }} />
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {sourcesLabel}
+            </span>
+            <Icon name="arrow-right" size={9} style={{ transform: "rotate(90deg)", color: "var(--text-3)", flexShrink: 0 }} />
           </div>
           )}
         </div>
@@ -1639,6 +1553,13 @@ export default function AppShell({
           periodLabel={dateRange ?? "all data"}
           onClose={() => setReportOpen(false)}
           onDownloadData={handleExport}
+        />
+      )}
+
+      {showSourcesPanel && (
+        <SourcesScopePanel
+          events={events ?? []}
+          onClose={() => setShowSourcesPanel(false)}
         />
       )}
 

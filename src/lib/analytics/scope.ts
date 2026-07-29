@@ -30,6 +30,12 @@ export interface Scope {
    * Ignored when excel is not in sourceChannels.
    */
   sourceFiles?: string[];
+  /**
+   * Restrict to these batch IDs (`batchNo` / customFields.batch*).
+   * Omit / empty = every batch (and events with no batch).
+   * Non-empty = only matching batches; events without a batch are dropped.
+   */
+  batchIds?: string[];
   // V2 dimensions — ignored by selectors until events carry them.
   shift?: string;
   productIds?: string[];
@@ -76,6 +82,44 @@ export function listExcelSourceFiles(events: Event[]): string[] {
   return [...set].sort((a, b) => a.localeCompare(b));
 }
 
+/**
+ * Batch ID on a ledger event — same fields Data Entry + Audit trail use.
+ * Uppercases for stable compare / picker keys.
+ */
+export function eventBatchId(e: Event): string | null {
+  const any = e as Event & {
+    batchNo?: string | null;
+    customFields?: Record<string, unknown>;
+  };
+  const raw =
+    any.batchNo ??
+    (typeof any.customFields?.batch === "string" ? any.customFields.batch : null) ??
+    (typeof any.customFields?.batchId === "string" ? any.customFields.batchId : null) ??
+    null;
+  if (typeof raw !== "string") return null;
+  const t = raw.trim();
+  return t ? t.toUpperCase() : null;
+}
+
+/**
+ * Event types that carry live plant quantities. Corrections / annotations may
+ * still reference a batch after a purge path failed — they must not keep a
+ * deleted batch in the Sources picker.
+ */
+const BATCH_LIST_TYPES = new Set(["production", "inspection", "rejection"]);
+
+/** Distinct batch IDs in a raw event list (for the Sources picker), newest-looking first. */
+export function listBatchIds(events: Event[]): string[] {
+  const set = new Set<string>();
+  for (const e of events) {
+    if (!BATCH_LIST_TYPES.has(e.eventType)) continue;
+    const b = eventBatchId(e);
+    if (b) set.add(b);
+  }
+  // Lexicographic desc tends to put newer plant batch codes (yy letter day-size) near top
+  return [...set].sort((a, b) => b.localeCompare(a));
+}
+
 export function countBySourceChannel(events: Event[]): { excel: number; directEntry: number } {
   let excel = 0;
   let directEntry = 0;
@@ -90,21 +134,35 @@ export function countBySourceChannel(events: Event[]): { excel: number; directEn
 export function describeSourceFilter(scope: Scope): string {
   const channels = scope.sourceChannels;
   const files = scope.sourceFiles;
+  const batches = scope.batchIds;
   const excelOn = !channels || channels.includes("excel");
   const deOn = !channels || channels.includes("direct-entry");
 
-  if (excelOn && deOn && (!files || files.length === 0)) return "All sources (Excel + Data entry)";
+  const batchSuffix =
+    batches && batches.length > 0
+      ? batches.length === 1
+        ? ` · batch ${batches[0]}`
+        : ` · ${batches.length} batches`
+      : "";
+
+  if (excelOn && deOn && (!files || files.length === 0)) {
+    return `All sources (Excel + Data entry)${batchSuffix}`;
+  }
   if (excelOn && deOn && files?.length) {
-    return `Data entry + Excel: ${files.join(", ")}`;
+    return `Data entry + Excel: ${files.join(", ")}${batchSuffix}`;
   }
   if (excelOn && !deOn) {
-    if (!files || files.length === 0) return "Excel uploads only";
-    if (files.length === 1) return `Excel: ${files[0]}`;
-    return `Excel files (${files.length}): ${files.join(", ")}`;
+    if (!files || files.length === 0) return `Excel uploads only${batchSuffix}`;
+    if (files.length === 1) return `Excel: ${files[0]}${batchSuffix}`;
+    return `Excel files (${files.length}): ${files.join(", ")}${batchSuffix}`;
   }
-  if (!excelOn && deOn) return "Data entry only";
+  if (!excelOn && deOn) {
+    if (batches?.length === 1) return `Data entry · batch ${batches[0]}`;
+    if (batches && batches.length > 1) return `Data entry · ${batches.length} batches`;
+    return "Data entry only";
+  }
   if (channels && channels.length === 0) return "No sources selected";
-  return "All sources";
+  return batchSuffix ? `All sources${batchSuffix}` : "All sources";
 }
 
 /** The week-of-month bucket containing `day` in `month`/`year`. Buckets are
@@ -147,6 +205,9 @@ export function scopeEvents(events: Event[], scope: Scope): Event[] {
     scope.sourceFiles?.length && (!channels || channels.has("excel"))
       ? new Set(scope.sourceFiles)
       : null;
+  const batches = scope.batchIds?.length
+    ? new Set(scope.batchIds.map((b) => b.toUpperCase()))
+    : null;
 
   const filtered = events.filter((e) => {
     if (scope.dateFrom && e.occurredOn.end < scope.dateFrom) return false;
@@ -166,6 +227,11 @@ export function scopeEvents(events: Event[], scope: Scope): Event[] {
     if (channel === "excel" && files) {
       const label = eventSourceFileLabel(e);
       if (!label || !files.has(label)) return false;
+    }
+
+    if (batches) {
+      const batch = eventBatchId(e);
+      if (!batch || !batches.has(batch)) return false;
     }
 
     return true;
@@ -254,6 +320,11 @@ export interface ScopeTweaks {
    * non-empty = only these basenames.
    */
   excelFiles?: string[] | null;
+  /**
+   * Empty / null = all batches. Non-empty = only these batch IDs
+   * (matches eventBatchId — case-insensitive).
+   */
+  batchIds?: string[] | null;
 }
 
 /**
@@ -307,6 +378,11 @@ export function resolveScope(events: Event[], t: ScopeTweaks): Scope {
   const sourceFiles =
     includeExcel && t.excelFiles && t.excelFiles.length > 0 ? t.excelFiles : undefined;
 
+  const batchIds =
+    t.batchIds && t.batchIds.length > 0
+      ? t.batchIds.map((b) => b.toUpperCase())
+      : undefined;
+
   return {
     grain: t.grain,
     dateFrom: from,
@@ -314,6 +390,7 @@ export function resolveScope(events: Event[], t: ScopeTweaks): Scope {
     stageIds,
     sourceChannels: channelsProp,
     sourceFiles,
+    batchIds,
   };
 }
 

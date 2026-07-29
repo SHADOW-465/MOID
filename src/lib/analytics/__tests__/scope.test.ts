@@ -6,6 +6,8 @@ import {
   resolveScope,
   isDirectEntryEvent,
   listExcelSourceFiles,
+  listBatchIds,
+  eventBatchId,
   type Scope,
 } from "../scope";
 import type { Event } from "@/lib/store/types";
@@ -19,6 +21,7 @@ function makeEv(partial: {
   file?: string;
   extractedBy?: string;
   disposition?: string;
+  batchNo?: string | null;
 }): Event {
   const day = partial.day ?? "2025-04-01";
   return {
@@ -47,7 +50,7 @@ function makeEv(partial: {
     size: "Fr14",
     quantity: partial.qty ?? 10,
     unit: "pcs",
-    batchNo: null,
+    batchNo: partial.batchNo ?? null,
     disposition: partial.disposition ?? "rejected",
   } as unknown as Event;
 }
@@ -201,5 +204,77 @@ describe("source channel filter (Excel vs Data Entry)", () => {
     });
     expect(scope.sourceChannels).toBeUndefined();
     expect(scope.sourceFiles).toBeUndefined();
+  });
+});
+
+describe("batch filter (batch-wise dashboard)", () => {
+  const b1 = makeEv({
+    eventId: "b1",
+    batchNo: "26F27-14",
+    extractedBy: "direct-entry",
+    file: "Batch Entry 26F27-14",
+    qty: 20,
+  });
+  const b2 = makeEv({
+    eventId: "b2",
+    batchNo: "26F28-16",
+    extractedBy: "direct-entry",
+    file: "Batch Entry 26F28-16",
+    qty: 30,
+  });
+  const noBatch = makeEv({
+    eventId: "nb",
+    batchNo: null,
+    file: "old-upload.xlsx",
+    qty: 5,
+  });
+
+  it("reads and uppercases batchNo", () => {
+    expect(eventBatchId(b1)).toBe("26F27-14");
+    expect(eventBatchId(makeEv({ eventId: "x", batchNo: "26f27-14" }))).toBe("26F27-14");
+    expect(eventBatchId(noBatch)).toBeNull();
+  });
+
+  it("lists distinct batch IDs for the Sources picker", () => {
+    expect(listBatchIds([b1, b2, noBatch, b1])).toEqual(["26F28-16", "26F27-14"]);
+  });
+
+  it("ignores correction/annotation-only ghosts so deleted batches leave the picker", () => {
+    const ghost = {
+      ...makeEv({ eventId: "corr", batchNo: "26G27-14" }),
+      eventType: "correction",
+    } as Event;
+    expect(listBatchIds([ghost])).toEqual([]);
+    expect(listBatchIds([ghost, b1])).toEqual(["26F27-14"]);
+  });
+
+  it("restricts scope to selected batches and drops unbatched rows", () => {
+    const kept = scopeEvents([b1, b2, noBatch], {
+      grain: "month",
+      batchIds: ["26F27-14"],
+    });
+    expect(kept.map((e) => e.eventId)).toEqual(["b1"]);
+  });
+
+  it("resolveScope maps batchIds tweak", () => {
+    const scope = resolveScope([b1, b2], {
+      grain: "month",
+      datePreset: "all",
+      dateFrom: "",
+      dateTo: "",
+      batchIds: ["26f27-14"],
+    });
+    expect(scope.batchIds).toEqual(["26F27-14"]);
+  });
+
+  it("empty batchIds omits the filter (all batches)", () => {
+    const scope = resolveScope([b1], {
+      grain: "month",
+      datePreset: "all",
+      dateFrom: "",
+      dateTo: "",
+      batchIds: [],
+    });
+    expect(scope.batchIds).toBeUndefined();
   });
 });

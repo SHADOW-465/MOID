@@ -906,6 +906,10 @@ export default function BatchMatrixEntry({
    * Remove a logged batch. A synced row also has to leave the LEDGER — deleting
    * it from the local shift list alone left the numbers on the dashboard with
    * no row left to explain them.
+   *
+   * Scope the erase by date · shift · batch · stage · size so we never wipe
+   * every batch that shares the same day, and so Direct Entry is matched via
+   * extractedBy / "Manual Entry" (not only provenance.is_direct_entry).
    */
   async function deleteLocal(id: string) {
     const rec = saved.find((b) => b.id === id);
@@ -928,19 +932,40 @@ export default function BatchMatrixEntry({
 
     if (synced) {
       try {
-        const qs = new URLSearchParams({ date: rec.date, shift: rec.shift, source: "Direct Entry" });
+        const qs = new URLSearchParams({
+          date: rec.date,
+          shift: rec.shift || "Day Shift",
+          source: "Direct Entry",
+          batch: rec.batchId.trim().toUpperCase(),
+        });
+        if (rec.stageId) qs.set("stageId", rec.stageId);
+        if (rec.sizeCanonical) qs.set("size", rec.sizeCanonical);
+
         const res = await fetch(`/api/manual-entries?${qs}`, { method: "DELETE" });
-        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Delete failed");
-        refreshEvents().catch(console.error);
+        const body = await res.json().catch(() => ({} as { error?: string; deletedCount?: number }));
+        if (!res.ok) throw new Error(body.error ?? "Delete failed");
+        if (!body.deletedCount) {
+          throw new Error(
+            "No matching ledger events found for this batch (date/shift/batch). " +
+              "It may already be gone, or was saved under a different shift label.",
+          );
+        }
+        await refreshEvents().catch(console.error);
         onSynced?.();
       } catch (e) {
-        setErr(`Removed from this shift list, but the ledger delete failed: ${e instanceof Error ? e.message : "unknown error"}`);
+        setErr(
+          `Ledger delete failed — batch kept on this list: ${
+            e instanceof Error ? e.message : "unknown error"
+          }`,
+        );
+        return;
       }
     }
 
     const next = saved.filter((b) => b.id !== id);
     setSaved(next);
     persistShift(next);
+    setMsg(synced ? `Batch ${rec.batchId} erased from the ledger.` : `Batch ${rec.batchId} removed.`);
   }
 
   function exportCSV() {

@@ -153,4 +153,104 @@ describe("/api/manual-entries DELETE — beta erase", () => {
     expect(all.filter((e) => e.occurredOn.start === "2026-08-05")).toHaveLength(0);
     expect(all.filter((e) => e.occurredOn.start === "2026-08-06").length).toBeGreaterThan(0);
   });
+
+  it("matches Direct Entry even when file is Manual Entry (batch matrix)", async () => {
+    const { DELETE } = await import("@/app/api/manual-entries/route");
+    await post(
+      [
+        rec({
+          occurredOn: { kind: "day", start: "2026-08-10", end: "2026-08-10" },
+          source: { file: "Manual Entry", fileHash: "manual", sheet: "Day Shift", tableId: "batch-matrix" },
+          customFields: { batch: "26G27-14", operator: "op" },
+        }),
+      ],
+      "del-batch-1",
+    );
+
+    const res = await DELETE(
+      new NextRequest(
+        "http://localhost/api/manual-entries?date=2026-08-10&shift=Day%20Shift&source=Direct%20Entry&batch=26G27-14",
+        { method: "DELETE" },
+      ),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.deletedCount).toBeGreaterThan(0);
+
+    const { events } = getStores();
+    const left = (await events.all({})).filter((e) => (e as any).batchNo === "26G27-14" || (e as any).customFields?.batch === "26G27-14");
+    expect(left).toHaveLength(0);
+  });
+
+  it("purges an orphan batch by batch id alone", async () => {
+    const { DELETE } = await import("@/app/api/manual-entries/route");
+    await post(
+      [
+        rec({
+          occurredOn: { kind: "day", start: "2026-08-11", end: "2026-08-11" },
+          source: { file: "Manual Entry", fileHash: "m", sheet: "A", tableId: "batch-matrix" },
+          customFields: { batch: "26G27-14" },
+        }),
+      ],
+      "del-orphan-1",
+    );
+
+    const res = await DELETE(
+      new NextRequest(
+        "http://localhost/api/manual-entries?batch=26G27-14&source=Direct%20Entry",
+        { method: "DELETE" },
+      ),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.deletedCount).toBeGreaterThan(0);
+
+    const { events } = getStores();
+    const left = (await events.effective({})).filter(
+      (e) => String((e as any).batchNo ?? (e as any).customFields?.batch ?? "").toUpperCase() === "26G27-14",
+    );
+    expect(left).toHaveLength(0);
+  });
+
+  it("deletes only the targeted batch when two share a day", async () => {
+    const { DELETE } = await import("@/app/api/manual-entries/route");
+    await post(
+      [
+        rec({
+          occurredOn: { kind: "day", start: "2026-08-12", end: "2026-08-12" },
+          source: { file: "Manual Entry", fileHash: "m1", sheet: "Day Shift", tableId: "batch-matrix" },
+          customFields: { batch: "26G27-14" },
+        }),
+      ],
+      "two-a",
+    );
+    await post(
+      [
+        rec({
+          occurredOn: { kind: "day", start: "2026-08-12", end: "2026-08-12" },
+          stageId: "balloon",
+          source: { file: "Manual Entry", fileHash: "m2", sheet: "Day Shift", tableId: "batch-matrix" },
+          customFields: { batch: "26G28-16" },
+        }),
+      ],
+      "two-b",
+    );
+
+    await DELETE(
+      new NextRequest(
+        "http://localhost/api/manual-entries?date=2026-08-12&shift=Day%20Shift&source=Direct%20Entry&batch=26G27-14",
+        { method: "DELETE" },
+      ),
+    );
+
+    const { events } = getStores();
+    const all = await events.effective({});
+    const batches = new Set(
+      all
+        .map((e) => String((e as any).batchNo ?? (e as any).customFields?.batch ?? "").toUpperCase())
+        .filter(Boolean),
+    );
+    expect(batches.has("26G27-14")).toBe(false);
+    expect(batches.has("26G28-16")).toBe(true);
+  });
 });

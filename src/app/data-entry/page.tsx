@@ -179,9 +179,15 @@ export default function DataEntryPage() {
     try {
       // Scope by source so deleting a manual test row can never take out
       // uploaded data that happens to share the same day and sheet name.
+      // Pass batch when present so one batch-matrix row doesn't wipe siblings.
       const qs = new URLSearchParams({ date: rec.date, shift: rec.shift, source: rec.source });
+      if (rec.batch) qs.set("batch", String(rec.batch).trim().toUpperCase());
       const res = await fetch(`/api/manual-entries?${qs}`, { method: "DELETE" });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Failed to delete record");
+      const body = await res.json().catch(() => ({} as { error?: string; deletedCount?: number }));
+      if (!res.ok) throw new Error(body.error ?? "Failed to delete record");
+      if (!body.deletedCount) {
+        throw new Error("No matching ledger events found for this record.");
+      }
 
       setSuccess(`Record for ${rec.date} (${rec.shift}) has been deleted successfully.`);
       loadLedger();

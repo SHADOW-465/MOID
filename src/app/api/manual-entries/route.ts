@@ -2,6 +2,36 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStores } from "@/lib/store";
 import { aggregate } from "@/lib/analytics/rejection";
+import {
+  eventBatchId,
+  eventSourceFileLabel,
+  isDirectEntryEvent,
+} from "@/lib/analytics/scope";
+import type { Event } from "@/lib/store/types";
+
+/** UI / query label for the source channel of a ledger event. */
+function rowSourceLabel(e: Event): string {
+  if (isDirectEntryEvent(e)) return "Direct Entry";
+  return eventSourceFileLabel(e) || e.provenance?.file || "Upload";
+}
+
+/**
+ * Match ?source= against a row. "Direct Entry" and "Manual Entry" both mean
+ * data-entry / batch-matrix rows (file is stored as "Manual Entry"; older
+ * clients and the DELETE UI use either label).
+ */
+function matchesSource(e: Event, source: string): boolean {
+  const want = source.trim();
+  if (!want) return true;
+  if (want === "Direct Entry" || want === "Manual Entry") {
+    return isDirectEntryEvent(e);
+  }
+  // Excel / named file: exact file label or full provenance.file
+  if (isDirectEntryEvent(e)) return false;
+  const label = eventSourceFileLabel(e);
+  const file = e.provenance?.file ?? "";
+  return label === want || file === want || file.endsWith(want);
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,7 +44,7 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => (b.recordedAt ?? "").localeCompare(a.recordedAt ?? ""));
 
     // Group events by occurredOn.start (Date) and provenance.sheet (Shift)
-    const groups = new Map<string, any[]>();
+    const groups = new Map<string, Event[]>();
     for (const e of events) {
       const date = e.occurredOn?.start;
       const shift = e.provenance?.sheet || "Day Shift";
@@ -29,17 +59,19 @@ export async function GET(req: NextRequest) {
       const [date, shift] = key.split("|");
       const firstEvent = groupEvents[0];
       const ingestionId = firstEvent.ingestionId;
-      const customFields = firstEvent.customFields || {};
+      const customFields = (firstEvent as Event & { customFields?: Record<string, unknown> }).customFields || {};
 
-      const operator = customFields.operator || firstEvent.provenance?.operator || "";
-      const supervisor = customFields.supervisor || firstEvent.provenance?.supervisor || "";
-      const machine = customFields.machine || firstEvent.provenance?.machine || "";
-      const product = customFields.product || firstEvent.provenance?.product || "";
-      const size = customFields.size || firstEvent.provenance?.size || "";
-      const batch = customFields.batch || firstEvent.provenance?.batch || "";
+      const operator = customFields.operator || (firstEvent.provenance as any)?.operator || "";
+      const supervisor = customFields.supervisor || (firstEvent.provenance as any)?.supervisor || "";
+      const machine = customFields.machine || (firstEvent.provenance as any)?.machine || "";
+      const product = customFields.product || (firstEvent.provenance as any)?.product || "";
+      const size = customFields.size || (firstEvent as any).size || "";
+      const batch =
+        eventBatchId(firstEvent) ||
+        (typeof customFields.batch === "string" ? customFields.batch : "") ||
+        "";
       const notes = customFields.notes || "";
-      const isDirect = firstEvent.provenance?.is_direct_entry === true;
-      const source = isDirect ? "Direct Entry" : (firstEvent.provenance?.file || "Upload");
+      const source = rowSourceLabel(firstEvent);
 
       // Reconstruct stage-wise field values. `provenance.headerPath` is
       // whatever the source used (an internal field key like "checked" for
@@ -48,9 +80,9 @@ export async function GET(req: NextRequest) {
       // summary reads. Use the event's own semantic type instead (same
       // aggregate() the rest of the analytics layer trusts), grouped by stage.
       const stageData: Record<string, Record<string, any>> = {};
-      const stageIds = new Set(groupEvents.map((e) => e.stageId).filter(Boolean));
+      const stageIds = new Set(groupEvents.map((e) => (e as any).stageId).filter(Boolean));
       for (const stageId of stageIds) {
-        const agg = aggregate(groupEvents.filter((e) => e.stageId === stageId));
+        const agg = aggregate(groupEvents.filter((e) => (e as any).stageId === stageId));
         stageData[stageId] = {
           "Checked Qty": agg.checked,
           "Good Qty": agg.good,
@@ -62,9 +94,9 @@ export async function GET(req: NextRequest) {
       // Copy any genuine custom fields (excluding the header fields already
       // grouped at the top level) onto their stage.
       for (const e of groupEvents) {
-        const stageId = e.stageId;
-        if (!stageId || !e.customFields) continue;
-        Object.entries(e.customFields).forEach(([k, v]) => {
+        const stageId = (e as any).stageId;
+        if (!stageId || !(e as any).customFields) continue;
+        Object.entries((e as any).customFields).forEach(([k, v]) => {
           if (!["operator", "supervisor", "machine", "product", "size", "batch", "notes"].includes(k)) {
             stageData[stageId][k] = v;
           }
@@ -84,7 +116,7 @@ export async function GET(req: NextRequest) {
         notes,
         stageData,
         source,
-        recordedAt: firstEvent.recordedAt
+        recordedAt: firstEvent.recordedAt,
       };
     });
 
@@ -103,10 +135,13 @@ export async function GET(req: NextRequest) {
  * orphan provenance is left behind.
  *
  * Scope, narrowest first:
- *   ?ingestionId=X          exactly one save
- *   ?date=&shift=[&source=] the ledger row as displayed (source guards against
- *                           a manual delete also taking out uploaded rows that
- *                           happen to share the day and sheet name)
+ *   ?ingestionId=X                         exactly one save
+ *   ?date=&shift=[&source=][&batch=][&stageId=][&size=]
+ *     the ledger row as displayed. source guards Excel vs Data Entry.
+ *     batch / stageId / size narrow a single batch-matrix row (required when
+ *     several batches share a day·shift).
+ *   ?batch=X[&source=Direct Entry]         orphan cleanup — every event for that
+ *     batch ID (used when the shift list no longer has the row but audit does).
  */
 export async function DELETE(req: NextRequest) {
   try {
@@ -115,10 +150,16 @@ export async function DELETE(req: NextRequest) {
     const date = searchParams.get("date");
     const shift = searchParams.get("shift");
     const source = searchParams.get("source");
+    const batch = searchParams.get("batch") ?? searchParams.get("batchId");
+    const stageId = searchParams.get("stageId");
+    const size = searchParams.get("size");
 
-    if (!ingestionId && (!date || !shift)) {
+    const batchWant = batch?.trim() ? batch.trim().toUpperCase() : null;
+    const batchOnly = !ingestionId && !(date && shift) && !!batchWant;
+
+    if (!ingestionId && !(date && shift) && !batchOnly) {
       return NextResponse.json(
-        { error: "Pass ingestionId, or both date and shift." },
+        { error: "Pass ingestionId, date+shift, or batch (for orphan purge)." },
         { status: 400 },
       );
     }
@@ -128,14 +169,50 @@ export async function DELETE(req: NextRequest) {
     // must go too, or re-saving the same day resurrects stale numbers.
     const everything = await store.all({});
 
+    const sizeWant = size?.trim() ? size.trim() : null;
+
     const targeted = everything.filter((e) => {
       if (ingestionId) return e.ingestionId === ingestionId;
+
+      if (batchOnly) {
+        const got = eventBatchId(e);
+        if (!got || got !== batchWant) return false;
+        if (source && !matchesSource(e, source)) return false;
+        return true;
+      }
+
       if (e.occurredOn?.start !== date) return false;
       if ((e.provenance?.sheet || "Day Shift") !== shift) return false;
-      if (!source) return true;
-      const isDirect = (e.provenance as any)?.is_direct_entry === true;
-      const rowSource = isDirect ? "Direct Entry" : e.provenance?.file || "Upload";
-      return rowSource === source;
+
+      if (source && !matchesSource(e, source)) return false;
+
+      if (batchWant) {
+        const got = eventBatchId(e);
+        if (!got || got !== batchWant) return false;
+      }
+
+      if (stageId) {
+        const s = (e as Event & { stageId?: string }).stageId;
+        // Corrections / annotations may not carry stageId — still purge if they
+        // target primary events we remove (handled in the sweep below). For
+        // primary rows, require a match.
+        if (s != null && s !== stageId) return false;
+        if (
+          s == null &&
+          (e.eventType === "production" ||
+            e.eventType === "inspection" ||
+            e.eventType === "rejection")
+        ) {
+          return false;
+        }
+      }
+
+      if (sizeWant) {
+        const sz = (e as Event & { size?: string | null }).size;
+        if (sz != null && String(sz).trim() && String(sz).trim() !== sizeWant) return false;
+      }
+
+      return true;
     });
 
     const ids = new Set(targeted.map((e) => e.eventId));

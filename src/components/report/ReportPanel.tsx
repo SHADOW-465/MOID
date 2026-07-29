@@ -31,6 +31,7 @@ import type { NavKey } from "@/lib/nav-keys";
 import {
   describeSourceFilter,
   listExcelSourceFiles,
+  listBatchIds,
   type Scope,
 } from "@/lib/analytics/scope";
 import type { Event } from "@/lib/store/types";
@@ -83,6 +84,7 @@ export default function ReportPanel({
   const shelf = useMemo(() => availableBlocks(page), [page]);
   const forensic = spec ? isForensicSpec(spec) : false;
   const excelFiles = useMemo(() => listExcelSourceFiles(events), [events]);
+  const batchIds = useMemo(() => listBatchIds(events), [events]);
   const sourcesSummary = useMemo(() => describeSourceFilter(scope), [scope]);
 
   if (!spec) return null;
@@ -262,6 +264,86 @@ export default function ReportPanel({
             />
             Data entry
           </label>
+          {batchIds.length > 0 && (
+            <div style={{ maxHeight: 120, overflowY: "auto", marginTop: 4, marginBottom: 6, paddingRight: 4 }}>
+              <div className="muted" style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
+                Batches {t.batchIds.length === 0 ? "(none — full plant)" : `(${t.batchIds.length} selected)`}
+              </div>
+              <div style={{ display: "flex", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => setTweak("batchIds", [...batchIds])}
+                  style={{
+                    fontSize: 10.5,
+                    fontWeight: 700,
+                    border: "1px solid var(--border-strong)",
+                    borderRadius: 6,
+                    padding: "2px 8px",
+                    background:
+                      t.batchIds.length === batchIds.length ? "var(--accent)" : "var(--surface)",
+                    color:
+                      t.batchIds.length === batchIds.length
+                        ? "var(--text-invert, #fff)"
+                        : "var(--text)",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  Select all
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTweak("batchIds", [])}
+                  style={{
+                    fontSize: 10.5,
+                    fontWeight: 600,
+                    border: "1px solid var(--border)",
+                    borderRadius: 6,
+                    padding: "2px 8px",
+                    background: "var(--surface)",
+                    cursor: t.batchIds.length === 0 ? "default" : "pointer",
+                    fontFamily: "inherit",
+                    opacity: t.batchIds.length === 0 ? 0.5 : 1,
+                  }}
+                >
+                  Clear
+                </button>
+              </div>
+              {batchIds.map((b) => {
+                const selected = t.batchIds.includes(b);
+                return (
+                  <button
+                    key={b}
+                    type="button"
+                    onClick={() => {
+                      if (selected) {
+                        setTweak("batchIds", t.batchIds.filter((x) => x !== b));
+                      } else {
+                        setTweak("batchIds", [...t.batchIds, b]);
+                      }
+                    }}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      textAlign: "left",
+                      fontSize: 11,
+                      marginBottom: 4,
+                      padding: "5px 8px",
+                      borderRadius: 6,
+                      border: selected ? "1px solid var(--accent)" : "1px solid var(--border)",
+                      background: selected ? "var(--accent)" : "var(--surface)",
+                      color: selected ? "var(--text-invert, #fff)" : "var(--text)",
+                      cursor: "pointer",
+                      fontFamily: "var(--font-mono)",
+                      fontWeight: 700,
+                    }}
+                  >
+                    {b}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {t.includeExcel && excelFiles.length > 0 && (
             <div style={{ maxHeight: 120, overflowY: "auto", marginTop: 4, paddingRight: 4 }}>
               <button

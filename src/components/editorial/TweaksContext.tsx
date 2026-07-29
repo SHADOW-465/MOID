@@ -32,6 +32,11 @@ export interface Tweaks {
    * When includeExcel: empty = all Excel files; otherwise only these basenames.
    */
   excelFiles: string[];
+  /**
+   * Batch-wise scope for dashboard / analytics. Empty = all batches.
+   * Non-empty = only these batch IDs (as entered in Data Entry / on Excel rows).
+   */
+  batchIds: string[];
 }
 
 export const TWEAK_DEFAULTS: Tweaks = {
@@ -45,6 +50,7 @@ export const TWEAK_DEFAULTS: Tweaks = {
   includeExcel: true,
   includeDirectEntry: true,
   excelFiles: [],
+  batchIds: [],
 };
 
 interface Ctx {
