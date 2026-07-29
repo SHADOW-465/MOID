@@ -122,30 +122,35 @@ export default function ReportPanel({
     setMsg("Preset deleted");
   }
 
+  // Fixed panel height is what makes overflow:auto actually work on the columns.
+  // Without an explicit height, the grid grows with content and nothing scrolls.
+  const panelHeight = embedded ? "min(86vh, 920px)" : "min(92vh, 920px)";
+
   const shell = (
     <div
       style={{
         background: "var(--bg)",
-        border: embedded ? "1px solid var(--border-strong)" : "1px solid var(--border-strong)",
+        border: "1px solid var(--border-strong)",
         borderRadius: embedded ? 12 : 14,
         boxShadow: embedded ? "none" : "var(--shadow-lg)",
         width: embedded ? "100%" : "min(1180px, 96vw)",
-        maxHeight: embedded ? "none" : "94vh",
-        height: embedded ? "min(86vh, 900px)" : undefined,
+        height: panelHeight,
+        maxHeight: panelHeight,
         display: "grid",
-        gridTemplateColumns: "280px 300px minmax(0, 1fr)",
+        gridTemplateColumns: "minmax(220px, 280px) minmax(240px, 300px) minmax(0, 1fr)",
+        gridTemplateRows: "minmax(0, 1fr)",
         overflow: "hidden",
       }}
     >
       {/* ── Named presets ─────────────────────────────────────────────── */}
-      <div style={{ borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", minHeight: 0, background: "var(--surface-2)" }}>
-        <div style={{ padding: "14px 14px 10px", borderBottom: "1px solid var(--border)" }}>
+      <div style={{ ...col, borderRight: "1px solid var(--border)", background: "var(--surface-2)" }}>
+        <div style={colHeader}>
           <div style={{ fontWeight: 800, fontSize: 13 }}>Named presets</div>
           <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
             Built-in packs and your saves
           </div>
         </div>
-        <div style={{ flex: 1, overflowY: "auto", padding: 10 }}>
+        <div style={colScroll}>
           {presets.map((p) => {
             const on = p.id === activePresetId;
             return (
@@ -183,15 +188,15 @@ export default function ReportPanel({
       </div>
 
       {/* ── Sections editor ───────────────────────────────────────────── */}
-      <div style={{ borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", minHeight: 0 }}>
-        <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)" }}>
+      <div style={{ ...col, borderRight: "1px solid var(--border)" }}>
+        <div style={colHeader}>
           <div style={{ fontWeight: 800, fontSize: 15 }}>{embedded ? "Report editor" : "Build report"}</div>
           <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
             {periodLabel}
           </div>
         </div>
 
-        <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)" }}>
+        <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
           <label className="muted" style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 700 }}>
             Report title
           </label>
@@ -212,7 +217,7 @@ export default function ReportPanel({
           />
         </div>
 
-        <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px" }}>
+        <div style={{ ...colScroll, padding: "12px 16px" }}>
           {forensic ? (
             <div
               style={{
@@ -294,7 +299,7 @@ export default function ReportPanel({
           )}
         </div>
 
-        <div style={{ padding: "12px 16px", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ padding: "12px 16px", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 8, flexShrink: 0 }}>
           {showSave ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <input
@@ -348,21 +353,31 @@ export default function ReportPanel({
         </div>
       </div>
 
-      {/* ── Preview ───────────────────────────────────────────────────── */}
-      <div style={{ overflowY: "auto", padding: 20, background: "var(--surface-2)", minHeight: 0 }}>
-        {events.length === 0 ? (
-          <div className="muted" style={{ padding: 40, textAlign: "center", fontSize: 13 }}>
-            No data in this period yet — the report has nothing to show.
+      {/* ── Preview (own scrollbar) ───────────────────────────────────── */}
+      <div style={{ ...col, background: "var(--surface-2)" }}>
+        <div style={{ ...colHeader, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 13 }}>Preview</div>
+            <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
+              Scroll to review the full report
+            </div>
           </div>
-        ) : (
-          <ReportDocument
-            spec={spec}
-            events={events}
-            scope={scope}
-            periodLabel={periodLabel}
-            registry={registry}
-          />
-        )}
+        </div>
+        <div style={{ ...colScroll, padding: 20 }}>
+          {events.length === 0 ? (
+            <div className="muted" style={{ padding: 40, textAlign: "center", fontSize: 13 }}>
+              No data in this period yet — the report has nothing to show.
+            </div>
+          ) : (
+            <ReportDocument
+              spec={spec}
+              events={events}
+              scope={scope}
+              periodLabel={periodLabel}
+              registry={registry}
+            />
+          )}
+        </div>
       </div>
     </div>
   );
@@ -380,14 +395,46 @@ export default function ReportPanel({
         background: "color-mix(in srgb, #000 45%, transparent)",
         display: "flex",
         justifyContent: "center",
-        alignItems: "flex-start",
-        padding: "3vh 2vw",
+        alignItems: "center",
+        padding: "2vh 2vw",
+        overflow: "hidden",
+        boxSizing: "border-box",
       }}
     >
-      <div onClick={(e) => e.stopPropagation()}>{shell}</div>
+      {/* stopPropagation wrapper must not expand with content — shell owns the height */}
+      <div onClick={(e) => e.stopPropagation()} style={{ maxHeight: "96vh", minHeight: 0 }}>
+        {shell}
+      </div>
     </div>
   );
 }
+
+/** Column shell: fills grid cell, never grows past panel height. */
+const col: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  minHeight: 0,
+  minWidth: 0,
+  height: "100%",
+  overflow: "hidden",
+};
+
+const colHeader: React.CSSProperties = {
+  padding: "14px 16px",
+  borderBottom: "1px solid var(--border)",
+  flexShrink: 0,
+};
+
+/** Dedicated scrollbar region inside a column. */
+const colScroll: React.CSSProperties = {
+  flex: 1,
+  minHeight: 0,
+  overflowY: "auto",
+  overflowX: "hidden",
+  overscrollBehavior: "contain",
+  padding: 10,
+  WebkitOverflowScrolling: "touch",
+};
 
 const iconBtn = (disabled: boolean): React.CSSProperties => ({
   background: "transparent",
