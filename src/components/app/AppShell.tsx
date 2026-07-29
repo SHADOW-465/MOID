@@ -15,7 +15,7 @@ import {
   trustScore,
 } from "@/lib/analytics";
 import type { DashboardConfig } from "@/types/dashboard";
-import { resolveScope } from "@/lib/analytics/scope";
+import { resolveScope, listExcelSourceFiles, countBySourceChannel } from "@/lib/analytics/scope";
 import { trustScore as computeTrustScore } from "@/lib/analytics/trust";
 
 import type { NavKey } from "@/lib/nav-keys";
@@ -109,18 +109,18 @@ const VIEW_OPTIONS: { id: string; label: string }[] = [
  * nothing — so View / Interval / Range are rendered per page rather than
  * globally. Anything absent from this map shows no scope controls at all.
  */
-const SCOPE_CONTROLS: Partial<Record<NavKey, ("view" | "interval" | "range")[]>> = {
-  dashboard: ["view", "interval", "range"],
-  stage: ["view", "interval", "range"],
-  size: ["view", "interval", "range"],
-  defect: ["view", "interval", "range"],
-  spc: ["view", "interval", "range"],
-  "process-flow": ["view", "interval", "range"],
-  copq: ["view", "interval", "range"],
+const SCOPE_CONTROLS: Partial<Record<NavKey, ("view" | "interval" | "range" | "sources")[]>> = {
+  dashboard: ["view", "interval", "range", "sources"],
+  stage: ["view", "interval", "range", "sources"],
+  size: ["view", "interval", "range", "sources"],
+  defect: ["view", "interval", "range", "sources"],
+  spc: ["view", "interval", "range", "sources"],
+  "process-flow": ["view", "interval", "range", "sources"],
+  copq: ["view", "interval", "range", "sources"],
   "data-entry": ["interval"],
-  reports: ["range"],
-  capa: ["range"],
-  audit: ["range"],
+  reports: ["range", "sources"],
+  capa: ["range", "sources"],
+  audit: ["range", "sources"],
 };
 
 export default function AppShell({
@@ -149,7 +149,7 @@ export default function AppShell({
    *  so a report always answers the same question the page is answering. */
   const reportScope = useMemo(
     () => resolveScope(events ?? [], t),
-    [events, t.grain, t.datePreset, t.dateFrom, t.dateTo, t.stageView],
+    [events, t.grain, t.datePreset, t.dateFrom, t.dateTo, t.stageView, t.includeExcel, t.includeDirectEntry, t.excelFiles],
   );
 
   useCommandPaletteHotkey(useCallback(() => setPaletteOpen(true), []));
@@ -158,6 +158,33 @@ export default function AppShell({
   const showView = scopeControls.includes("view");
   const showInterval = scopeControls.includes("interval");
   const showRange = scopeControls.includes("range");
+  const showSources = scopeControls.includes("sources");
+  const [showSourcesMenu, setShowSourcesMenu] = useState(false);
+
+  const excelFileOptions = useMemo(
+    () => listExcelSourceFiles(events ?? []),
+    [events],
+  );
+  const sourceCounts = useMemo(
+    () => countBySourceChannel(events ?? []),
+    [events],
+  );
+
+  const sourcesLabel = useMemo(() => {
+    const ex = t.includeExcel;
+    const de = t.includeDirectEntry;
+    if (ex && de && t.excelFiles.length === 0) return "All sources";
+    if (ex && de && t.excelFiles.length > 0) {
+      return `Entry + ${t.excelFiles.length} file${t.excelFiles.length === 1 ? "" : "s"}`;
+    }
+    if (ex && !de) {
+      if (t.excelFiles.length === 0) return "Excel only";
+      if (t.excelFiles.length === 1) return t.excelFiles[0].slice(0, 22);
+      return `${t.excelFiles.length} Excel files`;
+    }
+    if (!ex && de) return "Data entry only";
+    return "No sources";
+  }, [t.includeExcel, t.includeDirectEntry, t.excelFiles]);
 
   useEffect(() => subscribeNavBanner(setBanner), []);
 
@@ -624,6 +651,18 @@ export default function AppShell({
       window.removeEventListener("keydown", handleKey);
     };
   }, [showViewMenu]);
+
+  useEffect(() => {
+    if (!showSourcesMenu) return;
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest(".sources-picker-container")) {
+        setShowSourcesMenu(false);
+      }
+    };
+    window.addEventListener("click", handleClick);
+    return () => window.removeEventListener("click", handleClick);
+  }, [showSourcesMenu]);
 
   const isDark = t.theme === "dark";
   const toggleTheme = () => {
@@ -1212,6 +1251,178 @@ export default function AppShell({
                     </button>
                   </div>
                 )}
+              </div>
+            )}
+          </div>
+          )}
+
+          {(showRange || showInterval || showView) && showSources && (
+            <div style={{ width: 1, height: 16, background: "var(--border)" }} />
+          )}
+
+          {showSources && (
+          <div className="sources-picker-container" style={{ display: "flex", alignItems: "center", gap: 6, position: "relative" }}>
+            <span className="ui-label" style={{ whiteSpace: "nowrap" }}>Sources</span>
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowSourcesMenu(!showSourcesMenu);
+                setShowPicker(false);
+                setShowViewMenu(false);
+              }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                fontSize: 12,
+                fontWeight: 600,
+                borderRadius: "20px",
+                padding: "3px 10px",
+                background: "var(--surface-2)",
+                cursor: "pointer",
+                maxWidth: 200,
+              }}
+              title="Filter Excel uploads vs Data Entry"
+            >
+              <Icon name="split" size={11} style={{ color: "var(--text-3)", flexShrink: 0 }} />
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {sourcesLabel}
+              </span>
+            </div>
+            {showSourcesMenu && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  position: "absolute",
+                  top: "100%",
+                  left: 0,
+                  marginTop: 8,
+                  width: 300,
+                  maxHeight: 360,
+                  overflowY: "auto",
+                  background: "var(--surface)",
+                  border: "1px solid var(--border-strong)",
+                  borderRadius: 12,
+                  boxShadow: "var(--shadow-lg)",
+                  padding: 12,
+                  zIndex: 230,
+                }}
+              >
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-3)", marginBottom: 8 }}>
+                  Data channels
+                </div>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, marginBottom: 8, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={t.includeExcel}
+                    onChange={(e) => {
+                      setTweak("includeExcel", e.target.checked);
+                      if (!e.target.checked) setTweak("excelFiles", []);
+                    }}
+                  />
+                  <span style={{ flex: 1 }}>Excel uploads</span>
+                  <span className="muted" style={{ fontSize: 11, fontFamily: "var(--font-mono)" }}>{sourceCounts.excel}</span>
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, marginBottom: 12, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={t.includeDirectEntry}
+                    onChange={(e) => setTweak("includeDirectEntry", e.target.checked)}
+                  />
+                  <span style={{ flex: 1 }}>Data entry</span>
+                  <span className="muted" style={{ fontSize: 11, fontFamily: "var(--font-mono)" }}>{sourceCounts.directEntry}</span>
+                </label>
+
+                {t.includeExcel && excelFileOptions.length > 0 && (
+                  <>
+                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-3)", marginBottom: 6, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+                      Excel files {t.excelFiles.length === 0 ? "(all)" : `(${t.excelFiles.length} selected)`}
+                    </div>
+                    <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                      <button
+                        type="button"
+                        onClick={() => setTweak("excelFiles", [])}
+                        style={{ fontSize: 11, fontWeight: 600, border: "1px solid var(--border)", borderRadius: 6, padding: "3px 8px", background: t.excelFiles.length === 0 ? "var(--accent-weak)" : "var(--surface)", cursor: "pointer", fontFamily: "inherit" }}
+                      >
+                        All files
+                      </button>
+                    </div>
+                    {excelFileOptions.map((f) => {
+                      const checked =
+                        t.excelFiles.length === 0 || t.excelFiles.includes(f);
+                      return (
+                        <label
+                          key={f}
+                          style={{
+                            display: "flex",
+                            alignItems: "flex-start",
+                            gap: 8,
+                            fontSize: 12,
+                            marginBottom: 6,
+                            cursor: "pointer",
+                            lineHeight: 1.3,
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            style={{ marginTop: 2 }}
+                            onChange={() => {
+                              // empty excelFiles means "all". First toggle off of one
+                              // file means "all except that one" → select the rest.
+                              if (t.excelFiles.length === 0) {
+                                setTweak(
+                                  "excelFiles",
+                                  excelFileOptions.filter((x) => x !== f),
+                                );
+                              } else if (t.excelFiles.includes(f)) {
+                                const next = t.excelFiles.filter((x) => x !== f);
+                                setTweak("excelFiles", next);
+                              } else {
+                                const next = [...t.excelFiles, f];
+                                // selecting everything → store empty (= all)
+                                setTweak(
+                                  "excelFiles",
+                                  next.length === excelFileOptions.length ? [] : next,
+                                );
+                              }
+                            }}
+                          />
+                          <span style={{ wordBreak: "break-word" }}>{f}</span>
+                        </label>
+                      );
+                    })}
+                  </>
+                )}
+
+                {t.includeExcel && excelFileOptions.length === 0 && (
+                  <div className="muted" style={{ fontSize: 11.5, marginTop: 4 }}>
+                    No Excel-sourced events in the ledger yet.
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTweak("includeExcel", true);
+                    setTweak("includeDirectEntry", true);
+                    setTweak("excelFiles", []);
+                  }}
+                  style={{
+                    marginTop: 10,
+                    width: "100%",
+                    padding: "6px 10px",
+                    fontSize: 11.5,
+                    fontWeight: 600,
+                    border: "1px solid var(--border-strong)",
+                    borderRadius: 8,
+                    background: "var(--surface)",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  Reset to all sources
+                </button>
               </div>
             )}
           </div>

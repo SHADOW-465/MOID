@@ -1,9 +1,17 @@
 // Analytics scope: filter the event set + bucket by period (plan 02).
 // FY = April–March. Pure functions; no I/O.
+//
+// Source channel filter (excel vs data-entry) is applied BEFORE
+// canonicalizeEvents so "Excel only" can still see uploaded rows that
+// would otherwise lose to a same-day direct entry under full-scope rules.
 
 import type { Event } from "@/lib/store/types";
+import { canonicalizeEvents } from "./canonical";
 
 export type Grain = "day" | "week" | "month" | "fy";
+
+/** Intake channel that produced a ledger event. */
+export type SourceChannel = "excel" | "direct-entry";
 
 export interface Scope {
   dateFrom?: string; // ISO yyyy-mm-dd (inclusive)
@@ -11,6 +19,17 @@ export interface Scope {
   stageIds?: string[];
   sizes?: string[];
   grain: Grain;
+  /**
+   * Which intake channels contribute. Omit / empty / both = all channels.
+   * `["excel"]` = uploaded workbooks only; `["direct-entry"]` = Data Entry only.
+   */
+  sourceChannels?: SourceChannel[];
+  /**
+   * When Excel is included: restrict to these provenance file labels
+   * (basename of provenance.file). Omit / empty = every Excel file.
+   * Ignored when excel is not in sourceChannels.
+   */
+  sourceFiles?: string[];
   // V2 dimensions — ignored by selectors until events carry them.
   shift?: string;
   productIds?: string[];
@@ -25,6 +44,46 @@ function stageOf(e: Event): string | null {
 }
 function sizeOf(e: Event): string | null {
   return "size" in e ? ((e.size as string | null) ?? null) : null;
+}
+
+/** Manual Data Entry / batch matrix (not an uploaded workbook). */
+export function isDirectEntryEvent(e: Event): boolean {
+  const any = e as Event & { extractedBy?: string; isDirectEntry?: boolean };
+  if (any.extractedBy === "direct-entry" || any.isDirectEntry === true) return true;
+  const file = any.provenance?.file ?? "";
+  return file === "Manual Entry" || /^Batch Entry /i.test(file);
+}
+
+export function eventSourceChannel(e: Event): SourceChannel {
+  return isDirectEntryEvent(e) ? "direct-entry" : "excel";
+}
+
+/** Stable label for an Excel file (basename). Empty for direct-entry. */
+export function eventSourceFileLabel(e: Event): string {
+  if (isDirectEntryEvent(e)) return "";
+  const file = (e as Event & { provenance?: { file?: string } }).provenance?.file ?? "";
+  if (!file || file === "Manual Entry") return "";
+  return file.split(/[/\\]/).pop() ?? file;
+}
+
+/** Distinct Excel file labels present in a raw event list (for the Sources picker). */
+export function listExcelSourceFiles(events: Event[]): string[] {
+  const set = new Set<string>();
+  for (const e of events) {
+    const label = eventSourceFileLabel(e);
+    if (label) set.add(label);
+  }
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
+
+export function countBySourceChannel(events: Event[]): { excel: number; directEntry: number } {
+  let excel = 0;
+  let directEntry = 0;
+  for (const e of events) {
+    if (isDirectEntryEvent(e)) directEntry++;
+    else excel++;
+  }
+  return { excel, directEntry };
 }
 
 /** The week-of-month bucket containing `day` in `month`/`year`. Buckets are
@@ -53,10 +112,22 @@ export function fyContaining(dateIso: string): { startYear: number; label: strin
   };
 }
 
-/** Apply the scope's date/stage/size filters. Events without a stage/size are
- *  kept (selectors decide relevance); date is matched on overlap. */
+/**
+ * Apply date / stage / size / **source** filters, then canonicalize so the
+ * remaining set never double-counts. Source filter runs first so channel
+ * selection is meaningful (Excel-only keeps upload rows even when a same-day
+ * direct entry would win under an unscoped full ledger).
+ */
 export function scopeEvents(events: Event[], scope: Scope): Event[] {
-  return events.filter((e) => {
+  const channels = scope.sourceChannels?.length
+    ? new Set(scope.sourceChannels)
+    : null;
+  const files =
+    scope.sourceFiles?.length && (!channels || channels.has("excel"))
+      ? new Set(scope.sourceFiles)
+      : null;
+
+  const filtered = events.filter((e) => {
     if (scope.dateFrom && e.occurredOn.end < scope.dateFrom) return false;
     if (scope.dateTo && e.occurredOn.start > scope.dateTo) return false;
     if (scope.stageIds?.length) {
@@ -67,8 +138,19 @@ export function scopeEvents(events: Event[], scope: Scope): Event[] {
       const s = sizeOf(e);
       if (s != null && !scope.sizes.includes(s)) return false;
     }
+
+    const channel = eventSourceChannel(e);
+    if (channels && !channels.has(channel)) return false;
+
+    if (channel === "excel" && files) {
+      const label = eventSourceFileLabel(e);
+      if (!label || !files.has(label)) return false;
+    }
+
     return true;
   });
+
+  return canonicalizeEvents(filtered);
 }
 
 /** Bucket key for a date under a grain. FY runs Apr(4)–Mar(3). */
@@ -142,6 +224,15 @@ export interface ScopeTweaks {
   dateFrom: string;
   dateTo: string;
   stageView?: string;
+  /** Default true — include uploaded Excel events. */
+  includeExcel?: boolean;
+  /** Default true — include Data Entry / batch matrix events. */
+  includeDirectEntry?: boolean;
+  /**
+   * When includeExcel: null/undefined/empty = all Excel files;
+   * non-empty = only these basenames.
+   */
+  excelFiles?: string[] | null;
 }
 
 /**
@@ -182,7 +273,27 @@ export function resolveScope(events: Event[], t: ScopeTweaks): Scope {
   }
 
   const stageIds = t.stageView && t.stageView !== "cumulative" ? [t.stageView] : undefined;
-  return { grain: t.grain, dateFrom: from, dateTo: to, stageIds };
+
+  const includeExcel = t.includeExcel !== false;
+  const includeDirectEntry = t.includeDirectEntry !== false;
+  const sourceChannels: SourceChannel[] = [];
+  if (includeExcel) sourceChannels.push("excel");
+  if (includeDirectEntry) sourceChannels.push("direct-entry");
+  // Neither selected → empty result set (explicit "no sources")
+  const channelsProp =
+    sourceChannels.length === 2 ? undefined : sourceChannels.length === 0 ? ([] as SourceChannel[]) : sourceChannels;
+
+  const sourceFiles =
+    includeExcel && t.excelFiles && t.excelFiles.length > 0 ? t.excelFiles : undefined;
+
+  return {
+    grain: t.grain,
+    dateFrom: from,
+    dateTo: to,
+    stageIds,
+    sourceChannels: channelsProp,
+    sourceFiles,
+  };
 }
 
 /** The immediately-prior equal-length window, for "vs previous period" deltas. */

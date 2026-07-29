@@ -14,6 +14,9 @@ import {
   byStage,
   byDefect,
   trustScore,
+  scopeEvents,
+  DEFAULT_SCOPE,
+  type Scope,
 } from "@/lib/analytics";
 import type { Event } from "@/lib/store/types";
 import type { Registry } from "@/lib/analytics/rejection";
@@ -383,14 +386,23 @@ function GlobalDefectMatrix({
 }
 
 export default function ForensicBook({
-  events,
+  events: rawEvents,
   registry,
+  scope,
 }: {
   events: Event[];
   registry?: Registry | null;
+  /** When provided (Reports editor), respects date + source channel/file filters. */
+  scope?: Scope;
 }) {
   const activeRegistry = registry || EMPTY_REGISTRY;
   const [fingerprint, setFingerprint] = useState("");
+  // Collapse duplicates within the current source selection (caller may already
+  // have filtered; scopeEvents still canonicalizes so we never double-count).
+  const events = useMemo(
+    () => scopeEvents(rawEvents, scope ?? { ...DEFAULT_SCOPE, grain: "month" }),
+    [rawEvents, scope],
+  );
 
   // 1. Calculate cryptographically secure forensic fingerprint
   useEffect(() => {

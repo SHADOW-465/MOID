@@ -1,7 +1,9 @@
 // Read-side canonicalizer — the single guarantee that the dashboard NEVER
 // double-counts, no matter what is in the store (re-seeds, overlapping files,
 // the same workbook uploaded twice, size-wise + whole-line covering the same
-// stage·day). Applied once at the /api/events boundary so every screen benefits.
+// stage·day). Applied by scopeEvents *after* source/date filters so a GM can
+// still choose "Excel only" and see upload rows that would lose to Data Entry
+// under a full unscoped collapse.
 //
 // Three collapses, in order, each keyed on the physical inspection a row
 // represents — and crucially, NONE of them merge legitimately-distinct rows

@@ -22,6 +22,16 @@ export interface Tweaks {
   /** Global stage scope: "cumulative" (all stages combined) or a registry stageId.
    *  Drives EVERY analytics screen so the whole app shows one process at a time. */
   stageView: string;
+  /**
+   * Source channels for analytics. Both true = full plant view.
+   * Excel = uploaded workbooks; Direct entry = Data Entry / batch matrix.
+   */
+  includeExcel: boolean;
+  includeDirectEntry: boolean;
+  /**
+   * When includeExcel: empty = all Excel files; otherwise only these basenames.
+   */
+  excelFiles: string[];
 }
 
 export const TWEAK_DEFAULTS: Tweaks = {
@@ -32,6 +42,9 @@ export const TWEAK_DEFAULTS: Tweaks = {
   dateFrom: "",
   dateTo: "",
   stageView: "cumulative",
+  includeExcel: true,
+  includeDirectEntry: true,
+  excelFiles: [],
 };
 
 interface Ctx {

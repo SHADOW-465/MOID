@@ -1,4 +1,56 @@
-import { periodKey, weekOfMonthBounds, fyContaining } from "../scope";
+import {
+  periodKey,
+  weekOfMonthBounds,
+  fyContaining,
+  scopeEvents,
+  resolveScope,
+  isDirectEntryEvent,
+  listExcelSourceFiles,
+  type Scope,
+} from "../scope";
+import type { Event } from "@/lib/store/types";
+
+function makeEv(partial: {
+  eventId: string;
+  eventType?: Event["eventType"];
+  stageId?: string;
+  day?: string;
+  qty?: number;
+  file?: string;
+  extractedBy?: string;
+  disposition?: string;
+}): Event {
+  const day = partial.day ?? "2025-04-01";
+  return {
+    eventId: partial.eventId,
+    schemaVersion: "1.0.0",
+    ingestionId: "i",
+    eventType: partial.eventType ?? "inspection",
+    occurredOn: { kind: "day", start: day, end: day },
+    provenance: {
+      file: partial.file ?? "ASSEMBLY.xlsx",
+      fileHash: "h",
+      sheet: "S",
+      tableId: "t1",
+      cells: ["A1"],
+      headerPath: [],
+      rowLabel: null,
+      formulaText: null,
+      cachedValue: null,
+      externalRef: null,
+    },
+    confidence: { score: 1, basis: "exact" },
+    extractedBy: (partial.extractedBy as any) ?? "mod-extract",
+    recordedAt: `${day}T00:00:00.000Z`,
+    supersededBy: null,
+    stageId: partial.stageId ?? "visual",
+    size: "Fr14",
+    quantity: partial.qty ?? 10,
+    unit: "pcs",
+    batchNo: null,
+    disposition: partial.disposition ?? "rejected",
+  } as unknown as Event;
+}
 
 describe("weekOfMonthBounds", () => {
   it("buckets days 1-7 of any month into week 1", () => {
@@ -58,5 +110,96 @@ describe("fyContaining", () => {
 
   it("agrees with periodKey's own FY label format", () => {
     expect(fyContaining("2026-07-09").label).toBe(periodKey("2026-07-09", "fy"));
+  });
+});
+
+describe("source channel filter (Excel vs Data Entry)", () => {
+  const excel = makeEv({
+    eventId: "ex1",
+    file: "ASSEMBLY_REJECTION_REPORT.xlsx",
+    qty: 100,
+    disposition: "rejected",
+  });
+  const excel2 = makeEv({
+    eventId: "ex2",
+    file: "BALLOON_VALVE.xlsx",
+    stageId: "balloon",
+    qty: 50,
+    disposition: "rejected",
+  });
+  const manual = makeEv({
+    eventId: "de1",
+    file: "Manual Entry",
+    extractedBy: "direct-entry",
+    qty: 7,
+    disposition: "rejected",
+  });
+
+  it("classifies direct-entry vs excel", () => {
+    expect(isDirectEntryEvent(manual)).toBe(true);
+    expect(isDirectEntryEvent(excel)).toBe(false);
+  });
+
+  it("lists distinct Excel files for the picker", () => {
+    expect(listExcelSourceFiles([excel, excel2, manual])).toEqual([
+      "ASSEMBLY_REJECTION_REPORT.xlsx",
+      "BALLOON_VALVE.xlsx",
+    ]);
+  });
+
+  it("Excel-only keeps upload rows even when Data Entry exists the same day", () => {
+    // Same stage·day: without filtering first, DE would win. Excel-only must
+    // still surface the upload row for the GM's selective view.
+    const kept = scopeEvents([excel, manual], {
+      grain: "month",
+      sourceChannels: ["excel"],
+    });
+    expect(kept.some((e) => e.eventId === "ex1")).toBe(true);
+    expect(kept.some((e) => e.eventId === "de1")).toBe(false);
+  });
+
+  it("Data-entry-only drops Excel uploads", () => {
+    const kept = scopeEvents([excel, manual], {
+      grain: "month",
+      sourceChannels: ["direct-entry"],
+    });
+    expect(kept.map((e) => e.eventId)).toEqual(["de1"]);
+  });
+
+  it("restricts Excel to selected files when sourceFiles is set", () => {
+    const kept = scopeEvents([excel, excel2, manual], {
+      grain: "month",
+      sourceChannels: ["excel"],
+      sourceFiles: ["BALLOON_VALVE.xlsx"],
+    });
+    expect(kept.map((e) => e.eventId)).toEqual(["ex2"]);
+  });
+
+  it("resolveScope maps includeExcel / includeDirectEntry tweaks", () => {
+    const scope: Scope = resolveScope([excel, manual], {
+      grain: "month",
+      datePreset: "all",
+      dateFrom: "",
+      dateTo: "",
+      includeExcel: true,
+      includeDirectEntry: false,
+      excelFiles: ["ASSEMBLY_REJECTION_REPORT.xlsx"],
+    });
+    expect(scope.sourceChannels).toEqual(["excel"]);
+    expect(scope.sourceFiles).toEqual(["ASSEMBLY_REJECTION_REPORT.xlsx"]);
+  });
+
+  it("both channels with no file list omits source filters (full plant)", () => {
+    const scope = resolveScope([excel], {
+      grain: "month",
+      datePreset: "all",
+      dateFrom: "",
+      dateTo: "",
+      includeExcel: true,
+      includeDirectEntry: true,
+      excelFiles: [],
+    });
+    expect(scope.sourceChannels).toBeUndefined();
+    expect(scope.sourceFiles).toBeUndefined();
   });
 });

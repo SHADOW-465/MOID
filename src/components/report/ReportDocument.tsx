@@ -201,7 +201,7 @@ export default function ReportDocument({
   if (isForensicSpec(spec)) {
     return (
       <div className="rp-doc">
-        <ForensicBook events={events} registry={registry} />
+        <ForensicBook events={events} registry={registry} scope={scope} />
       </div>
     );
   }
