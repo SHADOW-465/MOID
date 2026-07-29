@@ -12,7 +12,7 @@ export default function ExceptionModal({
   onReasonChange,
   onConfirm,
   onCancel,
-  confirmLabel = "Save with reason",
+  confirmLabel = "Upload with reason",
   busy = false,
 }: {
   open: boolean;
@@ -69,7 +69,7 @@ export default function ExceptionModal({
           {title}
         </div>
         <p className="small" style={{ color: "var(--text-2)", marginBottom: 12, lineHeight: 1.45 }}>
-          This entry does not reconcile. You may still save it, but you must state a reason.
+          This entry does not reconcile. You may still upload it, but you must state a reason.
           The GM will see this in notifications.
         </p>
         <div
@@ -121,7 +121,7 @@ export default function ExceptionModal({
         />
         {touched && !ok && (
           <div style={{ fontSize: 12, color: "var(--status-bad)", marginBottom: 10 }}>
-            Enter at least 4 characters before saving.
+            Enter at least 4 characters before uploading.
           </div>
         )}
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
@@ -162,7 +162,7 @@ export default function ExceptionModal({
               opacity: busy ? 0.7 : 1,
             }}
           >
-            {busy ? "Saving…" : confirmLabel}
+            {busy ? "Uploading…" : confirmLabel}
           </button>
         </div>
       </div>

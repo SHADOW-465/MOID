@@ -2,7 +2,9 @@
 
 // Shop-floor Data Entry Matrix — single-batch form matching
 // Disposafe_Data_Entry_System_Documentation.md.
-// Saves to localStorage (shift buffer) and POSTs StageDayRecords to /api/ingest.
+// Upload to ledger (POST /api/ingest) and keep a local shift log.
+// Within the shift window operators may re-upload (supersede). After the
+// window closes, pending local rows auto-upload and further edits need a GM grant.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -245,6 +247,9 @@ export default function BatchMatrixEntry({
     const id = window.setInterval(() => setTick((t) => t + 1), 60_000);
     return () => window.clearInterval(id);
   }, []);
+
+  /** True while a shift-end auto-upload is in flight (avoid double fire). */
+  const shiftEndFlushRef = useRef(false);
 
   // Autosave the in-progress form. Cheap (one small JSON write per keystroke)
   // and it is the only thing standing between a half-filled shift and a tab switch.
@@ -583,13 +588,13 @@ export default function BatchMatrixEntry({
       setBatchManual(false);
       setMsg(
         revising
-          ? `Batch ${rec.batchId} updated — the ledger entry was superseded.`
-          : `Batch ${rec.batchId} saved and synced to the ledger.`,
+          ? `Batch ${rec.batchId} re-uploaded — previous ledger row superseded.`
+          : `Batch ${rec.batchId} uploaded to the ledger.`,
       );
       refreshEvents().catch(console.error);
       onSynced?.();
     } catch (e: any) {
-      // Still keep local shift buffer even if sync fails
+      // Keep local shift buffer so shift-end can retry upload
       const next = saved.some((b) => b.id === rec.id)
         ? saved.map((b) => (b.id === rec.id ? rec : b))
         : [rec, ...saved];
@@ -597,13 +602,65 @@ export default function BatchMatrixEntry({
       persistShift(next);
       setEditing(null);
       clearFormKeepContext();
-      setErr(`Saved locally, but ledger sync failed: ${e?.message ?? "unknown error"}`);
+      setErr(`Kept on this device only — ledger upload failed: ${e?.message ?? "unknown error"}. Will retry when the shift ends.`);
     } finally {
       setSaving(false);
       setA12(null);
       setA12Choice(null);
     }
   }
+
+  /**
+   * When the shift window closes, push any still-local batches to the ledger
+   * so nothing sits only on the operator machine after lock-down.
+   */
+  async function flushPendingToLedger(rows: ShiftBatchRecord[]) {
+    const pending = rows.filter((b) => !b.synced);
+    if (pending.length === 0) return;
+    setMsg(`Shift ended — uploading ${pending.length} pending batch(es) to the ledger…`);
+    let next = [...rows];
+    let ok = 0;
+    let fail = 0;
+    for (const rec of pending) {
+      try {
+        await commitRecord(rec);
+        next = next.map((b) => (b.id === rec.id ? { ...b, synced: true } : b));
+        ok++;
+      } catch {
+        fail++;
+      }
+    }
+    setSaved(next);
+    persistShift(next);
+    if (ok > 0) refreshEvents().catch(console.error);
+    if (fail === 0) {
+      setMsg(
+        ok === 1
+          ? "Shift ended — last pending batch uploaded to the ledger. Further edits need GM permission."
+          : `Shift ended — ${ok} pending batch(es) uploaded. Further edits need GM permission.`,
+      );
+      setErr(null);
+    } else {
+      setErr(`${fail} batch(es) still not on the ledger (upload failed). ${ok} uploaded.`);
+      if (ok > 0) setMsg(null);
+    }
+  }
+
+  // Auto-upload pending local rows when the operator's shift window closes.
+  useEffect(() => {
+    if (withinShift) {
+      shiftEndFlushRef.current = false;
+      return;
+    }
+    if (!canWrite) return;
+    if (persona === "owner") return;
+    if (shiftEndFlushRef.current) return;
+    const pending = saved.filter((b) => !b.synced);
+    if (pending.length === 0) return;
+    shiftEndFlushRef.current = true;
+    void flushPendingToLedger(saved);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when window closes / pending appears after close
+  }, [withinShift, canWrite, persona, saved]);
 
   async function postNotification(body: Record<string, unknown>) {
     try {
@@ -964,16 +1021,18 @@ export default function BatchMatrixEntry({
           <button
             type="button"
             onClick={submitForm}
-            disabled={saving || !!a12}
+            disabled={saving || !!a12 || !mayEdit || checked === 0}
             style={{
               ...btnPrimary,
               padding: "8px 18px",
               fontSize: 13.5,
               fontWeight: 700,
               boxShadow: "0 2px 8px color-mix(in srgb, var(--accent) 30%, transparent)",
+              opacity: saving || !!a12 || !mayEdit || checked === 0 ? 0.5 : 1,
+              cursor: saving || !!a12 || !mayEdit || checked === 0 ? "not-allowed" : "pointer",
             }}
           >
-            {saving ? "Saving…" : editingId ? "Update Batch Entry" : "Save Batch Entry"}
+            {saving ? "Uploading…" : editingId ? "Re-upload batch entry" : "Upload batch entry"}
           </button>
           <div className="small" style={{ color: "var(--text-2)", fontWeight: 600 }}>{todayLabel}</div>
         </div>
@@ -994,7 +1053,7 @@ export default function BatchMatrixEntry({
           }}
         >
           <span>
-            Revising <strong>{saved.find((b) => b.id === editingId)?.batchId}</strong> — saving replaces that
+            Revising <strong>{saved.find((b) => b.id === editingId)?.batchId}</strong> — re-upload replaces that
             entry and supersedes its ledger row.
           </span>
           <button type="button" onClick={cancelEdit} style={{ ...btnGhost, marginLeft: "auto" }}>
@@ -1005,7 +1064,27 @@ export default function BatchMatrixEntry({
 
       {!canWrite && (
         <div style={{ marginBottom: 12, padding: "10px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--surface-2)", fontSize: 12.5, color: "var(--text-2)" }}>
-          View-only role — data entry is read-only. Switch to GM or Operator to save.
+          View-only role — data entry is read-only. Switch to GM or Operator to upload.
+        </div>
+      )}
+      {canWrite && persona === "operator" && withinShift && (
+        <div
+          style={{
+            marginBottom: 12,
+            padding: "10px 14px",
+            borderRadius: 10,
+            border: "1px solid var(--border)",
+            background: "var(--surface-2)",
+            fontSize: 12.5,
+            color: "var(--text-2)",
+            lineHeight: 1.45,
+          }}
+        >
+          <strong style={{ color: "var(--text)" }}>Shift open</strong>
+          {" "}({describeShiftWindow(shift, shiftConfig)}).{" "}
+          <strong>Upload batch entry</strong> writes this row to the plant ledger.
+          You may re-upload (supersede) while the shift is open. When the shift ends,
+          any still-local rows auto-upload and further changes need GM permission.
         </div>
       )}
       {canWrite && persona === "operator" && !withinShift && !hasGrant && (
@@ -1023,8 +1102,10 @@ export default function BatchMatrixEntry({
             alignItems: "center",
           }}
         >
-          <span style={{ flex: 1 }}>
-            Shift closed ({describeShiftWindow(shift, shiftConfig)}). Entries are locked until GM approves an edit request.
+          <span style={{ flex: 1, lineHeight: 1.45 }}>
+            <strong>Shift closed</strong> ({describeShiftWindow(shift, shiftConfig)}).
+            Pending batches auto-upload to the ledger. Uploaded entries are locked —
+            request GM permission to change one.
           </span>
           <button type="button" onClick={requestEditPermission} disabled={requestingEdit} style={btnPrimary}>
             {requestingEdit ? "Requesting…" : "Request edit permission"}
@@ -1033,7 +1114,7 @@ export default function BatchMatrixEntry({
       )}
       {hasGrant && persona === "operator" && !withinShift && (
         <div style={{ marginBottom: 12, padding: "10px 14px", borderRadius: 10, border: "1px solid var(--positive)", background: "color-mix(in srgb, var(--positive) 10%, var(--surface))", fontSize: 12.5, color: "var(--text-2)" }}>
-          Temporary edit grant active for this batch/stage.
+          GM edit grant active for this batch/stage — you may re-upload until the grant expires.
         </div>
       )}
 
@@ -1562,7 +1643,7 @@ export default function BatchMatrixEntry({
       >
         <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>
           {checked === 0 ? (
-            <>Enter the {qtyLabel} quantity to save.</>
+            <>Enter the {qtyLabel} quantity to upload.</>
           ) : (
             <>
               <strong style={{ fontFamily: "var(--font-mono)" }}>{batchId}</strong> · {processLabel(macro, micro)} ·{" "}
@@ -1594,7 +1675,7 @@ export default function BatchMatrixEntry({
             cursor: saving || !!a12 || checked === 0 || !mayEdit ? "not-allowed" : "pointer",
           }}
         >
-          {saving ? "Saving…" : editingId ? "Update batch entry" : "Save batch entry"}
+          {saving ? "Uploading…" : editingId ? "Re-upload batch entry" : "Upload batch entry"}
         </button>
       </div>
 
@@ -1634,8 +1715,10 @@ export default function BatchMatrixEntry({
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 13 }}>Saved Batches (This Shift)</div>
-            <div className="small" style={{ color: "var(--text-3)" }}>Logged this session — kept in local storage; synced rows are in the event ledger.</div>
+            <div style={{ fontWeight: 700, fontSize: 13 }}>Shift log (this shift)</div>
+            <div className="small" style={{ color: "var(--text-3)" }}>
+              Uploaded rows are on the plant ledger. Local-only rows auto-upload when the shift ends.
+            </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <select
@@ -1708,8 +1791,10 @@ export default function BatchMatrixEntry({
                     >
                       <td style={tdCell}>
                         {rec.operator}
-                        {rec.synced && (
-                          <div className="small" style={{ color: "var(--positive)", fontSize: 9, fontWeight: 700 }}>SYNCED</div>
+                        {rec.synced ? (
+                          <div className="small" style={{ color: "var(--positive)", fontSize: 9, fontWeight: 700 }}>UPLOADED</div>
+                        ) : (
+                          <div className="small" style={{ color: "var(--status-warn, #d97706)", fontSize: 9, fontWeight: 700 }}>LOCAL ONLY</div>
                         )}
                       </td>
                       <td style={tdCell}>
@@ -1777,7 +1862,7 @@ export default function BatchMatrixEntry({
                               label="Saved"
                               value={new Date(rec.savedAt).toLocaleString()}
                             />
-                            <PreviewField label="Ledger" value={rec.synced ? "Synced" : "Local only"} />
+                            <PreviewField label="Ledger" value={rec.synced ? "Uploaded" : "Local only (pending upload)"} />
                           </div>
 
                           {rec.macro !== "secondary" && (
