@@ -110,7 +110,10 @@ export function bestGrain(events: Event[]): Grain {
   return "day";
 }
 
-function ChartBody({ events, spec, base }: { events: Event[]; spec: ChartSpec; base?: BaseScope }) {
+/** Rendered chart for one spec. Exported so the report renderer draws charts
+ *  with the SAME code the screens use — a report can never diverge from what
+ *  the GM saw on the page it came from. */
+export function ChartBody({ events, spec, base }: { events: Event[]; spec: ChartSpec; base?: BaseScope }) {
   const scope = scopeFor(spec, base);
   const fmt = fmtValue(spec.metric);
   const reg = DERIVED_REGISTRY;

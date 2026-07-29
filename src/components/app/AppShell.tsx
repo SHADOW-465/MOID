@@ -27,6 +27,8 @@ import {
   type PersonaId,
 } from "@/lib/persona";
 import CommandPalette, { useCommandPaletteHotkey } from "@/components/app/CommandPalette";
+import ReportPanel from "@/components/report/ReportPanel";
+import { canReport } from "@/lib/report/blocks";
 import { subscribeNavBanner, type NavBanner } from "@/lib/analytics/nav-banner";
 import { usePersona } from "@/components/app/PersonaContext";
 import NotificationsPanel from "@/components/app/NotificationsPanel";
@@ -141,6 +143,14 @@ export default function AppShell({
   const [showPersonaMenu, setShowPersonaMenu] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [banner, setBanner] = useState<NavBanner | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
+
+  /** The window the report covers — resolved exactly as the screens resolve it,
+   *  so a report always answers the same question the page is answering. */
+  const reportScope = useMemo(
+    () => resolveScope(events ?? [], t),
+    [events, t.grain, t.datePreset, t.dateFrom, t.dateTo, t.stageView],
+  );
 
   useCommandPaletteHotkey(useCallback(() => setPaletteOpen(true), []));
 
@@ -1364,8 +1374,9 @@ export default function AppShell({
 
           {/* Export Action: Pillbox Card Button — full plant audit package */}
           <button 
-            onClick={handleExport} 
+            onClick={() => (canReport(active) ? setReportOpen(true) : handleExport())} 
             disabled={exporting} 
+            title={canReport(active) ? "Build a report from this screen" : "Download the audit data package"}
             style={{
               background: "var(--surface)",
               color: "var(--text)", 
@@ -1398,10 +1409,21 @@ export default function AppShell({
             }}
           >
             <Icon name="print" size={11} /> 
-            {exporting ? "Exporting…" : "Export"}
+            {exporting ? "Exporting…" : canReport(active) ? "Export report" : "Export"}
           </button>
         </div>
       </header>
+
+      {reportOpen && canReport(active) && (
+        <ReportPanel
+          page={active}
+          events={events ?? []}
+          scope={reportScope}
+          periodLabel={dateRange ?? "all data"}
+          onClose={() => setReportOpen(false)}
+          onDownloadData={handleExport}
+        />
+      )}
 
       <CommandPalette
         open={paletteOpen}
