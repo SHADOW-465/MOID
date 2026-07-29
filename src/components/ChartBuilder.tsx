@@ -74,11 +74,14 @@ export function describeSpec(spec: ChartSpec): string {
   return `${metric} · ${group}`;
 }
 
-/** Scope filters the host page already applies (Dashboard topbar range/View). */
+/** Scope filters the host page already applies (Dashboard topbar range/View/Sources). */
 export interface BaseScope {
   dateFrom?: string;
   dateTo?: string;
   stageIds?: string[];
+  /** From header Sources control — Excel vs Data Entry / file picks. */
+  sourceChannels?: import("@/lib/analytics/scope").SourceChannel[];
+  sourceFiles?: string[];
 }
 
 export function scopeFor(spec: ChartSpec, base?: BaseScope) {
@@ -95,6 +98,8 @@ export function scopeFor(spec: ChartSpec, base?: BaseScope) {
     dateTo: base?.dateTo,
     stageIds,
     sizes: spec.sizes.length ? spec.sizes : undefined,
+    sourceChannels: base?.sourceChannels,
+    sourceFiles: base?.sourceFiles,
   };
 }
 

@@ -86,6 +86,27 @@ export function countBySourceChannel(events: Event[]): { excel: number; directEn
   return { excel, directEntry };
 }
 
+/** Human label for the Sources filter — used in report headers / cover. */
+export function describeSourceFilter(scope: Scope): string {
+  const channels = scope.sourceChannels;
+  const files = scope.sourceFiles;
+  const excelOn = !channels || channels.includes("excel");
+  const deOn = !channels || channels.includes("direct-entry");
+
+  if (excelOn && deOn && (!files || files.length === 0)) return "All sources (Excel + Data entry)";
+  if (excelOn && deOn && files?.length) {
+    return `Data entry + Excel: ${files.join(", ")}`;
+  }
+  if (excelOn && !deOn) {
+    if (!files || files.length === 0) return "Excel uploads only";
+    if (files.length === 1) return `Excel: ${files[0]}`;
+    return `Excel files (${files.length}): ${files.join(", ")}`;
+  }
+  if (!excelOn && deOn) return "Data entry only";
+  if (channels && channels.length === 0) return "No sources selected";
+  return "All sources";
+}
+
 /** The week-of-month bucket containing `day` in `month`/`year`. Buckets are
  *  fixed 7-day chunks counted from the 1st (1-7, 8-14, 15-21, 22-28, 29-31+)
  *  — NOT real Monday-Sunday weeks. This is the one place that definition

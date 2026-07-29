@@ -28,9 +28,14 @@ import {
   type NamedReportPreset,
 } from "@/lib/report/presets-store";
 import type { NavKey } from "@/lib/nav-keys";
-import type { Scope } from "@/lib/analytics";
+import {
+  describeSourceFilter,
+  listExcelSourceFiles,
+  type Scope,
+} from "@/lib/analytics/scope";
 import type { Event } from "@/lib/store/types";
 import type { Registry } from "@/lib/analytics/rejection";
+import { useTweaks } from "@/components/editorial/TweaksContext";
 
 export default function ReportPanel({
   page,
@@ -55,6 +60,7 @@ export default function ReportPanel({
   registry?: Registry | null;
   initialPresetId?: string;
 }) {
+  const { t, setTweak } = useTweaks();
   const [presets, setPresets] = useState<NamedReportPreset[]>([]);
   const [activePresetId, setActivePresetId] = useState<string | null>(initialPresetId ?? null);
   const [spec, setSpec] = useState<ReportSpec | null>(() => {
@@ -76,6 +82,8 @@ export default function ReportPanel({
 
   const shelf = useMemo(() => availableBlocks(page), [page]);
   const forensic = spec ? isForensicSpec(spec) : false;
+  const excelFiles = useMemo(() => listExcelSourceFiles(events), [events]);
+  const sourcesSummary = useMemo(() => describeSourceFilter(scope), [scope]);
 
   if (!spec) return null;
 
@@ -194,6 +202,9 @@ export default function ReportPanel({
           <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
             {periodLabel}
           </div>
+          <div className="muted" style={{ fontSize: 11, marginTop: 4, lineHeight: 1.35 }}>
+            Preview uses: {sourcesSummary}
+          </div>
         </div>
 
         <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
@@ -215,6 +226,89 @@ export default function ReportPanel({
               boxSizing: "border-box",
             }}
           />
+        </div>
+
+        {/* Sources — same filter as the header Sources control; drives the live preview */}
+        <div
+          style={{
+            padding: "10px 16px",
+            borderBottom: "1px solid var(--border)",
+            flexShrink: 0,
+            background: "var(--surface-2)",
+          }}
+        >
+          <div className="muted" style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 700, marginBottom: 6 }}>
+            Sources in this report
+          </div>
+          <div className="muted" style={{ fontSize: 11, marginBottom: 8, lineHeight: 1.35 }}>
+            {sourcesSummary}
+          </div>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginBottom: 6, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={t.includeExcel}
+              onChange={(e) => {
+                setTweak("includeExcel", e.target.checked);
+                if (!e.target.checked) setTweak("excelFiles", []);
+              }}
+            />
+            Excel uploads
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginBottom: 8, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={t.includeDirectEntry}
+              onChange={(e) => setTweak("includeDirectEntry", e.target.checked)}
+            />
+            Data entry
+          </label>
+          {t.includeExcel && excelFiles.length > 0 && (
+            <div style={{ maxHeight: 120, overflowY: "auto", marginTop: 4, paddingRight: 4 }}>
+              <button
+                type="button"
+                onClick={() => setTweak("excelFiles", [])}
+                style={{
+                  fontSize: 10.5,
+                  fontWeight: 600,
+                  marginBottom: 6,
+                  border: "1px solid var(--border)",
+                  borderRadius: 6,
+                  padding: "2px 8px",
+                  background: t.excelFiles.length === 0 ? "var(--accent-weak)" : "var(--surface)",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                All Excel files
+              </button>
+              {excelFiles.map((f) => {
+                const checked = t.excelFiles.length === 0 || t.excelFiles.includes(f);
+                return (
+                  <label
+                    key={f}
+                    style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 11, marginBottom: 4, cursor: "pointer", lineHeight: 1.3 }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      style={{ marginTop: 2 }}
+                      onChange={() => {
+                        if (t.excelFiles.length === 0) {
+                          setTweak("excelFiles", excelFiles.filter((x) => x !== f));
+                        } else if (t.excelFiles.includes(f)) {
+                          setTweak("excelFiles", t.excelFiles.filter((x) => x !== f));
+                        } else {
+                          const next = [...t.excelFiles, f];
+                          setTweak("excelFiles", next.length === excelFiles.length ? [] : next);
+                        }
+                      }}
+                    />
+                    <span style={{ wordBreak: "break-word" }}>{f}</span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <div style={{ ...colScroll, padding: "12px 16px" }}>

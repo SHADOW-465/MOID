@@ -27,6 +27,7 @@ import {
   copq,
   toSourceRows,
   DERIVED_REGISTRY,
+  scopeEvents,
   type Scope,
 } from "@/lib/analytics";
 import { useCapas } from "@/lib/capa-store";
@@ -35,6 +36,7 @@ import type { ReportSpec, ReportBlock, KpiId } from "@/lib/report/blocks";
 import { KPI_LABEL, isForensicSpec } from "@/lib/report/blocks";
 import ForensicBook from "@/components/report/ForensicBook";
 import type { Registry } from "@/lib/analytics/rejection";
+import { describeSourceFilter } from "@/lib/analytics/scope";
 
 /** Print geometry — mirrors the forensic book's page shell so both print alike. */
 export const REPORT_PRINT_CSS = `
@@ -120,13 +122,14 @@ function ReportTable({ block, events, scope }: { block: Extract<ReportBlock, { k
   return <BarsH rows={rows} fmt={(n) => (isRate ? pct(n) : num(n))} />;
 }
 
-function EvidenceBlock({ events }: { events: Event[] }) {
-  const rows = useMemo(() => toSourceRows(events).slice(0, 40), [events]);
+function EvidenceBlock({ events, scope }: { events: Event[]; scope: Scope }) {
+  const scoped = useMemo(() => scopeEvents(events, scope), [events, scope]);
+  const rows = useMemo(() => toSourceRows(scoped).slice(0, 40), [scoped]);
   return (
     <>
       <p className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
-        Every figure in this report traces to a source cell. First {rows.length} of{" "}
-        {num(toSourceRows(events).length)} records.
+        Every figure in this report traces to a source cell (within the selected Sources filter). First {rows.length} of{" "}
+        {num(toSourceRows(scoped).length)} records.
       </p>
       <table style={{ width: "100%", fontSize: 10.5, borderCollapse: "collapse", fontFamily: "var(--font-mono)" }}>
         <thead>
@@ -167,7 +170,19 @@ function Block({ block, events, scope }: { block: ReportBlock; events: Event[]; 
         </div>
       );
     case "chart":
-      return <ChartBody events={events} spec={block.spec} base={{ dateFrom: scope.dateFrom, dateTo: scope.dateTo, stageIds: scope.stageIds }} />;
+      return (
+        <ChartBody
+          events={events}
+          spec={block.spec}
+          base={{
+            dateFrom: scope.dateFrom,
+            dateTo: scope.dateTo,
+            stageIds: scope.stageIds,
+            sourceChannels: scope.sourceChannels,
+            sourceFiles: scope.sourceFiles,
+          }}
+        />
+      );
     case "table":
       return <ReportTable block={block} events={events} scope={scope} />;
     case "text":
@@ -177,7 +192,7 @@ function Block({ block, events, scope }: { block: ReportBlock; events: Event[]; 
         <p className="muted" style={{ fontSize: 12 }}>— no notes —</p>
       );
     case "evidence":
-      return <EvidenceBlock events={events} />;
+      return <EvidenceBlock events={events} scope={scope} />;
     case "forensic-book":
       return null; // rendered as full document path below
   }
@@ -230,11 +245,14 @@ export default function ReportDocument({
           </div>
           <h1 style={{ fontSize: 30, fontWeight: 800, margin: "10px 0 6px" }}>{cover.title}</h1>
           <div style={{ fontSize: 14, color: "var(--text-2)" }}>{periodLabel}</div>
+          <div style={{ fontSize: 13, color: "var(--text-2)", marginTop: 6 }}>
+            Sources: {describeSourceFilter(scope)}
+          </div>
           {cover.subtitle && (
             <p style={{ marginTop: 12, fontSize: 13, color: "var(--text-2)" }}>{cover.subtitle}</p>
           )}
           <div className="muted" style={{ marginTop: 20, fontSize: 11, fontFamily: "var(--font-mono)" }}>
-            Generated {new Date().toLocaleString()} · every figure recomputed from the event ledger
+            Generated {new Date().toLocaleString()} · figures from the event ledger under the Sources filter above
           </div>
         </section>
       )}

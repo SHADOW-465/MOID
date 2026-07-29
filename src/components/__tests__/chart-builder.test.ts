@@ -37,6 +37,15 @@ describe("ChartBuilder scope inheritance", () => {
     expect(scopeFor(spec({ group: "time", grain: "week" })).grain).toBe("week");
     expect(scopeFor(spec({ group: "stage", grain: "week" })).grain).toBe("month");
   });
+
+  it("inherits Sources filters from the host page base scope", () => {
+    const s = scopeFor(spec(), {
+      sourceChannels: ["excel"],
+      sourceFiles: ["ASSEMBLY.xlsx"],
+    });
+    expect(s.sourceChannels).toEqual(["excel"]);
+    expect(s.sourceFiles).toEqual(["ASSEMBLY.xlsx"]);
+  });
 });
 
 describe("bestGrain", () => {
