@@ -286,6 +286,12 @@ export interface AuditEntryRow {
   eventIds: string[];
   commentCount: number;
   hasCorrection: boolean;
+  /**
+   * Shift labels (`provenance.sheet`) behind this row — normally one. Carried
+   * because DELETE /api/manual-entries scopes by date+shift, and without it the
+   * only way to erase a displayed row is the far broader batch-wide purge.
+   */
+  shifts: string[];
 }
 
 export interface AuditStageBucket {
@@ -339,6 +345,7 @@ export function buildEntryRows(
     eventIds: string[];
     commentCount: number;
     hasCorrection: boolean;
+    shifts: Set<string>;
   };
 
   const map = new Map<string, Acc>();
@@ -369,9 +376,11 @@ export function buildEntryRows(
         eventIds: [],
         commentCount: 0,
         hasCorrection: false,
+        shifts: new Set(),
       };
       map.set(key, a);
     }
+    a.shifts.add(e.provenance?.sheet?.trim() || "Day Shift");
 
     if (e.eventId) a.eventIds.push(e.eventId);
     const ts = eventTs(e);
@@ -428,6 +437,7 @@ export function buildEntryRows(
       eventIds: a.eventIds,
       commentCount: a.commentCount,
       hasCorrection: a.hasCorrection,
+      shifts: [...a.shifts],
     });
   }
 

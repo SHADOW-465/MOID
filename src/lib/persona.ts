@@ -17,6 +17,16 @@ export interface PersonaCapabilities {
   approve: boolean;
   /** May change schema, settings, clear data. */
   configure: boolean;
+  /**
+   * May permanently erase a row that is already in the ledger.
+   *
+   * Deliberately separate from `write` and `configure`: an operator must be
+   * able to save entries (write) and must NOT be able to erase them once
+   * saved, and erasing plant history is a governance act, not a settings
+   * change. Correcting a saved value is a different, non-destructive path
+   * (CorrectionEvent) and is not gated by this bit.
+   */
+  eraseLedger: boolean;
 }
 
 export interface PersonaDef {
@@ -66,7 +76,7 @@ export const PERSONAS: Record<PersonaId, PersonaDef> = {
     initial: "G",
     homeHref: "/",
     navAllow: FULL_NAV,
-    capabilities: { write: true, approve: true, configure: true },
+    capabilities: { write: true, approve: true, configure: true, eraseLedger: true },
   },
   owner: {
     id: "owner",
@@ -89,7 +99,7 @@ export const PERSONAS: Record<PersonaId, PersonaDef> = {
       "ask",
     ],
     // View-only: no mutations, no approvals, no config.
-    capabilities: { write: false, approve: false, configure: false },
+    capabilities: { write: false, approve: false, configure: false, eraseLedger: false },
   },
   operator: {
     id: "operator",
@@ -116,7 +126,7 @@ export const PERSONAS: Record<PersonaId, PersonaDef> = {
       "ask",
       "audit",
     ],
-    capabilities: { write: true, approve: false, configure: false },
+    capabilities: { write: true, approve: false, configure: false, eraseLedger: false },
   },
 };
 
@@ -174,4 +184,8 @@ export function canApprove(persona: PersonaId): boolean {
 
 export function canConfigure(persona: PersonaId): boolean {
   return PERSONAS[persona].capabilities.configure;
+}
+
+export function canEraseLedger(persona: PersonaId): boolean {
+  return PERSONAS[persona].capabilities.eraseLedger;
 }

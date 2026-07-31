@@ -17,6 +17,8 @@ type PersonaCtx = {
   canWrite: boolean;
   canApprove: boolean;
   canConfigure: boolean;
+  /** GM only — may permanently erase rows already in the ledger. */
+  canEraseLedger: boolean;
 };
 
 const Ctx = createContext<PersonaCtx | null>(null);
@@ -42,6 +44,7 @@ export function PersonaProvider({ children }: { children: React.ReactNode }) {
       canWrite: capabilities.write,
       canApprove: capabilities.approve,
       canConfigure: capabilities.configure,
+      canEraseLedger: capabilities.eraseLedger,
     };
   }, [persona, setPersona]);
 
@@ -60,6 +63,7 @@ export function usePersona(): PersonaCtx {
       canWrite: capabilities.write,
       canApprove: capabilities.approve,
       canConfigure: capabilities.configure,
+      canEraseLedger: capabilities.eraseLedger,
     };
   }
   return v;

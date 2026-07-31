@@ -31,6 +31,7 @@ import {
   type BatchProgress,
 } from "@/lib/analytics/batch-progress";
 import LotProgress from "@/components/LotProgress";
+import { usePersona } from "@/components/app/PersonaContext";
 import {
   integrityFixHref,
   parseIntegrityFocus,
@@ -56,8 +57,9 @@ function stageLabel(id: string): string {
 }
 
 export default function AuditPage() {
-  const { events: contextEvents, isLoading: loading } = useEvents();
+  const { events: contextEvents, isLoading: loading, refreshEvents } = useEvents();
   const events = (contextEvents ?? []) as any[];
+  const { canEraseLedger } = usePersona();
 
   const [viewMode, setViewMode] = useState<ViewMode>("batch");
   const [datePreset, setDatePreset] = useState<AuditDatePreset>("30d");
@@ -159,6 +161,51 @@ export default function AuditPage() {
   /** Lot completion — over ALL events, never the filtered set, or a stage filter
    *  would make every lot look unfinished. */
   const batchProgress = useMemo(() => buildBatchProgress(events), [events]);
+
+  /**
+   * Erase a displayed row from the ledger. This is the ONLY erase path in the
+   * product: Data Entry can save and read back, but unsaving happens here,
+   * next to the provenance that justifies it, and only for a GM.
+   *
+   * ponytail: gated in the UI only — the API has no auth to check against yet.
+   * Move this to a server-side role check the moment real auth lands.
+   */
+  const [erasing, setErasing] = useState<string | null>(null);
+  const eraseRow = useCallback(
+    async (row: AuditEntryRow) => {
+      const shifts = row.shifts.length ? row.shifts : ["Day Shift"];
+      const ok = window.confirm(
+        `Permanently erase this row?\n\n` +
+          `${row.date} · ${row.batch} · ${row.stageId}${row.size ? ` · ${row.size}` : ""}\n` +
+          `${row.checked.toLocaleString()} checked, ${row.rejected.toLocaleString()} rejected\n\n` +
+          `The numbers leave the dashboard and every analysis. This is an erase, ` +
+          `not a correction, and cannot be undone.`,
+      );
+      if (!ok) return;
+
+      setErasing(row.id);
+      try {
+        let deleted = 0;
+        for (const shift of shifts) {
+          const qs = new URLSearchParams({ date: row.date, shift });
+          if (row.batch && row.batch !== "(no batch)") qs.set("batch", row.batch.toUpperCase());
+          if (row.stageId && row.stageId !== "(unknown stage)") qs.set("stageId", row.stageId);
+          if (row.size) qs.set("size", row.size);
+          const res = await fetch(`/api/manual-entries?${qs}`, { method: "DELETE" });
+          const body = await res.json().catch(() => ({}) as { error?: string; deletedCount?: number });
+          if (!res.ok) throw new Error(body.error ?? "Erase failed");
+          deleted += body.deletedCount ?? 0;
+        }
+        if (deleted === 0) throw new Error("No matching ledger events — it may already be gone.");
+        await refreshEvents();
+      } catch (e) {
+        window.alert(`Could not erase: ${e instanceof Error ? e.message : "unknown error"}`);
+      } finally {
+        setErasing(null);
+      }
+    },
+    [refreshEvents],
+  );
 
   const sessions = useMemo(() => {
     return filterSessions(groupAuditSessions(datedEvents, commentsMap), {
@@ -499,6 +546,8 @@ export default function AuditPage() {
                   onToggle={() => selectBatch(g.batch)}
                   onStage={(sid) => setStageTab((t) => ({ ...t, [g.batch]: sid }))}
                   progress={progressFor(batchProgress, g.batch)}
+                  onErase={canEraseLedger ? eraseRow : undefined}
+                  erasingId={erasing}
                   focus={focusIssue}
                 />
               ))}
@@ -543,6 +592,8 @@ function BatchAccordion({
   onToggle,
   onStage,
   progress,
+  onErase,
+  erasingId,
   focus,
 }: {
   group: AuditBatchGroup;
@@ -551,6 +602,9 @@ function BatchAccordion({
   onToggle: () => void;
   onStage: (stageId: string) => void;
   progress?: BatchProgress | null;
+  /** Present only when the current role may erase ledger rows (GM). */
+  onErase?: (row: AuditEntryRow) => void;
+  erasingId?: string | null;
   focus?: IntegrityFocus | null;
 }) {
   const stage: AuditStageBucket | undefined =
@@ -734,6 +788,8 @@ function BatchAccordion({
               stageName={stageLabel(stage.stageId)}
               stageId={stage.stageId}
               batch={g.batch}
+              onErase={onErase}
+              erasingId={erasingId}
               focus={focus}
             />
           </div>
@@ -748,12 +804,16 @@ function EntryGrid({
   stageName: name,
   stageId,
   batch,
+  onErase,
+  erasingId,
   focus,
 }: {
   rows: AuditEntryRow[];
   stageName: string;
   stageId?: string;
   batch?: string;
+  onErase?: (row: AuditEntryRow) => void;
+  erasingId?: string | null;
   focus?: IntegrityFocus | null;
 }) {
   const anyFocus =
@@ -802,12 +862,24 @@ function EntryGrid({
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
           <thead>
             <tr>
-              {["Date", "Size", "Checked", "Accepted", "Rejected", "Defects", "Source"].map((h) => (
+              {[
+                "Date",
+                "Size",
+                "Checked",
+                "Accepted",
+                "Rejected",
+                "Defects",
+                "Source",
+                ...(onErase ? ["Erase"] : []),
+              ].map((h) => (
                 <th
                   key={h}
                   style={{
                     padding: "9px 12px",
-                    textAlign: h === "Checked" || h === "Accepted" || h === "Rejected" ? "right" : "left",
+                    textAlign:
+                      h === "Checked" || h === "Accepted" || h === "Rejected" || h === "Erase"
+                        ? "right"
+                        : "left",
                     fontSize: 11,
                     fontWeight: 600,
                     textTransform: "uppercase",
@@ -896,6 +968,43 @@ function EntryGrid({
                     </span>
                   )}
                 </td>
+                {onErase && (
+                  <td style={{ padding: "10px 12px", textAlign: "right" }}>
+                    <button
+                      type="button"
+                      onClick={() => onErase(r)}
+                      disabled={erasingId === r.id}
+                      title="Permanently erase this row from the ledger"
+                      style={{
+                        border: "1px solid color-mix(in srgb, var(--critical) 40%, transparent)",
+                        borderRadius: "var(--radius-pill)",
+                        background: "transparent",
+                        color: "var(--critical)",
+                        padding: "3px 11px",
+                        minHeight: 26,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        fontFamily: "inherit",
+                        cursor: erasingId === r.id ? "progress" : "pointer",
+                        opacity: erasingId === r.id ? 0.55 : 1,
+                        whiteSpace: "nowrap",
+                        transition:
+                          "background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out)",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = "var(--critical-weak)";
+                        e.currentTarget.style.borderColor = "var(--critical)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = "transparent";
+                        e.currentTarget.style.borderColor =
+                          "color-mix(in srgb, var(--critical) 40%, transparent)";
+                      }}
+                    >
+                      {erasingId === r.id ? "Erasing…" : "Erase"}
+                    </button>
+                  </td>
+                )}
               </tr>
               );
             })}

@@ -159,11 +159,16 @@ function toStageDayRecord(rec: ShiftBatchRecord, ingestionId: string): StageDayR
 
 export default function BatchMatrixEntry({
   onSynced,
+  prefillBatchId,
+  onPrefillConsumed,
 }: {
   onSynced?: () => void;
+  /** Lot id handed over from History → Reuse. Fills the batch field once. */
+  prefillBatchId?: string | null;
+  onPrefillConsumed?: () => void;
 }) {
   const { events, refreshEvents } = useEvents();
-  const { canWrite, canConfigure, persona } = usePersona();
+  const { canWrite, canConfigure, canEraseLedger, persona } = usePersona();
 
   const [macro, setMacro] = useState<MacroId>("assembly");
   const [micro, setMicro] = useState("p15-visual");
@@ -610,6 +615,16 @@ export default function BatchMatrixEntry({
       if (display) setSize(display);
     }
   };
+
+  // History → Reuse: adopt the lot id, locked, and leave "Recorded on" alone.
+  // That is the multi-day rule — a lot carries across days, the entry date does
+  // not follow it backwards.
+  useEffect(() => {
+    if (!prefillBatchId) return;
+    onBatchInput(prefillBatchId);
+    onPrefillConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillBatchId]);
 
   /** Explicitly re-seed lot from production date + size (opt-in after lock). */
   const rebuildBatchFromDate = () => {
@@ -1111,6 +1126,19 @@ export default function BatchMatrixEntry({
     const rec = saved.find((b) => b.id === id);
     if (!rec) return;
     const synced = rec.synced;
+
+    // Once a batch reaches the ledger it stops being the operator's to remove.
+    // Un-synced rows are still just this shift's local list, so anyone who may
+    // write can clear them. Guarded here rather than on the button alone so
+    // every caller of deleteLocal is covered.
+    if (synced && !canEraseLedger) {
+      setErr(
+        `Batch ${rec.batchId} is already saved to the ledger. Saved rows can only be erased by a ` +
+          `GM, from the Audit trail — ask a GM, or add a correction entry instead.`,
+      );
+      return;
+    }
+
     if (
       !confirm(
         synced
@@ -2282,14 +2310,27 @@ export default function BatchMatrixEntry({
                       </td>
                       <td style={{ ...tdCell, textAlign: "center", fontWeight: 700 }}>{yieldPct}</td>
                       <td style={{ ...tdCell, textAlign: "right" }}>
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); deleteLocal(rec.id); }}
-                          style={btnDanger}
-                          title={rec.synced ? "Erase from the ledger too" : "Remove from this shift list"}
-                        >
-                          Delete
-                        </button>
+                        {rec.synced && !canEraseLedger ? (
+                          <span
+                            style={{
+                              fontSize: "var(--text-xs)",
+                              color: "var(--text-3)",
+                              whiteSpace: "nowrap",
+                            }}
+                            title="Saved to the ledger. Only a GM can erase it, from the Audit trail."
+                          >
+                            Saved · locked
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); deleteLocal(rec.id); }}
+                            style={btnDanger}
+                            title={rec.synced ? "Erase from the ledger too" : "Remove from this shift list"}
+                          >
+                            {rec.synced ? "Erase" : "Remove"}
+                          </button>
+                        )}
                       </td>
                     </tr>
                     {open && (
