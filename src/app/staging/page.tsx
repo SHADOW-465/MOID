@@ -11,6 +11,7 @@ import AppShell from "@/components/app/AppShell";
 import { useEvents } from "@/components/app/EventsContext";
 import { Card, Empty } from "@/components/app/widgets";
 import UploadZone from "@/components/UploadZone";
+import ExcelTabs from "@/components/app/ExcelTabs";
 import Icon from "@/components/editorial/Icon";
 import { buildReviewRows, reviewSummary, applyEdit, defectKey } from "@/lib/ingest/review";
 import type { StageDayRecord } from "@/lib/ingest/emit";
@@ -284,14 +285,16 @@ export default function StagingPage() {
   };
 
   return (
-    <AppShell active="staging" statusCounts={{ anomalies: summary.invalid + summary.corrected }}>
+    <AppShell active="workbooks" statusCounts={{ anomalies: summary.invalid + summary.corrected }}>
       {/* Hallmark · Workbench · product register · step-focused import flow */}
-      <h1 style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 800, margin: "0 0 2px" }}>Import from Excel</h1>
-      <p className="muted" style={{ fontSize: 13, margin: "0 0 12px", maxWidth: 720, lineHeight: 1.55 }}>
-        Transition path: load your existing plant workbook once so the app learns <strong>your columns</strong>
-        (for Data Entry) and can put historical numbers on the Dashboard. Day-to-day, prefer{" "}
+      <h1 className="h1" style={{ margin: "0 0 4px" }}>Excel Data</h1>
+      <p className="muted" style={{ fontSize: "var(--text-sm)", margin: "0 0 14px", maxWidth: "68ch", lineHeight: "var(--leading-body)" }}>
+        Load your plant workbook once so the app learns <strong>your columns</strong> for Data Entry and
+        can put historical numbers on the Dashboard. Day to day, prefer{" "}
         <a href="/data-entry" style={{ color: "var(--accent)", fontWeight: 600 }}>Data Entry</a>.
       </p>
+
+      <ExcelTabs active="staging" />
 
       {/* Operator path — active step highlighted; inactive steps quiet */}
       <div

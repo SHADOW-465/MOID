@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useLayoutEffect, useCallback, useEffect, useMemo } from "react";
+import Select from "@/components/ui/Select";
 import Icon from "@/components/editorial/Icon";
 import { BRAND_NAME } from "@/lib/brand";
 import type { RawSheet } from "@/types/dashboard";
@@ -779,47 +780,43 @@ export default function FloatingDetailModal({
                     background: "var(--surface)",
                   }}
                 >
-                  <select
+                  <Select
                     value={filters.stageId}
-                    onChange={(e) => setFilter("stageId", e.target.value)}
-                    style={selectStyle}
-                    aria-label="Filter by stage"
-                  >
-                    <option value="all">All stages</option>
-                    {stageOpts.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => setFilter("stageId", v)}
+                    options={[
+                      { value: "all", label: "All stages" },
+                      ...stageOpts.map((s) => ({ value: s.id, label: s.label })),
+                    ]}
+                    size="sm"
+                    ariaLabel="Filter by stage"
+                  />
                   {sizeOpts.length > 0 && (
-                    <select
+                    <Select
                       value={filters.size}
-                      onChange={(e) => setFilter("size", e.target.value)}
-                      style={selectStyle}
-                      aria-label="Filter by size"
-                    >
-                      <option value="all">All sizes</option>
-                      {sizeOpts.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(v) => setFilter("size", v)}
+                      options={[
+                        { value: "all", label: "All sizes" },
+                        ...sizeOpts.map((s) => ({ value: s, label: s })),
+                      ]}
+                      size="sm"
+                      mono
+                      ariaLabel="Filter by size"
+                    />
                   )}
-                  <select
+                  <Select
                     value={filters.kind}
-                    onChange={(e) => setFilter("kind", e.target.value as "all" | SourceKind)}
-                    style={selectStyle}
-                    aria-label="Filter by kind"
-                  >
-                    <option value="all">All kinds</option>
-                    <option value="checked">Checked</option>
-                    <option value="accepted">Accepted</option>
-                    <option value="rejected">Rejected</option>
-                    <option value="defect">Defect</option>
-                    <option value="other">Other</option>
-                  </select>
+                    onChange={(v) => setFilter("kind", v as "all" | SourceKind)}
+                    options={[
+                      { value: "all", label: "All kinds" },
+                      { value: "checked", label: "Checked" },
+                      { value: "accepted", label: "Accepted" },
+                      { value: "rejected", label: "Rejected" },
+                      { value: "defect", label: "Defect" },
+                      { value: "other", label: "Other" },
+                    ]}
+                    size="sm"
+                    ariaLabel="Filter by kind"
+                  />
                   <input
                     value={filters.search}
                     onChange={(e) => setFilter("search", e.target.value)}
@@ -1169,17 +1166,13 @@ function SpreadsheetPanel({
         <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase" }}>
           Source file
         </span>
-        <select
+        <Select
           value={activeTab}
-          onChange={(e) => setActiveTab(e.target.value)}
-          style={selectStyle}
-        >
-          {activeRawSheets.map((s) => (
-            <option key={s.name} value={s.name}>
-              {sheetLabel(s)}
-            </option>
-          ))}
-        </select>
+          onChange={setActiveTab}
+          options={activeRawSheets.map((s) => ({ value: s.name, label: sheetLabel(s) }))}
+          size="sm"
+          ariaLabel="Sheet"
+        />
       </div>
       {activeRawSheets.map((sheet) => {
         if (sheet.name !== activeTab) return null;

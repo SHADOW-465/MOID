@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import Select from "@/components/ui/Select";
 import AppShell from "@/components/app/AppShell";
 import PageLoader from "@/components/app/PageLoader";
 import { useEvents } from "@/components/app/EventsContext";
@@ -207,25 +208,16 @@ export default function SizeAnalysisPage() {
                   <div style={{ display: "flex", flexDirection: "column", gap: 20, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                       <span className="muted" style={{ fontSize: 13, fontWeight: 600 }}>Filter Size Trend:</span>
-                      <select
+                      <Select
                         value={selectedSize}
-                        onChange={(e) => setSelectedSize(e.target.value)}
-                        style={{
-                          padding: "6px 12px",
-                          borderRadius: "var(--radius-sm)",
-                          border: "1px solid var(--border-strong)",
-                          background: "var(--surface)",
-                          color: "var(--text)",
-                          fontSize: "13px",
-                          fontWeight: 600,
-                          outline: "none",
-                          cursor: "pointer"
-                        }}
-                      >
-                        {(m.sizes.length > 0 ? m.sizes.map(s => s.size) : ["Fr10", "Fr12", "Fr14", "Fr16", "Fr18", "Fr20", "Fr22", "Fr24"]).map((sz) => (
-                          <option key={sz} value={sz}>{sz} Catheter</option>
-                        ))}
-                      </select>
+                        onChange={setSelectedSize}
+                        options={(m.sizes.length > 0 ? m.sizes.map((s) => s.size) : ["Fr10", "Fr12", "Fr14", "Fr16", "Fr18", "Fr20", "Fr22", "Fr24"]).map((sz) => ({ value: sz, label: `${sz} Catheter` }))}
+                        block={false}
+                        mono
+                        size="sm"
+                        ariaLabel="Filter size trend"
+                        style={{ minWidth: 170 }}
+                      />
                     </div>
 
                     <Card title={`Size-wise Rejection Trend (${selectedSize}) (${grainLabel})`} onClick={() => openModal(`Size-wise Rejection Trend (${selectedSize}) (${grainLabel})`, trendModalInsight, <div style={{ minHeight: 240, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={m.sizeTrend} fmt={pct} /></div>, { rows: srcRows({ types: ["production", "inspection"], size: selectedSize }), value: m.sizeTrend.length ? pct(m.sizeTrend[m.sizeTrend.length - 1].value) : "—" })}>

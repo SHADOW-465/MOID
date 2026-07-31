@@ -235,9 +235,22 @@ input, textarea {
   font-family: inherit;
   color: inherit;
 }
-input:focus-visible, textarea:focus-visible, button:focus-visible {
+/* Focus ring covers everything reachable, not just inputs and buttons —
+   links, tabs, options and summary rows were all landing invisibly. Never
+   transitioned: the ring must appear the instant focus arrives. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+button:focus-visible,
+a:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible,
+[role="option"]:focus-visible,
+[role="tab"]:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
+  border-radius: var(--radius-sm);
+  transition: none;
 }
 
 /* =========================================================
@@ -502,8 +515,10 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
   color: var(--text);
   letter-spacing: -0.02em;
 }
+/* Weight + colour carry the emphasis. Italic display type is the reliable
+   "generated" tell, and Geist's oblique is a synthesised slant besides. */
 .masthead .nameplate em {
-  font-style: italic;
+  font-style: normal;
   font-weight: 500;
   color: var(--accent-text);
 }
@@ -609,32 +624,28 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
 }
 
 /* =========================================================
-   Skeleton Shimmer & Motion Reduction
-   ========================================================= */
-.nav-item, 
-.segment-btn, 
-.card, 
-tr, 
-td, 
-aside, 
-main, 
+   Surface transitions
+   =========================================================
+   Scoped to chrome and cards only. This used to include `tr` and `td`, which
+   put a 6-property 250ms transition on every cell in the app — the audit trail
+   renders hundreds — so hover feedback arrived a quarter-second late and theme
+   switches repainted the whole table. Rows get their own fast rule below.
+*/
+.nav-item,
+.segment-btn,
+.card,
+aside,
+main,
 header {
-  transition: background-color 0.25s cubic-bezier(0.2, 0.8, 0.2, 1),
-              border-color 0.25s cubic-bezier(0.2, 0.8, 0.2, 1),
-              color 0.25s cubic-bezier(0.2, 0.8, 0.2, 1),
-              box-shadow 0.25s cubic-bezier(0.2, 0.8, 0.2, 1),
-              opacity 0.25s cubic-bezier(0.2, 0.8, 0.2, 1),
-              transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: background-color var(--duration-medium) var(--ease-out),
+              border-color var(--duration-medium) var(--ease-out),
+              color var(--duration-medium) var(--ease-out),
+              box-shadow var(--duration-medium) var(--ease-out);
 }
 
-/* Smooth fade-in overlay for the verification modal and slide-up dialog */
-.modal-backdrop {
-  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
-}
-
-.modal-panel {
-  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
-              opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
+/* Row hover must feel instant — it is pointer feedback, not a state change. */
+tbody tr {
+  transition: background-color var(--duration-fast) var(--ease-out);
 }
 
 /* Premium micro-animations for dropdowns, panels, and staging logs */
@@ -657,14 +668,24 @@ header {
   animation: comment-box-in 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
+/* Transform + opacity only. This animated max-height, which forces layout on
+   every frame and silently caps the panel at 300px. */
 @keyframes slide-down {
-  from { opacity: 0; transform: translateY(-8px); max-height: 0; }
-  to   { opacity: 1; transform: translateY(0); max-height: 300px; }
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .expand-panel {
-  animation: slide-down 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  overflow: hidden;
+  animation: slide-down 0.25s var(--ease-out) both;
+}
+
+/* Select menu — scales up from its trigger edge. */
+@keyframes select-menu-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to   { opacity: 1; transform: none; }
+}
+.select-menu {
+  animation: select-menu-in 0.14s var(--ease-out) both;
 }
 
 /* Audit accordion panel — opacity + slight lift only (no layout thrash) */
@@ -685,12 +706,6 @@ header {
   transition: background-color 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .audit-reveal { animation: none; }
-  .audit-chevron { transition: none; }
-  .audit-row { transition: none; }
-}
-
 /* Tactile Microinteractions */
 button, .card-hover {
   transition: transform var(--duration-fast) var(--ease-out), box-shadow var(--duration-medium) var(--ease-out), background-color var(--duration-medium) var(--ease-out);
@@ -698,4 +713,44 @@ button, .card-hover {
 
 button:active:not(:disabled), .card-hover:active {
   transform: scale(0.985);
+}
+
+/* =========================================================
+   Reduced motion — the floor, not a courtesy
+   =========================================================
+   This block previously covered three audit classes while a dozen other
+   animations (modals, dropdowns, fade-up, blink, marching beams, the global
+   button press) ran regardless. Spatial motion collapses to a short crossfade;
+   anything decorative and looping stops outright.
+*/
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Keep the arrival readable — a crossfade, no travel. */
+  .modal-panel,
+  .dropdown-panel,
+  .select-menu,
+  .expand-panel,
+  .comment-box-panel,
+  .audit-reveal,
+  .fade-up {
+    animation: backdrop-in 0.14s linear both !important;
+  }
+
+  /* Looping decoration serves no one here. */
+  .blink,
+  .beam-flow { animation: none !important; }
+
+  /* No press-scale, no card lift, no rotating theme icon. */
+  button:active:not(:disabled),
+  .card-hover:active,
+  .card-hover:hover { transform: none !important; }
+  .theme-toggle-btn:hover .theme-toggle-icon { transform: none !important; }
 }

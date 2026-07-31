@@ -32,6 +32,7 @@ import {
 } from "@/lib/analytics/batch-progress";
 import LotProgress from "@/components/LotProgress";
 import { usePersona } from "@/components/app/PersonaContext";
+import Select from "@/components/ui/Select";
 import {
   integrityFixHref,
   parseIntegrityFocus,
@@ -442,6 +443,7 @@ export default function AuditPage() {
                 { value: "manual", label: "Data entry" },
                 { value: "excel", label: "Excel" },
               ]}
+              ariaLabel="Filter by source"
             />
             <Select
               value={stageFilter}
@@ -450,6 +452,7 @@ export default function AuditPage() {
                 { value: "all", label: "All stages" },
                 ...stageOptions.map((s) => ({ value: s, label: stageLabel(s) })),
               ]}
+              ariaLabel="Filter by stage"
             />
             {viewMode === "raw" && (
               <Select
@@ -461,6 +464,7 @@ export default function AuditPage() {
                   { value: "inspection", label: "Inspection" },
                   { value: "rejection", label: "Rejection" },
                 ]}
+                ariaLabel="Filter by event type"
               />
             )}
           </div>
@@ -1548,41 +1552,6 @@ function SearchField({
         }}
       />
     </div>
-  );
-}
-
-function Select({
-  value,
-  onChange,
-  options,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-}) {
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      style={{
-        width: "100%",
-        padding: "8px 10px",
-        borderRadius: 8,
-        border: "1px solid var(--border-strong)",
-        background: "var(--bg)",
-        color: "var(--text)",
-        fontSize: 13,
-        fontWeight: 500,
-        fontFamily: "inherit",
-        cursor: "pointer",
-      }}
-    >
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
   );
 }
 

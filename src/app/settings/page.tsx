@@ -39,6 +39,13 @@ export default function SettingsPage() {
   const { canConfigure } = usePersona();
   const activeRegistry = registry || EMPTY_REGISTRY;
   const [section, setSection] = useState<SectionId>("quality");
+
+  // Deep link: /settings#admin opens the danger zone directly. Plant Schema
+  // points here rather than carrying its own copy of the registry wipe.
+  useEffect(() => {
+    const id = window.location.hash.replace("#", "") as SectionId;
+    if (SECTIONS.some((s) => s.id === id)) setSection(id);
+  }, []);
   const [targetRej, setTargetRej] = useState("10.00");
   const [watchRej, setWatchRej] = useState("5.00");
   const [unitCost, setUnitCost] = useState("20.00");

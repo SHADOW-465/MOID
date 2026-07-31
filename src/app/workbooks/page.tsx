@@ -10,6 +10,7 @@ import Link from "next/link";
 import AppShell from "@/components/app/AppShell";
 import { Card, Empty, Kpi, BarsH, LineChart, pct } from "@/components/app/widgets";
 import PageLoader from "@/components/app/PageLoader";
+import ExcelTabs from "@/components/app/ExcelTabs";
 import FloatingDetailModal, { type SourceRow, type SourceMetricKind } from "@/components/FloatingDetailModal";
 import ChartBuilder, { bestGrain } from "@/components/ChartBuilder";
 import Icon from "@/components/editorial/Icon";
@@ -250,14 +251,13 @@ export default function WorkbooksPage() {
 
   return (
     <AppShell active="workbooks">
-      <h1 style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 800, margin: "0 0 2px" }}>
-        Imported Files
-      </h1>
-      <p className="muted" style={{ fontSize: 13, margin: "0 0 18px", maxWidth: 720, lineHeight: 1.55 }}>
+      <h1 className="h1" style={{ margin: "0 0 4px" }}>Excel Data</h1>
+      <p className="muted" style={{ fontSize: "var(--text-sm)", margin: "0 0 14px", maxWidth: "68ch", lineHeight: "var(--leading-body)" }}>
         Pick a file to see what it put on the ledger — the same numbers as the Dashboard, for that file
-        alone — then build whatever chart you want from it. Drag files to reorder. Add more on{" "}
-        <Link href="/staging" style={{ color: "var(--accent)", fontWeight: 600 }}>Import from Excel</Link>.
+        alone — then build whatever chart you want from it. Drag to reorder.
       </p>
+
+      <ExcelTabs active="workbooks" fileCount={workbooks?.length} />
 
       {error && (
         <div style={{ marginBottom: 14, padding: "10px 14px", borderRadius: 9, background: "color-mix(in srgb, var(--status-bad) 12%, transparent)", color: "var(--status-bad)", fontSize: 13 }}>
@@ -268,7 +268,7 @@ export default function WorkbooksPage() {
       {workbooks === null || eventsLoading ? (
         <PageLoader message="Loading workbooks…" minHeight="40vh" />
       ) : workbooks.length === 0 ? (
-        <Empty label="No files yet — import your first Excel on Import from Excel and it will appear here." />
+        <Empty label="No files yet. Open the Import tab above to load your first plant workbook." />
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "300px minmax(0, 1fr)", gap: 18 }}>
           <Card title="Files" sub={`${workbooks.length} upload${workbooks.length !== 1 ? "s" : ""}`}>

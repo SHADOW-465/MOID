@@ -4,6 +4,7 @@
 // Create blank or from decision-engine recommendations (CapaComposerModal).
 
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import Select from "@/components/ui/Select";
 import AppShell from "@/components/app/AppShell";
 import Icon from "@/components/editorial/Icon";
 import CapaComposerModal from "@/components/CapaComposerModal";
@@ -357,26 +358,28 @@ export default function CapaPage() {
                           />
                         </Field>
                         <Field label="Priority">
-                          <select
-                            style={inp}
+                          <Select
                             value={buffer.priority}
-                            onChange={(e) => setBuf("priority", e.target.value as CapaPriority)}
-                          >
-                            <option>High</option>
-                            <option>Medium</option>
-                            <option>Low</option>
-                          </select>
+                            onChange={(v) => setBuf("priority", v as CapaPriority)}
+                            options={[
+                              { value: "High", label: "High" },
+                              { value: "Medium", label: "Medium" },
+                              { value: "Low", label: "Low" },
+                            ]}
+                            ariaLabel="Priority"
+                          />
                         </Field>
                         <Field label="Status">
-                          <select
-                            style={inp}
+                          <Select
                             value={buffer.status}
-                            onChange={(e) => setBuf("status", e.target.value as CapaStatus)}
-                          >
-                            <option>Open</option>
-                            <option>In Progress</option>
-                            <option>Completed</option>
-                          </select>
+                            onChange={(v) => setBuf("status", v as CapaStatus)}
+                            options={[
+                              { value: "Open", label: "Open" },
+                              { value: "In Progress", label: "In Progress" },
+                              { value: "Completed", label: "Completed" },
+                            ]}
+                            ariaLabel="Status"
+                          />
                         </Field>
                         <Field label="Stage">
                           <input style={inp} value={buffer.stage} onChange={(e) => setBuf("stage", e.target.value)} />

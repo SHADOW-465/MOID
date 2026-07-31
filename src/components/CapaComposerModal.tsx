@@ -6,6 +6,7 @@
 // to the shared capa-store — no tab switch. Reused on the dashboard and /capa.
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import Select from "@/components/ui/Select";
 import Icon from "@/components/editorial/Icon";
 import { BRAND_NAME } from "@/lib/brand";
 import {
@@ -251,18 +252,28 @@ export default function CapaComposerModal({
                     <input style={inp} type="date" value={form.dueDate} onChange={(e) => set("dueDate", e.target.value)} />
                   </Field>
                   <Field label="Priority">
-                    <select style={inp} value={form.priority} onChange={(e) => set("priority", e.target.value as CapaPriority)}>
-                      <option>High</option>
-                      <option>Medium</option>
-                      <option>Low</option>
-                    </select>
+                    <Select
+                      value={form.priority}
+                      onChange={(v) => set("priority", v as CapaPriority)}
+                      options={[
+                        { value: "High", label: "High" },
+                        { value: "Medium", label: "Medium" },
+                        { value: "Low", label: "Low" },
+                      ]}
+                      ariaLabel="Priority"
+                    />
                   </Field>
                   <Field label="Status">
-                    <select style={inp} value={form.status} onChange={(e) => set("status", e.target.value as CapaStatus)}>
-                      <option>Open</option>
-                      <option>In Progress</option>
-                      <option>Completed</option>
-                    </select>
+                    <Select
+                      value={form.status}
+                      onChange={(v) => set("status", v as CapaStatus)}
+                      options={[
+                        { value: "Open", label: "Open" },
+                        { value: "In Progress", label: "In Progress" },
+                        { value: "Completed", label: "Completed" },
+                      ]}
+                      ariaLabel="Status"
+                    />
                   </Field>
                 </div>
                 <Field label="Stage">

@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Select from "@/components/ui/Select";
 import Link from "next/link";
 import AppShell from "@/components/app/AppShell";
 import { Card, Empty } from "@/components/app/widgets";
@@ -174,8 +175,6 @@ export default function SchemaPage() {
   const [selectedMod, setSelectedMod] = useState<string | null>(null);
   const [modDetail, setModDetail] = useState<ModDetail | null>(null);
   const [showMappings, setShowMappings] = useState(false);
-  const [resetSchemaOpen, setResetSchemaOpen] = useState(false);
-  const [resetSchemaText, setResetSchemaText] = useState("");
 
   const integrity = useMemo(() => {
     if (!events || events.length === 0) {
@@ -338,29 +337,6 @@ export default function SchemaPage() {
       await loadWorkbooks();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Series delete failed");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const resetMasterSchema = async () => {
-    if (resetSchemaText.trim().toUpperCase() !== "RESET") return;
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/clear-schema", { method: "POST" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error ?? "Failed to reset master schema");
-      setResetSchemaOpen(false);
-      setResetSchemaText("");
-      setStatus(
-        "Master schema brain cleared (stages, defects, sizes, mappings). Uploaded files and ledger events were not deleted.",
-      );
-      setMappings([]);
-      await load();
-      await refreshRegistry();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to reset master schema");
     } finally {
       setBusy(false);
     }
@@ -1127,22 +1103,15 @@ export default function SchemaPage() {
                     }}
                   >
                     <Field label="Kind">
-                      <select
+                      <Select
                         value={newMapping.kind}
-                        onChange={(e) =>
-                          setNewMapping((m) => ({
-                            ...m,
-                            kind: e.target.value as MappingKind,
-                          }))
-                        }
-                        style={inputStyle}
-                      >
-                        {(Object.keys(MAPPING_KIND_LABEL) as MappingKind[]).map((k) => (
-                          <option key={k} value={k}>
-                            {MAPPING_KIND_LABEL[k]}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(v) => setNewMapping((m) => ({ ...m, kind: v as MappingKind }))}
+                        options={(Object.keys(MAPPING_KIND_LABEL) as MappingKind[]).map((k) => ({
+                          value: k,
+                          label: MAPPING_KIND_LABEL[k],
+                        }))}
+                        ariaLabel="Mapping kind"
+                      />
                     </Field>
                     <Field label="Excel / raw label" mono>
                       <input
@@ -1606,21 +1575,19 @@ export default function SchemaPage() {
                             <tr key={rowId} style={{ borderTop: "1px solid var(--border)" }}>
                               <td style={{ ...td, fontSize: 12, color: "var(--text-2)" }}>
                                 {editing ? (
-                                  <select
+                                  <Select
                                     value={draft.kind}
-                                    onChange={(e) =>
-                                      setMappingDraft((x) =>
-                                        x ? { ...x, kind: e.target.value as MappingKind } : x,
-                                      )
+                                    onChange={(v) =>
+                                      setMappingDraft((x) => (x ? { ...x, kind: v as MappingKind } : x))
                                     }
-                                    style={{ ...inputStyle, minWidth: 120 }}
-                                  >
-                                    {(Object.keys(MAPPING_KIND_LABEL) as MappingKind[]).map((k) => (
-                                      <option key={k} value={k}>
-                                        {MAPPING_KIND_LABEL[k]}
-                                      </option>
-                                    ))}
-                                  </select>
+                                    options={(Object.keys(MAPPING_KIND_LABEL) as MappingKind[]).map((k) => ({
+                                      value: k,
+                                      label: MAPPING_KIND_LABEL[k],
+                                    }))}
+                                    size="sm"
+                                    ariaLabel="Mapping kind"
+                                    style={{ minWidth: 120 }}
+                                  />
                                 ) : (
                                   MAPPING_KIND_LABEL[m.kind]
                                 )}
@@ -1794,24 +1761,22 @@ export default function SchemaPage() {
                     >
                       Series
                     </span>
-                    <select
+                    <Select
                       value={activeCluster?.key ?? ""}
-                      onChange={(e) => {
-                        const key = e.target.value;
+                      onChange={(key) => {
                         setSelectedClusterKey(key);
                         const c = workbookClusters.find((x) => x.key === key);
-                        const first = c?.files[0];
-                        setSelectedSnapshot(first?.snapshotId ?? null);
+                        setSelectedSnapshot(c?.files[0]?.snapshotId ?? null);
                         setShowMappings(false);
                       }}
-                      style={selectStyle}
-                    >
-                      {workbookClusters.map((c) => (
-                        <option key={c.key} value={c.key}>
-                          {c.label} ({c.files.length})
-                        </option>
-                      ))}
-                    </select>
+                      options={workbookClusters.map((c) => ({
+                        value: c.key,
+                        label: c.label,
+                        hint: c.files.length + (c.files.length === 1 ? " file" : " files"),
+                      }))}
+                      placeholder="Choose a workbook series"
+                      ariaLabel="Workbook series"
+                    />
                   </label>
 
                   <label style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
@@ -1826,22 +1791,21 @@ export default function SchemaPage() {
                     >
                       File
                     </span>
-                    <select
+                    <Select
                       value={activeWorkbook?.snapshotId ?? ""}
-                      onChange={(e) => {
-                        setSelectedSnapshot(e.target.value);
+                      onChange={(v) => {
+                        setSelectedSnapshot(v);
                         setShowMappings(false);
                       }}
-                      style={selectStyle}
+                      options={(activeCluster?.files ?? []).map((f) => ({
+                        value: f.snapshotId,
+                        label: fileBasename(f.fileName),
+                        hint: f.mod ? f.mod.status : "no mapping",
+                      }))}
                       disabled={!activeCluster}
-                    >
-                      {(activeCluster?.files ?? []).map((f) => (
-                        <option key={f.snapshotId} value={f.snapshotId}>
-                          {fileBasename(f.fileName)}
-                          {f.mod ? ` · ${f.mod.status}` : " · no mapping"}
-                        </option>
-                      ))}
-                    </select>
+                      placeholder="Choose a file"
+                      ariaLabel="Workbook file"
+                    />
                   </label>
                 </div>
 
@@ -2028,66 +1992,29 @@ export default function SchemaPage() {
           />
         )}
 
-        {/* Danger zone — full brain wipe (not the primary action) */}
-        <details
+        {/*
+          Destructive resets live in ONE place: Settings -> Admin. Having the
+          same wipe on two screens meant two confirmation flows to keep in
+          sync, and an object page is the wrong home for "destroy this object".
+        */}
+        <p
+          className="small"
           style={{
-            marginTop: 8,
-            borderRadius: 12,
+            margin: "8px 0 0",
+            padding: "12px 14px",
+            borderRadius: "var(--radius-lg)",
             border: "1px solid var(--border)",
             background: "var(--surface)",
-            boxShadow: "var(--shadow-1)",
+            lineHeight: "var(--leading-body)",
           }}
-          open={resetSchemaOpen}
-          onToggle={(e) => setResetSchemaOpen((e.target as HTMLDetailsElement).open)}
         >
-          <summary
-            style={{
-              cursor: "pointer",
-              padding: "12px 14px",
-              fontSize: 12,
-              fontWeight: 600,
-              color: "var(--text-3)",
-              listStyle: "none",
-            }}
-          >
-            Advanced · reset entire master schema
-          </summary>
-          <div style={{ padding: "0 14px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
-            <p style={{ margin: 0, fontSize: 13, color: "var(--text-2)", lineHeight: 1.5 }}>
-              Wipes all stages, defects, sizes, and knowledge mappings for this company. Does{" "}
-              <strong style={{ color: "var(--text)" }}>not</strong> delete uploaded files or ledger
-              events. Prefer editing or deleting individual rows above.
-            </p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-              <input
-                value={resetSchemaText}
-                onChange={(e) => setResetSchemaText(e.target.value)}
-                placeholder='Type RESET to confirm'
-                style={{ ...inputStyle, maxWidth: 220 }}
-                aria-label="Type RESET to confirm full schema wipe"
-              />
-              <button
-                type="button"
-                disabled={busy || resetSchemaText.trim().toUpperCase() !== "RESET"}
-                onClick={() => void resetMasterSchema()}
-                style={{
-                  ...dangerLinkBtn,
-                  padding: "8px 14px",
-                  borderRadius: 8,
-                  border: "1px solid color-mix(in srgb, var(--status-bad) 50%, var(--border))",
-                  background: "color-mix(in srgb, var(--status-bad) 10%, var(--surface))",
-                  opacity: busy || resetSchemaText.trim().toUpperCase() !== "RESET" ? 0.5 : 1,
-                  cursor:
-                    busy || resetSchemaText.trim().toUpperCase() !== "RESET"
-                      ? "not-allowed"
-                      : "pointer",
-                }}
-              >
-                {busy ? "Resetting…" : "Wipe master schema"}
-              </button>
-            </div>
-          </div>
-        </details>
+          Need to start the registry over? Wiping every stage, defect, size and
+          mapping lives with the other destructive actions in{" "}
+          <a href="/settings#admin" style={{ color: "var(--accent)", fontWeight: 600 }}>
+            Settings &rarr; Admin
+          </a>
+          . Editing or deleting individual rows above is almost always the better move.
+        </p>
       </div>
     </AppShell>
   );

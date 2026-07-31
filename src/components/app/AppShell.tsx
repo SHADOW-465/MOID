@@ -65,8 +65,10 @@ const NAV_SECTIONS: NavSection[] = [
     title: "Your data",
     items: [
       { key: "data-entry", label: "Data Entry", icon: "file", href: "/data-entry" },
-      { key: "staging", label: "Import from Excel", icon: "upload", href: "/staging" },
-      { key: "workbooks", label: "Imported Files", icon: "folder", href: "/workbooks" },
+      // One destination, two tabs (Import · Files) — the two used to be
+      // separate sidebar entries that linked to each other in their own body
+      // copy, which is the tell that they were always one screen.
+      { key: "workbooks", label: "Excel Data", icon: "folder", href: "/workbooks" },
     ],
   },
   {

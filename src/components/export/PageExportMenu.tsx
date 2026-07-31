@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Select from "@/components/ui/Select";
 import {
   buildPageExport,
   downloadBlob,
@@ -74,10 +75,16 @@ export default function PageExportMenu({
           </div>
           <label style={lab}>
             Format
-            <select value={format} onChange={(e) => setFormat(e.target.value as ExportFormat)} style={sel}>
-              <option value="csv">CSV</option>
-              <option value="json">JSON</option>
-            </select>
+            <Select
+              value={format}
+              onChange={(v) => setFormat(v as ExportFormat)}
+              options={[
+                { value: "csv", label: "CSV", hint: "Opens in Excel" },
+                { value: "json", label: "JSON", hint: "For scripts and APIs" },
+              ]}
+              size="sm"
+              ariaLabel="Export format"
+            />
           </label>
           <div style={{ fontSize: 12, fontWeight: 600, margin: "8px 0 4px", color: "var(--text-2)" }}>Include</div>
           <label style={chk}><input type="checkbox" checked={kpi} onChange={(e) => setKpi(e.target.checked)} /> KPIs</label>

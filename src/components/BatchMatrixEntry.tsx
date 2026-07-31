@@ -7,6 +7,7 @@
 // window closes, pending local rows auto-upload and further edits need a GM grant.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Select from "@/components/ui/Select";
 import {
   MATRIX_STAGES,
   ENTRY_ROLES,
@@ -1426,11 +1427,12 @@ export default function BatchMatrixEntry({
             className="batch-matrix-identity"
           >
             <FieldCol label="Recorded by">
-              <select value={operator} onChange={(e) => setOperator(e.target.value)} style={inp}>
-                {ENTRY_ROLES.map((o) => (
-                  <option key={o} value={o}>{o}</option>
-                ))}
-              </select>
+              <Select
+                value={operator}
+                onChange={setOperator}
+                options={ENTRY_ROLES.map((o) => ({ value: o, label: o }))}
+                ariaLabel="Recorded by"
+              />
               <label style={subLabel}>
                 Recorded on
                 <input
@@ -1446,36 +1448,39 @@ export default function BatchMatrixEntry({
               </label>
               <label style={subLabel}>
                 Shift
-                <select value={shift} onChange={(e) => setShift(e.target.value)} style={{ ...inp, marginTop: 4 }}>
-                  <option>Day Shift</option>
-                  <option>Night Shift</option>
-                </select>
+                <Select
+                  value={shift}
+                  onChange={setShift}
+                  options={[
+                    { value: "Day Shift", label: "Day Shift" },
+                    { value: "Night Shift", label: "Night Shift" },
+                  ]}
+                  ariaLabel="Shift"
+                  style={{ marginTop: 4 }}
+                />
               </label>
             </FieldCol>
 
             <FieldCol label="Category">
-              <select
+              <Select
                 value={category}
                 disabled={!mayEdit}
-                onChange={(e) => applyCategory(e.target.value as CatheterCategory)}
-                style={{ ...inp, fontWeight: 600 }}
-              >
-                {CATHETER_CATEGORIES.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
+                onChange={(v) => applyCategory(v as CatheterCategory)}
+                options={CATHETER_CATEGORIES.map((c) => ({ value: c, label: c }))}
+                ariaLabel="Category"
+                style={{ fontWeight: 600 }}
+              />
               <label style={subLabel}>
                 Size
-                <select
+                <Select
                   value={size}
                   disabled={!mayEdit}
-                  onChange={(e) => { setBatchManual(false); setSize(e.target.value); }}
-                  style={{ ...inp, marginTop: 4, fontWeight: 600 }}
-                >
-                  {catheterSizeOptions.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
+                  onChange={(v) => { setBatchManual(false); setSize(v); }}
+                  options={catheterSizeOptions.map((s) => ({ value: s, label: s }))}
+                  mono
+                  ariaLabel="Size"
+                  style={{ marginTop: 4, fontWeight: 600 }}
+                />
               </label>
               <label
                 style={{
@@ -1484,15 +1489,17 @@ export default function BatchMatrixEntry({
                 }}
               >
                 Type
-                <select
+                <Select
                   value={catheterType}
                   disabled={!mayEdit || !typeIsSelectable(category)}
-                  onChange={(e) => applyCatheterType(e.target.value as CatheterType)}
-                  style={{ ...inp, marginTop: 4, fontWeight: 600 }}
-                >
-                  <option value="2 way">2 way</option>
-                  <option value="3 way">3 way</option>
-                </select>
+                  onChange={(v) => applyCatheterType(v as CatheterType)}
+                  options={[
+                    { value: "2 way", label: "2 way" },
+                    { value: "3 way", label: "3 way" },
+                  ]}
+                  ariaLabel="Type"
+                  style={{ marginTop: 4, fontWeight: 600 }}
+                />
               </label>
             </FieldCol>
 
@@ -2205,17 +2212,18 @@ export default function BatchMatrixEntry({
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <select
+            <Select
               value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-              style={{ ...inp, width: "auto", minWidth: 110, fontSize: 12, height: 32 }}
-              aria-label="Filter by type"
-            >
-              <option value="All Type">All Type</option>
-              {[...PRODUCT_TYPES, "Peadiatric"].map((t) => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
+              onChange={setTypeFilter}
+              options={[
+                { value: "All Type", label: "All Type" },
+                ...[...PRODUCT_TYPES, "Peadiatric"].map((t) => ({ value: t, label: t })),
+              ]}
+              block={false}
+              size="sm"
+              ariaLabel="Filter by type"
+              style={{ minWidth: 118 }}
+            />
             <button type="button" onClick={exportCSV} style={btnGhost}>Export Session CSV</button>
           </div>
         </div>

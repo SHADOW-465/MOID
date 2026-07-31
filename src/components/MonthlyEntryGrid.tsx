@@ -9,6 +9,7 @@
 // Edited on Data Schema, never inferred here and never hardcoded.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Select from "@/components/ui/Select";
 import type { StageDayRecord } from "@/lib/ingest/emit";
 import { buildReviewRows, applyEdit, defectMatches } from "@/lib/ingest/review";
 import { useEvents } from "@/components/app/EventsContext";
@@ -537,19 +538,18 @@ export default function MonthlyEntryGrid({
           Next ›
         </button>
         {isSizeWise && (
-          <select
+          <Select
             value={activeSize ?? ""}
-            onChange={(e) => {
-              if (confirmDiscardIfDirty("Switching size")) setActiveSize(e.target.value);
+            onChange={(v) => {
+              if (confirmDiscardIfDirty("Switching size")) setActiveSize(v);
             }}
-            style={{ ...inp, width: 100, marginLeft: 12 }}
-          >
-            {sizes.map((s) => (
-              <option key={s.sizeId} value={s.sizeId}>
-                {s.label}
-              </option>
-            ))}
-          </select>
+            options={sizes.map((s) => ({ value: s.sizeId, label: s.label }))}
+            block={false}
+            mono
+            size="sm"
+            ariaLabel="Size"
+            style={{ minWidth: 104, marginLeft: 12 }}
+          />
         )}
         {loading && (
           <span className="muted" style={{ fontSize: 12 }}>

@@ -72,6 +72,7 @@ import {
 import { decide } from "@/core/decision/engine";
 import { SEED_DECISION_RULES } from "@/core/decision/seed-rules";
 import type { RecommendationT } from "@/shared/models/decision";
+import Select from "@/components/ui/Select";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -856,25 +857,16 @@ export default function Dashboard() {
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }} onClick={(e) => e.stopPropagation()}>
                       <span className="muted" style={{ fontSize: 11, fontWeight: 600 }}>Size:</span>
-                      <select
+                      <Select
                         value={selectedSize}
-                        onChange={(e) => setSelectedSize(e.target.value)}
-                        style={{
-                          padding: "2px 6px",
-                          borderRadius: "var(--radius-sm)",
-                          border: "1px solid var(--border)",
-                          background: "var(--surface)",
-                          color: "var(--text)",
-                          fontSize: "11px",
-                          fontWeight: 600,
-                          outline: "none",
-                          cursor: "pointer"
-                        }}
-                      >
-                        {(m.sizes.length > 0 ? m.sizes.map(s => s.size) : ["Fr10", "Fr12", "Fr14", "Fr16", "Fr18", "Fr20", "Fr22", "Fr24"]).map((sz) => (
-                          <option key={sz} value={sz}>{sz}</option>
-                        ))}
-                      </select>
+                        onChange={setSelectedSize}
+                        options={(m.sizes.length > 0 ? m.sizes.map((s) => s.size) : ["Fr10", "Fr12", "Fr14", "Fr16", "Fr18", "Fr20", "Fr22", "Fr24"]).map((sz) => ({ value: sz, label: sz }))}
+                        block={false}
+                        mono
+                        size="sm"
+                        ariaLabel="Size for trend"
+                        style={{ minWidth: 92 }}
+                      />
                     </div>
                     <LineChart points={m.sizeTrend} fmt={pct} height={180} />
                   </Card>
