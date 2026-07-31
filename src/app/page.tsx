@@ -94,7 +94,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      const el = (e.target as HTMLElement).closest('.card'); // Kpis and Cards both use .card
+      const el = (e.target as HTMLElement).closest('.card, .card-hover, .kpi-card-overdrive');
       if (el) {
         lastClickRect.current = el.getBoundingClientRect();
       }
@@ -596,7 +596,6 @@ export default function Dashboard() {
               )}
             />
             <Kpi
-              primary
               label="Top Rejecting Stage"
               value={worstStageByRejs}
               sub={worstStageRow ? `${pct(worstStageRow.rejRate)} rejection rate` : "—"}
@@ -609,7 +608,6 @@ export default function Dashboard() {
               )}
             />
             <Kpi
-              primary
               label="Top Defect"
               value={m.defects[0]?.label ?? "—"}
               sub={m.defects[0] ? `${m.defects[0].pct.toFixed(1)}% of all rejections` : "—"}
@@ -994,7 +992,7 @@ export default function Dashboard() {
                 alignItems: "stretch"
               }}>
                 {/* Left Side: Diagnostic Summary */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 20, justifyContent: "space-between" }}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                     <div
                       className="h3"
@@ -1032,33 +1030,30 @@ export default function Dashboard() {
                     )}
                   </div>
 
-                  {/* Highlight Block: Worst Stage Bottleneck & Recovery */}
+                  {/* Integrated Callout: Worst Stage Bottleneck & Recovery */}
                   <div style={{ 
                     display: "grid", 
                     gridTemplateColumns: "1.2fr 1fr", 
-                    gap: 16,
-                    background: "var(--surface-2)", 
-                    border: "1.5px solid var(--border)", 
-                    borderRadius: "var(--radius-lg)", 
-                    padding: "16px 20px",
+                    gap: 20,
+                    paddingTop: 16,
+                    borderTop: "1px solid var(--border)",
                     marginTop: "auto"
                   }}>
-                    <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: 8 }}>
+                    <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: 6 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <span style={{ 
-                          width: 10, 
-                          height: 10, 
+                          width: 8, 
+                          height: 8, 
                           borderRadius: "50%", 
                           background: "var(--critical)",
-                          boxShadow: "0 0 8px var(--critical)",
-                          animation: "pulse-ring 1.5s infinite"
+                          boxShadow: "0 0 6px var(--critical)",
                         }} />
                         <span style={{ fontSize: "var(--text-md)", fontWeight: 600, fontFamily: "var(--font-display)", letterSpacing: "-0.01em" }}>
                           {worstStageByRejs} Bottleneck
                         </span>
                       </div>
-                      <p className="small" style={{ margin: 0, color: "var(--text-2)", lineHeight: 1.5 }}>
-                        Quality deviation is concentrated here at a rejection rate of <strong style={{ fontWeight: 600 }}>{worstStageRow ? pct(worstStageRow.rejRate) : "—"}</strong>.
+                      <p className="small" style={{ margin: 0, color: "var(--text-3)", lineHeight: 1.45 }}>
+                        Quality deviation is concentrated here at a rejection rate of <strong style={{ fontWeight: 600, color: "var(--text)" }}>{worstStageRow ? pct(worstStageRow.rejRate) : "—"}</strong>.
                       </p>
                     </div>
 
@@ -1069,7 +1064,7 @@ export default function Dashboard() {
                       <div className="kpi" style={{ fontSize: "var(--text-2xl)", color: "var(--critical)" }}>
                         {rupee(m.savings)}
                       </div>
-                      <div className="small" style={{ marginTop: 2 }}>
+                      <div className="small" style={{ marginTop: 2, color: "var(--text-3)" }}>
                         YTD scrap reduction potential.
                       </div>
                     </div>
@@ -1081,10 +1076,10 @@ export default function Dashboard() {
 
                 {/* Right Side: Action Plan (CAPA Items) */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-3)", display: "flex", alignItems: "center", gap: 8 }}>
                     <Icon name="check" size={14} /> Recommended Actions
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 12, flex: 1, justifyContent: "center" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, justifyContent: "center" }}>
                     {recommendationCards.slice(0, 3).map((rec, i) => {
                       const chipColor = rec.tone === "bad" ? "var(--critical)" : rec.tone === "warn" ? "var(--warning)" : "var(--positive)";
                       const chipText = rec.tone === "bad" ? "Critical" : rec.tone === "warn" ? "Warning" : "Info";
@@ -1094,24 +1089,24 @@ export default function Dashboard() {
                           style={{
                             display: "flex",
                             flexDirection: "column",
-                            gap: 6,
+                            gap: 8,
                             padding: "12px 14px",
                             background: "var(--surface-2)",
-                            border: "1.5px solid var(--border)",
+                            border: "1px solid var(--border)",
                             borderRadius: "var(--radius-md)",
                           }}
                         >
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                             <span
                               style={{
-                                fontSize: 9.5,
+                                fontSize: 10,
                                 fontWeight: 700,
                                 textTransform: "uppercase",
                                 letterSpacing: "0.04em",
                                 padding: "2px 8px",
-                                borderRadius: 5,
+                                borderRadius: 4,
                                 color: chipColor,
-                                background: `color-mix(in srgb, ${chipColor} 14%, transparent)`,
+                                background: `color-mix(in srgb, ${chipColor} 12%, transparent)`,
                               }}
                             >
                               {chipText}
@@ -1119,15 +1114,12 @@ export default function Dashboard() {
                             <button
                               type="button"
                               onClick={() => openCapa(i, rec.text, rec.evidence)}
-                              style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--accent)", background: "none", border: "none", cursor: "pointer", padding: 0, whiteSpace: "nowrap" }}
+                              style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--accent)", background: "none", border: "none", cursor: "pointer", padding: 0, whiteSpace: "nowrap" }}
                             >
                               Create CAPA →
                             </button>
                           </div>
                           <div style={{ fontSize: "var(--text-md)", lineHeight: 1.5, color: "var(--text)", fontWeight: 500 }}>{safeBolden(rec.text)}</div>
-                          {rec.evidence && (
-                            <div className="muted" style={{ fontSize: 11, fontFamily: "var(--font-mono)", marginTop: 2 }}>{rec.evidence}</div>
-                          )}
                         </div>
                       );
                     })}

@@ -26,6 +26,12 @@ import {
   type AuditStageBucket,
 } from "@/lib/analytics/audit-sessions";
 import {
+  buildBatchProgress,
+  progressFor,
+  type BatchProgress,
+} from "@/lib/analytics/batch-progress";
+import LotProgress from "@/components/LotProgress";
+import {
   integrityFixHref,
   parseIntegrityFocus,
   rowMatchesIntegrityFocus,
@@ -149,6 +155,10 @@ export default function AuditPage() {
   }, [datedEvents, commentsMap, sourceFilter, stageFilter, searchQuery]);
 
   const batchGroups = useMemo(() => groupByBatchThenStage(entryRows), [entryRows]);
+
+  /** Lot completion — over ALL events, never the filtered set, or a stage filter
+   *  would make every lot look unfinished. */
+  const batchProgress = useMemo(() => buildBatchProgress(events), [events]);
 
   const sessions = useMemo(() => {
     return filterSessions(groupAuditSessions(datedEvents, commentsMap), {
@@ -488,6 +498,7 @@ export default function AuditPage() {
                   activeStage={stageTab[g.batch] ?? g.stages[0]?.stageId ?? ""}
                   onToggle={() => selectBatch(g.batch)}
                   onStage={(sid) => setStageTab((t) => ({ ...t, [g.batch]: sid }))}
+                  progress={progressFor(batchProgress, g.batch)}
                   focus={focusIssue}
                 />
               ))}
@@ -531,6 +542,7 @@ function BatchAccordion({
   activeStage,
   onToggle,
   onStage,
+  progress,
   focus,
 }: {
   group: AuditBatchGroup;
@@ -538,6 +550,7 @@ function BatchAccordion({
   activeStage: string;
   onToggle: () => void;
   onStage: (stageId: string) => void;
+  progress?: BatchProgress | null;
   focus?: IntegrityFocus | null;
 }) {
   const stage: AuditStageBucket | undefined =
@@ -631,6 +644,11 @@ function BatchAccordion({
               </span>
             )}
           </div>
+          {progress && progress.doneCount > 0 && (
+            <div style={{ marginTop: 8, maxWidth: 360 }}>
+              <LotProgress progress={progress} showLabels={open} />
+            </div>
+          )}
         </div>
       </button>
 

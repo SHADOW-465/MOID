@@ -213,7 +213,7 @@ export function Card({ title, sub, children, span, onClick }: { title?: string; 
       className={onClick ? "card-hover" : ""}
       style={{
         gridColumn: span ? `span ${span}` : undefined,
-        border: "1.5px solid var(--border)",
+        border: "1px solid var(--border)",
         borderRadius: "var(--radius-lg)",
         background: "var(--surface)",
         padding: "var(--pad-card)",
@@ -222,9 +222,9 @@ export function Card({ title, sub, children, span, onClick }: { title?: string; 
         justifyContent: "space-between",
         cursor: onClick ? "pointer" : "default",
         minWidth: 0,
-        boxShadow: "var(--shadow-2)",
+        boxShadow: "var(--shadow-1)",
         position: "relative",
-        transition: "all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1)",
+        transition: "all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)",
       }}
     >
       {title && (
@@ -291,38 +291,47 @@ export function Kpi({
   return (
     <div
       onClick={onClick}
-      className={onClick ? "card-hover" : undefined}
+      className={onClick ? "card card-hover kpi-card-overdrive" : "card kpi-card-overdrive"}
       style={{
-        border: "1.5px solid var(--border)",
+        border: primary ? "1px solid var(--border-strong)" : "1px solid var(--border)",
         borderRadius: "var(--radius-lg)",
-        background: primary ? "color-mix(in srgb, var(--accent) 1.5%, var(--surface))" : "var(--surface)",
-        padding: "12px 14px",
+        background: "var(--surface)",
+        padding: "14px 16px",
         display: "flex",
         flexDirection: "column",
         justifyContent: "space-between",
         cursor: onClick ? "pointer" : "default",
         minWidth: 0,
-        minHeight: primary ? 108 : undefined,
-        boxShadow: primary ? "var(--shadow-2), 0 4px 20px -2px color-mix(in srgb, var(--accent) 8%, transparent)" : "var(--shadow-1)",
+        minHeight: primary ? 104 : undefined,
+        boxShadow: tone
+          ? `0 6px 20px -4px color-mix(in srgb, ${color} 14%, transparent), var(--shadow-1)`
+          : primary
+            ? "0 6px 20px -4px color-mix(in srgb, var(--accent) 12%, transparent), var(--shadow-1)"
+            : "var(--shadow-1)",
         position: "relative",
-        transition: "all 0.35s cubic-bezier(0.2, 0.8, 0.2, 1)",
+        overflow: "hidden",
+        transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
       }}
     >
       {tone && (
-        <div style={{
-          position: "absolute",
-          top: 0,
-          right: 0,
-          width: 32,
-          height: 32,
-          borderTopRightRadius: "calc(var(--radius-lg) - 1.5px)",
-          background: `radial-gradient(circle at top right, ${color} 15%, transparent 70%)`,
-          opacity: 0.12,
-          pointerEvents: "none"
-        }} />
+        <div
+          className="kpi-corner-glow"
+          style={{
+            position: "absolute",
+            top: 0,
+            right: 0,
+            width: 80,
+            height: 80,
+            borderTopRightRadius: "calc(var(--radius-lg) - 1px)",
+            background: `radial-gradient(circle at 100% 0%, ${color} 0%, color-mix(in srgb, ${color} 30%, transparent) 45%, transparent 75%)`,
+            opacity: 0.22,
+            pointerEvents: "none",
+            transition: "opacity 0.3s ease, transform 0.3s ease",
+          }}
+        />
       )}
-      
-      <div style={{ minWidth: 0 }}>
+
+      <div style={{ minWidth: 0, position: "relative", zIndex: 1 }}>
         <div className="kpi-label">
           {label}
         </div>
@@ -330,9 +339,7 @@ export function Kpi({
           className={wordValue ? undefined : "num"}
           title={value}
           style={{
-            fontFamily: wordValue ? "var(--font-display)" : "var(--font-mono)",
-            // Word KPIs (Valve Integrity, defect names) need readable multi-line type;
-            // pure numbers stay large mono for executive scan.
+            fontFamily: wordValue ? "var(--font-sans)" : "var(--font-mono)",
             fontSize: wordValue
               ? "var(--text-kpi-word)"
               : primary
@@ -340,8 +347,8 @@ export function Kpi({
                 : "var(--text-kpi-sm)",
             fontWeight: 600,
             color,
-            margin: "8px 0 4px",
-            letterSpacing: wordValue ? "-0.02em" : "var(--tracking-tight)",
+            margin: "6px 0 2px",
+            letterSpacing: wordValue ? "-0.015em" : "var(--tracking-tight)",
             lineHeight: wordValue ? 1.25 : "var(--leading-tight)",
             overflowWrap: "anywhere",
             wordBreak: wordValue ? "break-word" : "normal",
@@ -352,11 +359,11 @@ export function Kpi({
           {wordValue ? value : <AnimatedValue value={value} />}
         </div>
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: 8, gap: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: 8, gap: 12, position: "relative", zIndex: 1 }}>
         {sub && (
           <div
             style={{
-              fontSize: "var(--text-sm)",
+              fontSize: "var(--text-xs)",
               fontFamily: "var(--font-sans)",
               color:
                 tone === "bad"
@@ -372,7 +379,7 @@ export function Kpi({
           </div>
         )}
         {spark && spark.length > 1 && (
-          <div style={{ marginLeft: "auto", opacity: 0.85, flexShrink: 0 }}>
+          <div style={{ marginLeft: "auto", opacity: 0.9, flexShrink: 0 }}>
             <Spark points={spark} tone={tone} />
           </div>
         )}
@@ -385,17 +392,25 @@ function Spark({ points, tone }: { points: SeriesPoint[]; tone?: "good" | "warn"
   if (!points || points.length < 2) return null;
   const v = points.map((p) => p.value); 
   const max = Math.max(...v, 1e-6), min = Math.min(...v, 0);
-  const W = 90, H = 16;
+  const W = 80, H = 16;
   const d = points.map((p, i) => `${(i / (points.length - 1)) * W},${H - ((p.value - min) / (max - min || 1)) * H}`).join(" ");
   const color = tone === "bad" ? "var(--critical)" : tone === "good" ? "var(--positive)" : "var(--accent)";
   return (
-    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ overflow: "visible" }}>
+    <svg
+      width={W}
+      height={H}
+      viewBox={`0 0 ${W} ${H}`}
+      style={{
+        overflow: "visible",
+        filter: tone ? `drop-shadow(0 2px 5px color-mix(in srgb, ${color} 40%, transparent))` : undefined,
+      }}
+    >
       <polyline
         className="chart-line-stroke"
         points={d}
         fill="none"
         stroke={color}
-        strokeWidth={1.5}
+        strokeWidth={1.75}
         strokeLinejoin="round"
         strokeLinecap="round"
       />
@@ -1161,7 +1176,7 @@ export function Heatmap({ rows, cols, matrix, fmt }: { rows: string[]; cols: str
   );
 }
 
-// Bolds numbers / lot / line references inside narrative text.
+// Bolds numbers / lot / line references inside narrative text without cluttering background pills.
 export function safeBolden(text: string): React.ReactNode {
   const regex = /([0-9]+(?:\.[0-9]+)?%?(?:\s*pt)?|LOT-[A-Z0-9-]+|Line-\d+|Line\s\d+)/g;
   const parts = text.split(regex);
@@ -1174,13 +1189,8 @@ export function safeBolden(text: string): React.ReactNode {
               key={i}
               className="num"
               style={{
-                fontWeight: 700,
-                padding: "2px 4px",
-                background: "var(--surface-3)",
+                fontWeight: 600,
                 color: "var(--text)",
-                borderRadius: "3px",
-                border: "1px solid var(--border)",
-                fontSize: "12px",
               }}
             >
               {part}

@@ -80,6 +80,28 @@ function rawSheetMatches(raw: { name: string; fileName: string }, bareSheet: str
   return bare.trim().toLowerCase() === bareSheet.trim().toLowerCase();
 }
 
+// Universal fallback click tracker for card -> modal morph across any page in the app
+let globalLastClickRect: DOMRect | null = null;
+
+if (typeof window !== "undefined") {
+  window.addEventListener(
+    "click",
+    (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const el = target.closest(
+        ".card, .card-hover, .kpi-card-overdrive, [role='button'], button, .clickable, svg, canvas, table, tr",
+      );
+      if (el) {
+        globalLastClickRect = el.getBoundingClientRect();
+      } else {
+        globalLastClickRect = target.getBoundingClientRect();
+      }
+    },
+    true, // Capture phase executes before React onClick handlers
+  );
+}
+
 export default function FloatingDetailModal({
   isOpen,
   onClose,
@@ -113,34 +135,56 @@ export default function FloatingDetailModal({
   const [fetchedRawSheets] = useState<RawSheet[]>([]);
   const allRawSheets = useMemo(() => [...(rawSheets ?? []), ...fetchedRawSheets], [rawSheets, fetchedRawSheets]);
 
-  // FLIP open
+  const [activeOrigin, setActiveOrigin] = useState<DOMRect | null>(null);
+
   useEffect(() => {
-    if (isOpen && originRect && panelRef.current) {
+    if (isOpen) {
+      const rect = originRect || globalLastClickRect;
+      setActiveOrigin(rect);
+    }
+  }, [isOpen, originRect]);
+
+  const effectiveOrigin = originRect || activeOrigin || globalLastClickRect;
+
+  // Smooth FLIP open animation from origin card center to modal center
+  useEffect(() => {
+    if (isOpen && effectiveOrigin && panelRef.current) {
       const panel = panelRef.current;
       const targetRect = panel.getBoundingClientRect();
-      const scaleX = originRect.width / targetRect.width;
-      const scaleY = originRect.height / targetRect.height;
-      const transX = originRect.left - targetRect.left;
-      const transY = originRect.top - targetRect.top;
+
+      const originCenterX = effectiveOrigin.left + effectiveOrigin.width / 2;
+      const originCenterY = effectiveOrigin.top + effectiveOrigin.height / 2;
+      const targetCenterX = targetRect.left + targetRect.width / 2;
+      const targetCenterY = targetRect.top + targetRect.height / 2;
+
+      const transX = originCenterX - targetCenterX;
+      const transY = originCenterY - targetCenterY;
+      const scaleX = Math.max(0.08, effectiveOrigin.width / targetRect.width);
+      const scaleY = Math.max(0.08, effectiveOrigin.height / targetRect.height);
+
       panel.animate(
         [
           {
-            transform: `translate(${transX}px, ${transY}px) scale(${scaleX}, ${scaleY})`,
-            transformOrigin: "top left",
-            opacity: 0,
+            transform: `translate3d(${transX}px, ${transY}px, 0) scale(${scaleX}, ${scaleY})`,
+            transformOrigin: "center center",
+            opacity: 0.35,
             borderRadius: "var(--radius-lg)",
           },
           {
-            transform: `translate(0, 0) scale(1)`,
-            transformOrigin: "top left",
+            transform: "translate3d(0, 0, 0) scale(1)",
+            transformOrigin: "center center",
             opacity: 1,
             borderRadius: "var(--radius-lg)",
           },
         ],
-        { duration: 500, easing: "cubic-bezier(0.34, 1.56, 0.64, 1)", fill: "forwards" },
+        {
+          duration: 340,
+          easing: "cubic-bezier(0.16, 1, 0.3, 1)",
+          fill: "forwards",
+        },
       );
     }
-  }, [isOpen, originRect]);
+  }, [isOpen, effectiveOrigin]);
 
   const normalizedAll = useMemo(
     () => normalizeSourceRows(sourceRows ?? []),
@@ -221,10 +265,71 @@ export default function FloatingDetailModal({
     else setActiveTab("");
   }, [activeRawSheets]);
 
+  const [isClosing, setIsClosing] = useState(false);
+
+  const handleClose = useCallback(() => {
+    if (isClosing) return;
+    setIsClosing(true);
+
+    const finishClose = () => {
+      setIsClosing(false);
+      onClose();
+    };
+
+    if (effectiveOrigin && panelRef.current) {
+      const panel = panelRef.current;
+      const targetRect = panel.getBoundingClientRect();
+
+      const originCenterX = effectiveOrigin.left + effectiveOrigin.width / 2;
+      const originCenterY = effectiveOrigin.top + effectiveOrigin.height / 2;
+      const targetCenterX = targetRect.left + targetRect.width / 2;
+      const targetCenterY = targetRect.top + targetRect.height / 2;
+
+      const transX = originCenterX - targetCenterX;
+      const transY = originCenterY - targetCenterY;
+      const scaleX = Math.max(0.08, effectiveOrigin.width / targetRect.width);
+      const scaleY = Math.max(0.08, effectiveOrigin.height / targetRect.height);
+
+      const anim = panel.animate(
+        [
+          {
+            transform: "translate3d(0, 0, 0) scale(1)",
+            transformOrigin: "center center",
+            opacity: 1,
+            borderRadius: "var(--radius-lg)",
+          },
+          {
+            transform: `translate3d(${transX}px, ${transY}px, 0) scale(${scaleX}, ${scaleY})`,
+            transformOrigin: "center center",
+            opacity: 0,
+            borderRadius: "var(--radius-lg)",
+          },
+        ],
+        {
+          duration: 250,
+          easing: "cubic-bezier(0.25, 1, 0.5, 1)",
+          fill: "forwards",
+        },
+      );
+      anim.onfinish = finishClose;
+    } else if (panelRef.current) {
+      const anim = panelRef.current.animate(
+        [
+          { transform: "translate3d(0,0,0) scale(1)", opacity: 1 },
+          { transform: "translate3d(0, 16px, 0) scale(0.97)", opacity: 0 },
+        ],
+        { duration: 220, easing: "cubic-bezier(0.25, 1, 0.5, 1)", fill: "forwards" },
+      );
+      anim.onfinish = finishClose;
+    } else {
+      finishClose();
+    }
+  }, [isClosing, effectiveOrigin, onClose]);
+
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") handleClose();
     };
     window.addEventListener("keydown", onKey);
     const prevOverflow = document.body.style.overflow;
@@ -233,7 +338,7 @@ export default function FloatingDetailModal({
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = prevOverflow;
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, handleClose]);
 
   const hasSource = normalizedAll.length > 0;
   const excelCount = useMemo(() => normalizedAll.filter((r) => !r.isDirect).length, [normalizedAll]);
@@ -320,13 +425,14 @@ export default function FloatingDetailModal({
         display: "grid",
         placeItems: "center",
         padding: 24,
-        opacity: isOpen ? 1 : 0,
+        opacity: isOpen && !isClosing ? 1 : 0,
         visibility: isOpen ? "visible" : "hidden",
+        pointerEvents: isOpen && !isClosing ? "auto" : "none",
         transition:
-          "opacity 0.45s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.45s cubic-bezier(0.16, 1, 0.3, 1), backdrop-filter 0.45s cubic-bezier(0.16, 1, 0.3, 1)",
+          "opacity 0.25s cubic-bezier(0.25, 1, 0.5, 1), visibility 0.25s cubic-bezier(0.25, 1, 0.5, 1), backdrop-filter 0.25s cubic-bezier(0.25, 1, 0.5, 1)",
       }}
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) handleClose();
       }}
     >
       <div
@@ -422,7 +528,7 @@ export default function FloatingDetailModal({
             )}
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               aria-label="Close"
               style={{
                 background: "var(--surface)",

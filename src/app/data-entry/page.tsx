@@ -4,63 +4,21 @@
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import AppShell from "@/components/app/AppShell";
 import { useEvents } from "@/components/app/EventsContext";
-import MonthlyEntryGrid from "@/components/MonthlyEntryGrid";
 import BatchMatrixEntry from "@/components/BatchMatrixEntry";
-import { useTweaks } from "@/components/editorial/TweaksContext";
-import WeekPicker from "@/components/WeekPicker";
-import { type EntryGrain } from "@/lib/entry/period";
-import { fyContaining } from "@/lib/analytics/scope";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-type EntryMode = "matrix" | "period" | "ledger";
+type EntryMode = "matrix" | "ledger";
 
 const TAB_HINT: Record<EntryMode, string> = {
   matrix: "One inspection, one batch, now.",
-  period: "Catch up many days for one stage.",
   ledger: "Find, reuse, or permanently erase past rows.",
 };
 
 export default function DataEntryPage() {
-  const { refreshEvents, events } = useEvents();
+  const { refreshEvents } = useEvents();
   const [activeTab, setActiveTab] = useState<EntryMode>("matrix");
-  const [monthlyDirty, setMonthlyDirty] = useState(false);
   const [date, setDate] = useState(today());
-
-  const { t, setTweak } = useTweaks();
-
-  const [fyStartYear, setFyStartYear] = useState<number>(() => fyContaining(today()).startYear);
-  const [fyOpenMonth, setFyOpenMonth] = useState<string>(() => {
-    const fy = fyContaining(today());
-    return fy.from;
-  });
-
-  // Grain-change guard for period grid only
-  const prevGrainRef = useRef(t.grain);
-  useEffect(() => {
-    if (t.grain === prevGrainRef.current) return;
-    if (activeTab === "period" && monthlyDirty) {
-      const ok = confirm(
-        "You have unsaved changes in the period grid. Switching the grain will discard them. Continue?",
-      );
-      if (!ok) {
-        setTweak("grain", prevGrainRef.current);
-        return;
-      }
-    }
-    prevGrainRef.current = t.grain;
-  }, [t.grain, activeTab, monthlyDirty, setTweak]);
-
-  const fyOptions = useMemo(() => {
-    const years = new Set<number>([fyContaining(today()).startYear]);
-    for (const e of events ?? []) {
-      years.add(fyContaining(e.occurredOn.start).startYear);
-    }
-    return Array.from(years).sort((a, b) => b - a);
-  }, [events]);
-
-  const effectiveGrain: EntryGrain = t.grain === "fy" ? "month" : t.grain;
-  const effectiveAnchor = t.grain === "fy" ? fyOpenMonth : date;
 
   const [hdr, setHdr] = useState({
     shift: "Day Shift",
@@ -142,27 +100,6 @@ export default function DataEntryPage() {
     }
   };
 
-  const confirmLeavePeriodGrid = (): boolean => {
-    if (activeTab !== "period" || !monthlyDirty) return true;
-    return confirm(
-      "You have unsaved changes in the period grid. Continuing will discard them. Continue?",
-    );
-  };
-
-  const entryCustomFields = useMemo(
-    () => ({
-      operator: hdr.operator,
-      supervisor: hdr.supervisor,
-      machine: hdr.machine,
-      product: hdr.product,
-      size: hdr.size,
-      batch: hdr.batch,
-      shift: hdr.shift,
-      notes,
-    }),
-    [hdr, notes],
-  );
-
   const handleEditLedgerRecord = (rec: any) => {
     setHdr({
       shift: rec.shift,
@@ -174,10 +111,10 @@ export default function DataEntryPage() {
       batch: rec.batch,
     });
     setNotes(rec.notes || "");
-    setActiveTab("period");
+    setActiveTab("matrix");
     setDate(rec.date);
     setSuccess(
-      `Opened ${rec.date} in the period grid. Revise quantities and save to update the ledger.`,
+      `Loaded header for ${rec.date} · batch ${rec.batch || "—"}. Enter quantities under Log a batch.`,
     );
   };
 
@@ -192,9 +129,9 @@ export default function DataEntryPage() {
       batch: rec.batch,
     });
     setNotes(rec.notes || "");
-    setActiveTab("period");
+    setActiveTab("matrix");
     setDate(today());
-    setSuccess("Header copied onto today. Enter today's quantities and save.");
+    setSuccess("Header copied onto today. Enter quantities under Log a batch and save.");
   };
 
   const handleDeleteLedgerRecord = async (rec: any) => {
@@ -272,7 +209,6 @@ export default function DataEntryPage() {
   };
 
   const switchTab = (tab: EntryMode) => {
-    if (tab !== "period" && !confirmLeavePeriodGrid()) return;
     setActiveTab(tab);
     if (tab === "ledger") loadLedger();
   };
@@ -312,9 +248,6 @@ export default function DataEntryPage() {
       >
         <TabButton active={activeTab === "matrix"} onClick={() => switchTab("matrix")} first>
           Log a batch
-        </TabButton>
-        <TabButton active={activeTab === "period"} onClick={() => switchTab("period")}>
-          Fill a period
         </TabButton>
         <TabButton active={activeTab === "ledger"} onClick={() => switchTab("ledger")} last>
           What I&apos;ve entered
@@ -359,230 +292,7 @@ export default function DataEntryPage() {
 
       {activeTab === "matrix" && <BatchMatrixEntry onSynced={() => loadLedger()} />}
 
-      {activeTab === "period" && (
-        <div>
-          {/* Single meta surface — who/when + optional remarks, not three cards */}
-          <div
-            style={{
-              marginBottom: 16,
-              padding: 16,
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: 12,
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: 14,
-                alignItems: "flex-end",
-                marginBottom: 14,
-              }}
-            >
-              <label style={fieldLabel}>
-                {t.grain === "day" && "Report date"}
-                {t.grain === "week" && "Report week"}
-                {t.grain === "month" && "Report month"}
-                {t.grain === "fy" && "Report FY"}
 
-                {t.grain === "day" && (
-                  <input
-                    type="date"
-                    value={date}
-                    onChange={(e) => {
-                      if (!confirmLeavePeriodGrid()) return;
-                      setDate(e.target.value);
-                    }}
-                    style={{ ...inp, width: 160, marginTop: 4 }}
-                  />
-                )}
-
-                {t.grain === "week" && (
-                  <div style={{ marginTop: 4 }}>
-                    <WeekPicker
-                      value={date}
-                      onChange={(next) => {
-                        if (!confirmLeavePeriodGrid()) return;
-                        setDate(next);
-                      }}
-                    />
-                  </div>
-                )}
-
-                {t.grain === "month" && (
-                  <input
-                    type="month"
-                    value={date.slice(0, 7)}
-                    onChange={(e) => {
-                      if (!confirmLeavePeriodGrid()) return;
-                      setDate(`${e.target.value}-01`);
-                    }}
-                    style={{ ...inp, width: 160, marginTop: 4 }}
-                  />
-                )}
-
-                {t.grain === "fy" && (
-                  <select
-                    value={fyStartYear}
-                    onChange={(e) => {
-                      if (!confirmLeavePeriodGrid()) return;
-                      const y = Number(e.target.value);
-                      setFyStartYear(y);
-                      setFyOpenMonth(`${y}-04-01`);
-                    }}
-                    style={{ ...inp, width: 160, marginTop: 4 }}
-                  >
-                    {fyOptions.map((y) => (
-                      <option key={y} value={y}>
-                        FY{y}-{String((y + 1) % 100).padStart(2, "0")}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </label>
-
-              <label style={fieldLabel}>
-                Shift
-                <select
-                  value={hdr.shift}
-                  onChange={(e) => updateHdrField("shift", e.target.value)}
-                  style={{ ...inp, width: 140, marginTop: 4 }}
-                >
-                  <option>Day Shift</option>
-                  <option>Night Shift</option>
-                </select>
-              </label>
-
-              <label style={fieldLabel}>
-                Operator <span style={{ color: "var(--status-bad)" }}>*</span>
-                <input
-                  style={{ ...inp, width: 160, marginTop: 4 }}
-                  value={hdr.operator}
-                  onChange={(e) => updateHdrField("operator", e.target.value)}
-                  placeholder="Your name"
-                  aria-required
-                />
-              </label>
-
-              <label style={fieldLabel}>
-                Supervisor
-                <input
-                  style={{ ...inp, width: 140, marginTop: 4 }}
-                  value={hdr.supervisor}
-                  onChange={(e) => updateHdrField("supervisor", e.target.value)}
-                />
-              </label>
-
-              <label style={fieldLabel}>
-                Batch / lot
-                <input
-                  style={{ ...inp, width: 140, marginTop: 4, fontFamily: "var(--font-mono)" }}
-                  value={hdr.batch}
-                  onChange={(e) => updateHdrField("batch", e.target.value)}
-                  placeholder="e.g. 26F27-14"
-                />
-              </label>
-            </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-                gap: 12,
-                paddingTop: 12,
-                borderTop: "1px solid var(--border)",
-              }}
-            >
-              <label style={fieldLabel}>
-                Product
-                <input
-                  style={{ ...inp, marginTop: 4 }}
-                  value={hdr.product}
-                  onChange={(e) => updateHdrField("product", e.target.value)}
-                />
-              </label>
-              <label style={fieldLabel}>
-                Size (French)
-                <input
-                  style={{ ...inp, marginTop: 4 }}
-                  value={hdr.size}
-                  onChange={(e) => updateHdrField("size", e.target.value)}
-                />
-              </label>
-              <label style={fieldLabel}>
-                Machine
-                <input
-                  style={{ ...inp, marginTop: 4 }}
-                  value={hdr.machine}
-                  onChange={(e) => updateHdrField("machine", e.target.value)}
-                />
-              </label>
-              <label style={{ ...fieldLabel, gridColumn: "1 / -1" }}>
-                Remarks
-                <textarea
-                  style={{ ...inp, marginTop: 4, minHeight: 48, fontFamily: "inherit", resize: "vertical" }}
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Optional notes for this period…"
-                />
-              </label>
-            </div>
-          </div>
-
-          {t.grain === "fy" && (
-            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 16 }}>
-              {Array.from({ length: 12 }, (_, i) => {
-                const month = ((i + 3) % 12) + 1;
-                const year = month >= 4 ? fyStartYear : fyStartYear + 1;
-                const anchor = `${year}-${String(month).padStart(2, "0")}-01`;
-                const on = fyOpenMonth.slice(0, 7) === anchor.slice(0, 7);
-                const label = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][
-                  month - 1
-                ];
-                return (
-                  <button
-                    key={anchor}
-                    type="button"
-                    onClick={() => {
-                      if (confirmLeavePeriodGrid()) setFyOpenMonth(anchor);
-                    }}
-                    style={{
-                      padding: "6px 12px",
-                      borderRadius: 8,
-                      border: "1px solid var(--border-strong)",
-                      background: on ? "var(--accent)" : "var(--surface-2)",
-                      color: on ? "var(--text-invert)" : "var(--text-2)",
-                      fontWeight: 600,
-                      fontSize: 12,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          <MonthlyEntryGrid
-            key={`${effectiveGrain}-${effectiveAnchor}`}
-            grain={effectiveGrain}
-            anchorDate={effectiveAnchor}
-            onAnchorChange={(next) => {
-              if (t.grain === "fy") {
-                setFyOpenMonth(next);
-                setFyStartYear(fyContaining(next).startYear);
-              } else {
-                setDate(next);
-              }
-            }}
-            customFields={entryCustomFields}
-            blockedReason={hdr.operator.trim() ? null : "Enter the operator name before saving."}
-            onDirtyChange={setMonthlyDirty}
-          />
-        </div>
-      )}
 
       {activeTab === "ledger" && (
         <div

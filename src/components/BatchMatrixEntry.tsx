@@ -51,6 +51,9 @@ import { usePersona } from "@/components/app/PersonaContext";
 import QtyInput from "@/components/entry/QtyInput";
 import ExceptionModal from "@/components/entry/ExceptionModal";
 import { loadDraft, saveDraft } from "@/lib/entry/draft";
+import { buildBatchProgress, progressFor } from "@/lib/analytics/batch-progress";
+import type { AuditEventLike } from "@/lib/analytics/audit-sessions";
+import LotProgress from "@/components/LotProgress";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -393,6 +396,15 @@ export default function BatchMatrixEntry({
     () => (isAssembly ? previousAssemblyStageId(micro) : null),
     [isAssembly, micro],
   );
+
+  // Lot completion, read straight off the ledger — a lot spans several days, so
+  // the operator needs to see which gates this batch already cleared before
+  // deciding what to type. Nothing is stored; purge/correct and the bar moves.
+  const lotProgress = useMemo(
+    () => progressFor(buildBatchProgress((events ?? []) as AuditEventLike[]), batchId),
+    [events, batchId],
+  );
+  const stageAlreadyDone = lotProgress?.steps.find((s) => s.stageId === stageId && s.done) ?? null;
 
   // Assembly chain: one-shot assist prefill of Checked from the previous
   // station's Accepted qty for the same batch + size. Never re-runs after
@@ -1489,6 +1501,28 @@ export default function BatchMatrixEntry({
                   Incomplete — format YY + month letter + DD + size (e.g. 26F27-14)
                 </p>
               ) : null}
+              {isAssembly && lotProgress && lotProgress.doneCount > 0 && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    padding: "7px 9px",
+                    border: "1px solid var(--border)",
+                    borderRadius: 6,
+                    background: "var(--surface-2, var(--surface))",
+                  }}
+                >
+                  <LotProgress progress={lotProgress} activeStageId={stageId} />
+                  {stageAlreadyDone && (
+                    <p
+                      className="small"
+                      style={{ marginTop: 6, marginBottom: 0, fontSize: 11, color: "var(--status-warn, #d97706)" }}
+                    >
+                      {processLabel(macro, micro)} already recorded for this lot on{" "}
+                      {stageAlreadyDone.date} — saving again adds a second entry.
+                    </p>
+                  )}
+                </div>
+              )}
               <div
                 className="small"
                 style={{
