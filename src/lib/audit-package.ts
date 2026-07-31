@@ -36,7 +36,13 @@ function crc32(bytes: Uint8Array): number {
 }
 
 // ── Minimal stored ZIP writer ─────────────────────────────────────────────────
-interface ZipEntry { name: string; data: Uint8Array; }
+export interface ZipEntry { name: string; data: Uint8Array; }
+
+/** Uncompressed ZIP — used by audit pack and report-preset pack. */
+export function buildStoredZip(entries: ZipEntry[]): Uint8Array {
+  return makeZip(entries);
+}
+
 function makeZip(entries: ZipEntry[]): Uint8Array {
   const enc = new TextEncoder();
   const chunks: Uint8Array[] = [];

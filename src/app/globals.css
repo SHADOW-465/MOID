@@ -588,12 +588,19 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
 
 /* =========================================================
    Print Styles
-   ========================================================= */
+   =========================================================
+   Report PDF export uses a dedicated body portal (.rp-print-surface)
+   with body.rp-printing — those rules live in ReportPanel.tsx.
+   The rules below only apply to incidental "print this page" fallbacks
+   and must NOT force display:none on all buttons (that crushed report UI
+   when print ran without the portal path).
+*/
 @media print {
   html, body { background: #ffffff !important; color: #000000 !important; }
   .masthead { position: static; box-shadow: none; border-bottom: 1px solid #000000; }
-  .btn, button, .theme-toggle-btn { display: none !important; }
-  .card { break-inside: avoid; border: 1px solid #000000 !important; box-shadow: none !important; }
+  .no-print,
+  .theme-toggle-btn { display: none !important; }
+  .card { break-inside: avoid; box-shadow: none !important; }
 }
 
 /* =========================================================

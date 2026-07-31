@@ -38,20 +38,44 @@ export const FORENSIC_PRINT_CSS = `
   }
 }
 @media print {
-  aside, header, footer, nav, .no-print, button { display: none !important; }
-  body, html, main {
-    background: #FFFFFF !important; color: #14181f !important;
-    margin: 0 !important; padding: 0 !important; height: auto !important; overflow: visible !important;
+  /* App chrome is already stripped by body.rp-printing > *:not(.rp-print-surface).
+     Only hide leftover interactive bits inside the forensic book itself. */
+  .forensic-book .no-print { display: none !important; }
+  .forensic-book {
+    width: 100% !important;
+    max-width: none !important;
+    color: #14181f !important;
+    background: #fff !important;
   }
   .forensic-book .print-report-container {
-    width: 100% !important; max-width: 100% !important; padding: 0 !important; margin: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
   }
   .forensic-book .pdf-page-wrapper {
-    page-break-after: always; height: 262mm; box-sizing: border-box; overflow: hidden;
-    padding: 15mm 15mm 20mm 15mm !important; display: flex !important; flex-direction: column !important;
-    justify-content: space-between !important; border: none !important; background: #FFFFFF !important;
+    page-break-after: always;
+    break-after: page;
+    width: 100% !important;
+    max-width: none !important;
+    height: auto !important;
+    min-height: 0 !important;
+    aspect-ratio: auto !important;
+    box-sizing: border-box;
+    overflow: visible;
+    padding: 0 0 10mm 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: flex-start !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    color: #14181f !important;
   }
-  .forensic-book .pdf-page-wrapper:last-child { page-break-after: avoid; }
+  .forensic-book .pdf-page-wrapper:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
 }
 `;
 

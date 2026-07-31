@@ -1,14 +1,11 @@
 "use client";
 
-// src/components/report/ReportPanel.tsx
-//
-// "Build report" — the surface behind the Export button (analysis pages) and
-// the core of the Reports page editor.
-//
-// Phase 2: named presets (built-in + user-saved). Load a preset, edit sections,
-// Save as… for next time. The full forensic book is one built-in preset.
+// Build report panel — presets · sections · preview.
+// Print clones the document into a full-page body portal so PDF is never
+// constrained by the modal's 3-column grid (the previous crush/blank-page bug).
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import ReportDocument from "./ReportDocument";
 import {
   presetFor,
@@ -27,6 +24,7 @@ import {
   getNamedPreset,
   type NamedReportPreset,
 } from "@/lib/report/presets-store";
+import { buildPresetsZip } from "@/lib/report/presets-package";
 import type { NavKey } from "@/lib/nav-keys";
 import {
   describeSourceFilter,
@@ -38,14 +36,102 @@ import type { Event } from "@/lib/store/types";
 import type { Registry } from "@/lib/analytics/rejection";
 import { useTweaks } from "@/components/editorial/TweaksContext";
 
+/** Global print rules — only active while body has .rp-printing. */
+const PRINT_SURFACE_CSS = `
+/* Screen: print surface off-canvas so it never paints the live UI */
+.rp-print-surface {
+  position: fixed !important;
+  left: -10000px !important;
+  top: 0 !important;
+  width: 190mm !important;
+  max-width: 190mm !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+  z-index: -1 !important;
+  background: #fff !important;
+  color: #14181f !important;
+  /* Measure charts at paper content width */
+  --text: #14181f;
+  --text-2: #3a4450;
+  --text-3: #5a6570;
+  --border: #c8ced6;
+  --border-strong: #9aa3ad;
+  --surface: #ffffff;
+  --surface-2: #eef1f4;
+  --bg: #ffffff;
+  --accent: #C8421C;
+  --accent-weak: rgba(200, 66, 28, 0.14);
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
+  html, body {
+    background: #fff !important;
+    color: #14181f !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    width: 100% !important;
+  }
+
+  body.rp-printing > *:not(.rp-print-surface) {
+    display: none !important;
+  }
+
+  body.rp-printing .rp-print-surface {
+    display: block !important;
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    pointer-events: auto !important;
+    z-index: auto !important;
+    background: #fff !important;
+    color: #14181f !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  body.rp-printing .rp-print-surface,
+  body.rp-printing .rp-print-surface * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body.rp-printing .rp-print-surface svg {
+    max-width: 100% !important;
+  }
+
+  body.rp-printing .rp-print-surface .chart-line-stroke {
+    stroke: #C8421C !important;
+  }
+
+  body.rp-printing .no-print {
+    display: none !important;
+  }
+}
+`;
+
 export default function ReportPanel({
   page,
   events,
   scope,
   periodLabel,
   onClose,
-  onDownloadData,
-  /** When true, panel is embedded full-page (Reports editor) — no modal chrome. */
   embedded = false,
   registry,
   initialPresetId,
@@ -55,8 +141,6 @@ export default function ReportPanel({
   scope: Scope;
   periodLabel: string;
   onClose?: () => void;
-  /** The legacy audit ZIP — kept, but as a side door. */
-  onDownloadData?: () => void;
   embedded?: boolean;
   registry?: Registry | null;
   initialPresetId?: string;
@@ -73,13 +157,71 @@ export default function ReportPanel({
   });
   const [saveName, setSaveName] = useState("");
   const [showSave, setShowSave] = useState(false);
+  const [sourcesOpen, setSourcesOpen] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [zipping, setZipping] = useState(false);
+  /** When true, a full-page print portal is mounted on document.body. */
+  const [printing, setPrinting] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Keep print CSS in <head> so it still applies when the modal (and its
+  // inline <style> tags) are display:none'd during the print pass.
+  useEffect(() => {
+    const id = "rp-print-surface-css";
+    if (document.getElementById(id)) return;
+    const el = document.createElement("style");
+    el.id = id;
+    el.textContent = PRINT_SURFACE_CSS;
+    document.head.appendChild(el);
+    return () => {
+      el.remove();
+    };
+  }, []);
 
   const refreshPresets = () => setPresets(listNamedPresets());
 
   useEffect(() => {
     refreshPresets();
   }, []);
+
+  // After the portal paints, fire window.print(); clean up on afterprint.
+  useEffect(() => {
+    if (!printing) return;
+
+    document.body.classList.add("rp-printing");
+    let cancelled = false;
+    let fallbackTimer: number | undefined;
+    let raf1 = 0;
+    let raf2 = 0;
+
+    const cleanup = () => {
+      if (cancelled) return;
+      cancelled = true;
+      document.body.classList.remove("rp-printing");
+      setPrinting(false);
+      window.removeEventListener("afterprint", cleanup);
+      if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+
+    window.addEventListener("afterprint", cleanup);
+    // Some browsers never fire afterprint — don't leave the portal forever.
+    fallbackTimer = window.setTimeout(cleanup, 90_000);
+
+    // Double rAF: ensure portal + styles are in the layout before the print snapshot.
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        if (!cancelled) window.print();
+      });
+    });
+
+    return cleanup;
+  }, [printing]);
 
   const shelf = useMemo(() => availableBlocks(page), [page]);
   const forensic = spec ? isForensicSpec(spec) : false;
@@ -132,12 +274,50 @@ export default function ReportPanel({
     setMsg("Preset deleted");
   }
 
-  // Fixed panel height is what makes overflow:auto actually work on the columns.
-  // Without an explicit height, the grid grows with content and nothing scrolls.
+  /** Mount a body-level print surface at full page width, then print. */
+  function handlePrint() {
+    if (events.length === 0) {
+      setMsg("No data in this period — nothing to print.");
+      return;
+    }
+    setMsg(null);
+    setPrinting(true);
+  }
+
+  async function handleZipPresets() {
+    setZipping(true);
+    setMsg(null);
+    try {
+      const { blob, fileName } = await buildPresetsZip(events, scope, periodLabel);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      a.click();
+      URL.revokeObjectURL(url);
+      setMsg(`Downloaded ${fileName}`);
+    } catch (e: unknown) {
+      setMsg(e instanceof Error ? e.message : "ZIP failed");
+    } finally {
+      setZipping(false);
+    }
+  }
+
+  const doc = (
+    <ReportDocument
+      spec={spec}
+      events={events}
+      scope={scope}
+      periodLabel={periodLabel}
+      registry={registry}
+    />
+  );
+
   const panelHeight = embedded ? "min(86vh, 920px)" : "min(92vh, 920px)";
 
   const shell = (
     <div
+      className="rp-panel-shell"
       style={{
         background: "var(--bg)",
         border: "1px solid var(--border-strong)",
@@ -147,13 +327,13 @@ export default function ReportPanel({
         height: panelHeight,
         maxHeight: panelHeight,
         display: "grid",
-        gridTemplateColumns: "minmax(220px, 280px) minmax(240px, 300px) minmax(0, 1fr)",
+        gridTemplateColumns: "minmax(200px, 260px) minmax(260px, 300px) minmax(0, 1fr)",
         gridTemplateRows: "minmax(0, 1fr)",
         overflow: "hidden",
       }}
     >
       {/* ── Named presets ─────────────────────────────────────────────── */}
-      <div style={{ ...col, borderRight: "1px solid var(--border)", background: "var(--surface-2)" }}>
+      <div className="no-print" style={{ ...col, borderRight: "1px solid var(--border)", background: "var(--surface-2)" }}>
         <div style={colHeader}>
           <div style={{ fontWeight: 800, fontSize: 13 }}>Named presets</div>
           <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
@@ -198,18 +378,15 @@ export default function ReportPanel({
       </div>
 
       {/* ── Sections editor ───────────────────────────────────────────── */}
-      <div style={{ ...col, borderRight: "1px solid var(--border)" }}>
+      <div className="no-print" style={{ ...col, borderRight: "1px solid var(--border)" }}>
         <div style={colHeader}>
           <div style={{ fontWeight: 800, fontSize: 15 }}>{embedded ? "Report editor" : "Build report"}</div>
           <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
             {periodLabel}
           </div>
-          <div className="muted" style={{ fontSize: 11, marginTop: 4, lineHeight: 1.35 }}>
-            Preview uses: {sourcesSummary}
-          </div>
         </div>
 
-        <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+        <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
           <label className="muted" style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 700 }}>
             Report title
           </label>
@@ -230,170 +407,140 @@ export default function ReportPanel({
           />
         </div>
 
-        {/* Sources — same filter as the header Sources control; drives the live preview */}
-        <div
-          style={{
-            padding: "10px 16px",
-            borderBottom: "1px solid var(--border)",
-            flexShrink: 0,
-            background: "var(--surface-2)",
-          }}
-        >
-          <div className="muted" style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 700, marginBottom: 6 }}>
-            Sources in this report
-          </div>
-          <div className="muted" style={{ fontSize: 11, marginBottom: 8, lineHeight: 1.35 }}>
-            {sourcesSummary}
-          </div>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginBottom: 6, cursor: "pointer" }}>
-            <input
-              type="checkbox"
-              checked={t.includeExcel}
-              onChange={(e) => {
-                setTweak("includeExcel", e.target.checked);
-                if (!e.target.checked) setTweak("excelFiles", []);
-              }}
-            />
-            Excel uploads
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginBottom: 8, cursor: "pointer" }}>
-            <input
-              type="checkbox"
-              checked={t.includeDirectEntry}
-              onChange={(e) => setTweak("includeDirectEntry", e.target.checked)}
-            />
-            Data entry
-          </label>
-          {batchIds.length > 0 && (
-            <div style={{ maxHeight: 120, overflowY: "auto", marginTop: 4, marginBottom: 6, paddingRight: 4 }}>
-              <div className="muted" style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
-                Batches {t.batchIds.length === 0 ? "(none — full plant)" : `(${t.batchIds.length} selected)`}
+        {/* Collapsible sources — does not steal the sections column */}
+        <div style={{ borderBottom: "1px solid var(--border)", flexShrink: 0, background: "var(--surface-2)" }}>
+          <button
+            type="button"
+            onClick={() => setSourcesOpen((o) => !o)}
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+              padding: "10px 16px",
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              fontFamily: "inherit",
+              textAlign: "left",
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-3)" }}>
+                Sources {sourcesOpen ? "▾" : "▸"}
               </div>
-              <div style={{ display: "flex", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  onClick={() => setTweak("batchIds", [...batchIds])}
-                  style={{
-                    fontSize: 10.5,
-                    fontWeight: 700,
-                    border: "1px solid var(--border-strong)",
-                    borderRadius: 6,
-                    padding: "2px 8px",
-                    background:
-                      t.batchIds.length === batchIds.length ? "var(--accent)" : "var(--surface)",
-                    color:
-                      t.batchIds.length === batchIds.length
-                        ? "var(--text-invert, #fff)"
-                        : "var(--text)",
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                  }}
-                >
-                  Select all
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTweak("batchIds", [])}
-                  style={{
-                    fontSize: 10.5,
-                    fontWeight: 600,
-                    border: "1px solid var(--border)",
-                    borderRadius: 6,
-                    padding: "2px 8px",
-                    background: "var(--surface)",
-                    cursor: t.batchIds.length === 0 ? "default" : "pointer",
-                    fontFamily: "inherit",
-                    opacity: t.batchIds.length === 0 ? 0.5 : 1,
-                  }}
-                >
-                  Clear
-                </button>
+              <div className="muted" style={{ fontSize: 11, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {sourcesSummary}
               </div>
-              {batchIds.map((b) => {
-                const selected = t.batchIds.includes(b);
-                return (
-                  <button
-                    key={b}
-                    type="button"
-                    onClick={() => {
-                      if (selected) {
-                        setTweak("batchIds", t.batchIds.filter((x) => x !== b));
-                      } else {
-                        setTweak("batchIds", [...t.batchIds, b]);
-                      }
-                    }}
-                    style={{
-                      display: "block",
-                      width: "100%",
-                      textAlign: "left",
-                      fontSize: 11,
-                      marginBottom: 4,
-                      padding: "5px 8px",
-                      borderRadius: 6,
-                      border: selected ? "1px solid var(--accent)" : "1px solid var(--border)",
-                      background: selected ? "var(--accent)" : "var(--surface)",
-                      color: selected ? "var(--text-invert, #fff)" : "var(--text)",
-                      cursor: "pointer",
-                      fontFamily: "var(--font-mono)",
-                      fontWeight: 700,
-                    }}
-                  >
-                    {b}
-                  </button>
-                );
-              })}
             </div>
-          )}
-          {t.includeExcel && excelFiles.length > 0 && (
-            <div style={{ maxHeight: 120, overflowY: "auto", marginTop: 4, paddingRight: 4 }}>
-              <button
-                type="button"
-                onClick={() => setTweak("excelFiles", [])}
-                style={{
-                  fontSize: 10.5,
-                  fontWeight: 600,
-                  marginBottom: 6,
-                  border: "1px solid var(--border)",
-                  borderRadius: 6,
-                  padding: "2px 8px",
-                  background: t.excelFiles.length === 0 ? "var(--accent-weak)" : "var(--surface)",
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                }}
-              >
-                All Excel files
-              </button>
-              {excelFiles.map((f) => {
-                const checked = t.excelFiles.length === 0 || t.excelFiles.includes(f);
-                return (
-                  <label
-                    key={f}
-                    style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 11, marginBottom: 4, cursor: "pointer", lineHeight: 1.3 }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      style={{ marginTop: 2 }}
-                      onChange={() => {
-                        if (t.excelFiles.length === 0) {
-                          setTweak("excelFiles", excelFiles.filter((x) => x !== f));
-                        } else if (t.excelFiles.includes(f)) {
-                          setTweak("excelFiles", t.excelFiles.filter((x) => x !== f));
-                        } else {
-                          const next = [...t.excelFiles, f];
-                          setTweak("excelFiles", next.length === excelFiles.length ? [] : next);
+          </button>
+          {sourcesOpen && (
+            <div style={{ padding: "0 16px 12px", maxHeight: 160, overflowY: "auto" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginBottom: 6, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={t.includeExcel}
+                  onChange={(e) => {
+                    setTweak("includeExcel", e.target.checked);
+                    if (!e.target.checked) setTweak("excelFiles", []);
+                  }}
+                />
+                Excel uploads
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginBottom: 8, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={t.includeDirectEntry}
+                  onChange={(e) => setTweak("includeDirectEntry", e.target.checked)}
+                />
+                Data entry
+              </label>
+              {batchIds.length > 0 && (
+                <div style={{ marginBottom: 8 }}>
+                  <div className="muted" style={{ fontSize: 10, fontWeight: 700, marginBottom: 4 }}>
+                    Batches {t.batchIds.length === 0 ? "(full plant)" : `(${t.batchIds.length})`}
+                  </div>
+                  <div style={{ display: "flex", gap: 4, marginBottom: 4, flexWrap: "wrap" }}>
+                    <button type="button" onClick={() => setTweak("batchIds", [...batchIds])} style={miniBtn}>
+                      All batches
+                    </button>
+                    <button type="button" onClick={() => setTweak("batchIds", [])} style={miniBtn}>
+                      Clear
+                    </button>
+                  </div>
+                  {batchIds.map((b) => {
+                    const selected = t.batchIds.includes(b);
+                    return (
+                      <button
+                        key={b}
+                        type="button"
+                        onClick={() =>
+                          setTweak(
+                            "batchIds",
+                            selected ? t.batchIds.filter((x) => x !== b) : [...t.batchIds, b],
+                          )
                         }
-                      }}
-                    />
-                    <span style={{ wordBreak: "break-word" }}>{f}</span>
-                  </label>
-                );
-              })}
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          textAlign: "left",
+                          fontSize: 11,
+                          marginBottom: 3,
+                          padding: "4px 8px",
+                          borderRadius: 6,
+                          border: selected ? "1px solid var(--accent)" : "1px solid var(--border)",
+                          background: selected ? "var(--accent)" : "var(--surface)",
+                          color: selected ? "var(--text-invert, #fff)" : "var(--text)",
+                          cursor: "pointer",
+                          fontFamily: "var(--font-mono)",
+                          fontWeight: 700,
+                        }}
+                      >
+                        {b}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {t.includeExcel && excelFiles.length > 0 && (
+                <div>
+                  <button type="button" onClick={() => setTweak("excelFiles", [])} style={{ ...miniBtn, marginBottom: 6 }}>
+                    All Excel files
+                  </button>
+                  {excelFiles.map((f) => {
+                    const checked = t.excelFiles.length === 0 || t.excelFiles.includes(f);
+                    return (
+                      <label
+                        key={f}
+                        style={{ display: "flex", gap: 6, fontSize: 11, marginBottom: 3, cursor: "pointer" }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {
+                            if (t.excelFiles.length === 0) {
+                              setTweak("excelFiles", excelFiles.filter((x) => x !== f));
+                            } else if (t.excelFiles.includes(f)) {
+                              setTweak("excelFiles", t.excelFiles.filter((x) => x !== f));
+                            } else {
+                              const next = [...t.excelFiles, f];
+                              setTweak("excelFiles", next.length === excelFiles.length ? [] : next);
+                            }
+                          }}
+                        />
+                        <span style={{ wordBreak: "break-word" }}>{f}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>
 
-        <div style={{ ...colScroll, padding: "12px 16px" }}>
+        {/* Sections — primary scroll area of this column */}
+        <div style={{ ...colScroll, padding: "12px 16px", flex: 1 }}>
           {forensic ? (
             <div
               style={{
@@ -408,8 +555,7 @@ export default function ReportPanel({
             >
               <strong style={{ color: "var(--text)" }}>Full forensic package</strong>
               <p style={{ margin: "8px 0 0" }}>
-                This preset is the complete audit book (stage run charts, matrices, CAPA, sign-off).
-                It is not edited section-by-section — load another preset (e.g. GM monthly) to customize blocks.
+                Complete audit book. Use Print / Save as PDF for the multi-page layout.
               </p>
             </div>
           ) : (
@@ -513,14 +659,12 @@ export default function ReportPanel({
               Delete this preset
             </button>
           )}
-          <button type="button" onClick={() => window.print()} style={primaryBtn}>
-            Print / Save as PDF
+          <button type="button" onClick={handlePrint} style={primaryBtn} disabled={printing}>
+            {printing ? "Preparing print…" : "Print / Save as PDF"}
           </button>
-          {onDownloadData && (
-            <button type="button" onClick={onDownloadData} style={ghostBtn}>
-              Download raw data (CSV/ZIP)
-            </button>
-          )}
+          <button type="button" onClick={() => void handleZipPresets()} disabled={zipping} style={ghostBtn}>
+            {zipping ? "Building ZIP…" : "Download all presets (ZIP)"}
+          </button>
           {onClose && !embedded && (
             <button type="button" onClick={onClose} style={{ ...ghostBtn, border: "none" }}>
               Cancel
@@ -529,63 +673,89 @@ export default function ReportPanel({
         </div>
       </div>
 
-      {/* ── Preview (own scrollbar) ───────────────────────────────────── */}
-      <div style={{ ...col, background: "var(--surface-2)" }}>
-        <div style={{ ...colHeader, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-          <div>
-            <div style={{ fontWeight: 800, fontSize: 13 }}>Preview</div>
-            <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
-              Scroll to review the full report
-            </div>
+      {/* ── On-screen preview only (not used for print) ───────────────── */}
+      <div className="no-print" style={{ ...col, background: "var(--surface-2)" }}>
+        <div style={{ ...colHeader }}>
+          <div style={{ fontWeight: 800, fontSize: 13 }}>Preview</div>
+          <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
+            Scroll here · Print exports a full-width page layout
+          </div>
+          <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+            {sourcesSummary}
           </div>
         </div>
-        <div style={{ ...colScroll, padding: 20 }}>
+        <div style={{ ...colScroll, padding: 20 }} className="rp-preview-scroll">
           {events.length === 0 ? (
             <div className="muted" style={{ padding: 40, textAlign: "center", fontSize: 13 }}>
               No data in this period yet — the report has nothing to show.
             </div>
           ) : (
-            <ReportDocument
-              spec={spec}
-              events={events}
-              scope={scope}
-              periodLabel={periodLabel}
-              registry={registry}
-            />
+            <div className="rp-preview-root" style={{ maxWidth: 720, margin: "0 auto" }}>
+              {doc}
+            </div>
           )}
         </div>
       </div>
     </div>
   );
 
-  if (embedded) return shell;
+  // Full-page print portal — sibling of the app root, never inside the modal grid.
+  const printPortal =
+    mounted &&
+    printing &&
+    createPortal(
+      <div className="rp-print-surface" aria-hidden="true">
+        {doc}
+      </div>,
+      document.body,
+    );
+
+  if (embedded) {
+    return (
+      <>
+        {shell}
+        {printPortal}
+      </>
+    );
+  }
 
   return (
-    <div
-      className="no-print"
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 400,
-        background: "color-mix(in srgb, #000 45%, transparent)",
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        padding: "2vh 2vw",
-        overflow: "hidden",
-        boxSizing: "border-box",
-      }}
-    >
-      {/* stopPropagation wrapper must not expand with content — shell owns the height */}
-      <div onClick={(e) => e.stopPropagation()} style={{ maxHeight: "96vh", minHeight: 0 }}>
-        {shell}
+    <>
+      <div
+        className="rp-modal-root no-print"
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 400,
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          padding: "2vh 2vw",
+          overflow: "hidden",
+          boxSizing: "border-box",
+        }}
+      >
+        <div
+          className="no-print"
+          onClick={onClose}
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "color-mix(in srgb, #000 45%, transparent)",
+          }}
+        />
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{ maxHeight: "96vh", minHeight: 0, position: "relative", zIndex: 1 }}
+        >
+          {shell}
+        </div>
       </div>
-    </div>
+      {printPortal}
+    </>
   );
 }
 
-/** Column shell: fills grid cell, never grows past panel height. */
 const col: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
@@ -601,7 +771,6 @@ const colHeader: React.CSSProperties = {
   flexShrink: 0,
 };
 
-/** Dedicated scrollbar region inside a column. */
 const colScroll: React.CSSProperties = {
   flex: 1,
   minHeight: 0,
@@ -648,4 +817,16 @@ const primaryBtn: React.CSSProperties = {
   fontSize: 13.5,
   cursor: "pointer",
   fontFamily: "inherit",
+};
+
+const miniBtn: React.CSSProperties = {
+  fontSize: 10.5,
+  fontWeight: 600,
+  border: "1px solid var(--border)",
+  borderRadius: 6,
+  padding: "2px 8px",
+  background: "var(--surface)",
+  cursor: "pointer",
+  fontFamily: "inherit",
+  color: "var(--text)",
 };

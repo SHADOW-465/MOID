@@ -5,6 +5,7 @@ import {
   toCanonicalSize,
   toDisplaySize,
   frDigitsFromSize,
+  formatBatchIdInput,
 } from "@/lib/entry/batch-id";
 
 describe("batch-id bi-directional binding", () => {
@@ -44,5 +45,12 @@ describe("batch-id bi-directional binding", () => {
     expect(frDigitsFromSize("14Fr")).toBe("14");
     expect(toCanonicalSize("14Fr")).toBe("Fr14");
     expect(toDisplaySize("Fr14")).toBe("14Fr");
+  });
+
+  test("formatBatchIdInput inserts hyphen after date part", () => {
+    expect(formatBatchIdInput("26F2714")).toBe("26F27-14");
+    expect(formatBatchIdInput("26f27-14")).toBe("26F27-14");
+    expect(formatBatchIdInput("26F27")).toBe("26F27");
+    expect(formatBatchIdInput("26F2")).toBe("26F2");
   });
 });

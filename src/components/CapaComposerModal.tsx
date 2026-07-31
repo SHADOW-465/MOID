@@ -61,6 +61,8 @@ export default function CapaComposerModal({
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const initialSnapshot = useRef<string>("");
 
   // Reset when a new draft is opened.
   useEffect(() => {
@@ -68,6 +70,7 @@ export default function CapaComposerModal({
       setForm(draft);
       setCreated(false);
       setInput("");
+      initialSnapshot.current = draft ? JSON.stringify(draft) : "";
       setMessages(
         recommendationText
           ? [
@@ -83,13 +86,31 @@ export default function CapaComposerModal({
               },
             ],
       );
+      // Focus first field after open (a11y).
+      requestAnimationFrame(() => {
+        const root = panelRef.current;
+        const el = root?.querySelector<HTMLElement>("input, textarea, button");
+        el?.focus();
+      });
     }
   }, [isOpen, draft, recommendationText]);
+
+  const isDirty = Boolean(
+    form && !created && initialSnapshot.current && JSON.stringify(form) !== initialSnapshot.current,
+  );
+
+  const requestClose = useCallback(() => {
+    if (isDirty) {
+      const ok = window.confirm("Discard unsaved CAPA draft?");
+      if (!ok) return;
+    }
+    onClose();
+  }, [isDirty, onClose]);
 
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") requestClose();
     };
     window.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
@@ -98,7 +119,7 @@ export default function CapaComposerModal({
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, requestClose]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -152,22 +173,25 @@ export default function CapaComposerModal({
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="capa-composer-title"
       style={backdrop}
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) requestClose();
       }}
     >
-      <div style={panel}>
+      <div ref={panelRef} style={panel}>
         {/* Title bar */}
         <div style={titleBar}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
             <span style={brandChip}>{BRAND_NAME}</span>
-            <span style={{ fontFamily: "var(--font-display)", fontSize: 18, fontWeight: 800 }}>
+            <span id="capa-composer-title" style={{ fontFamily: "var(--font-display)", fontSize: 18, fontWeight: 700 }}>
               {form.source === "engine" ? "Create CAPA from recommendation" : "New CAPA"}
             </span>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close" style={closeBtn}>
-            <Icon name="plus" size={14} style={{ transform: "rotate(45deg)" }} />
+          <button type="button" onClick={requestClose} aria-label="Close" style={closeBtn}>
+            <Icon name="plus" size={14} style={{ transform: "rotate(45deg)" }} aria-hidden />
           </button>
         </div>
 
@@ -175,7 +199,13 @@ export default function CapaComposerModal({
           {/* ── Left: brief + editable draft ─────────────────────────── */}
           <div style={{ display: "flex", flexDirection: "column", gap: 14, overflowY: "auto", paddingRight: 4 }}>
             {recommendationText && (
-              <div style={{ ...briefCard, borderLeft: `3px solid ${sevColor}` }}>
+              <div
+                style={{
+                  ...briefCard,
+                  background: `color-mix(in srgb, ${sevColor} 8%, var(--surface-2))`,
+                  borderColor: `color-mix(in srgb, ${sevColor} 35%, var(--border))`,
+                }}
+              >
                 {form.severity && (
                   <span style={{ ...sevPill, color: sevColor, background: `color-mix(in srgb, ${sevColor} 14%, transparent)` }}>
                     {form.severity}
@@ -339,8 +369,7 @@ function Field({ label, required, hint, children }: { label: string; required?: 
 const backdrop: React.CSSProperties = {
   position: "fixed",
   inset: 0,
-  backgroundColor: "rgba(10, 9, 8, 0.88)",
-  backdropFilter: "blur(20px)",
+  backgroundColor: "rgba(10, 9, 8, 0.72)",
   zIndex: 1000,
   display: "grid",
   placeItems: "center",
@@ -351,9 +380,9 @@ const panel: React.CSSProperties = {
   maxWidth: 1180,
   height: "90vh",
   background: "var(--bg)",
-  border: "1.5px solid var(--border-strong)",
+  border: "1px solid var(--border-strong)",
   borderRadius: "var(--radius-lg)",
-  boxShadow: "0 30px 60px -15px rgba(0,0,0,0.65)",
+  boxShadow: "0 16px 40px -12px rgba(0,0,0,0.45)",
   display: "flex",
   flexDirection: "column",
   overflow: "hidden",
@@ -367,14 +396,14 @@ const titleBar: React.CSSProperties = {
   flexShrink: 0,
 };
 const brandChip: React.CSSProperties = {
-  fontSize: 9.5,
-  fontWeight: 800,
-  background: "var(--accent)",
-  color: "var(--text-invert)",
+  fontSize: 10,
+  fontWeight: 700,
+  background: "var(--surface-2)",
+  color: "var(--text-2)",
+  border: "1px solid var(--border)",
   padding: "2px 8px",
-  borderRadius: 999,
-  textTransform: "uppercase",
-  letterSpacing: "0.05em",
+  borderRadius: 6,
+  letterSpacing: "0.02em",
 };
 const closeBtn: React.CSSProperties = {
   background: "var(--surface)",

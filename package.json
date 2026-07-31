@@ -9,7 +9,9 @@
     "lint": "eslint",
     "test": "jest",
     "check:ai": "tsx --env-file=.env.local scripts/check-ai.ts",
-    "migrate:mods": "tsx --env-file=.env.local scripts/migrate-presets-to-mods.ts"
+    "migrate:mods": "tsx --env-file=.env.local scripts/migrate-presets-to-mods.ts",
+    "check:corpus": "tsx scripts/check-corpus.mts",
+    "check:reingest": "tsx scripts/check-reingest.mts"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^2.0.48",

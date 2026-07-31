@@ -60,23 +60,27 @@ describe("Phase 4: preset → MOD migration + generated entry + schema shim", ()
     expect((await knowledge.lookup("default", "column-mapping", "struck balloon"))?.canonicalId).toBe("DEFECT:STBL");
   });
 
-  it("generates the data-entry template from the verified ontology", async () => {
+  it("generates the data-entry template from the company catalog", async () => {
+    // Data Entry is now a projection of the CATALOG, not of the MOD. Publishing
+    // a workbook still merges into the catalog, so what it taught still reaches
+    // the grid — but the grid's shape is the catalog's, and sheet layout no
+    // longer leaks into it.
     const { GET } = await import("@/app/api/entry-template/route");
-    const res = await GET(req("/api/entry-template"));
+    const res = await GET();
     expect(res.status).toBe(200);
     const { template } = await res.json();
 
     const visual = template.stages.find((s: any) => s.stageId === "visual");
     expect(visual).toBeTruthy();
     expect(visual.columns.map((c: any) => c.key)).toEqual(expect.arrayContaining(["checked", "rejected"]));
-    // Preset migration materializes defect entities; Disposafe seed alone does not.
-    expect(visual.defects.map((d: any) => d.defectCode)).toContain("PINH");
-    // Must NOT dump the entire seed visual catalog (COAG/SD/TT/…) onto the grid.
-    expect(visual.defects.length).toBeLessThanOrEqual(3);
-    // The migrated preset's own sheet layout survives into the generated grid.
-    expect(visual.layout?.headerRows?.[0]).toEqual(["DATE", "CHECKED", "REJ"]);
+    // PINH was the old resolver's name for the sheet's "PH" (Pin Hole); the
+    // authored catalog folds it in as an alias rather than a second column.
+    expect(visual.defects.map((d: any) => d.defectCode)).toContain("PH");
+    expect(visual.defects.map((d: any) => d.defectCode)).not.toContain("PINH");
     expect(template.sizes.some((s: any) => s.sizeId === "Fr16")).toBe(true);
-    expect(template.generatedFrom.length).toBeGreaterThan(0);
+    expect(template.source).toBeTruthy();
+    // Sheet layout is not part of the entry contract any more.
+    expect(visual.layout).toBeUndefined();
   });
 
   it("serves the MOD catalog through the /api/schema compat shim in legacy registry shape", async () => {
@@ -91,7 +95,7 @@ describe("Phase 4: preset → MOD migration + generated entry + schema shim", ()
     expect(visual).toBeTruthy();
     // The exact field shape legacy data-entry consumes.
     expect(visual.fields.map((f: any) => f.name)).toEqual(expect.arrayContaining(["Checked Qty", "Rejected Qty"]));
-    expect(data.registry.defects.some((d: any) => d.defectCode === "PINH")).toBe(true);
+    expect(data.registry.defects.some((d: any) => d.defectCode === "PH")).toBe(true);
     // Disposafe seed rides along in the same catalog.
     expect(data.registry.defects.some((d: any) => d.defectCode === DISPOSAFE_REGISTRY.defects[0].defectCode)).toBe(true);
   });

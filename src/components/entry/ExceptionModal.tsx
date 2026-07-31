@@ -12,7 +12,7 @@ export default function ExceptionModal({
   onReasonChange,
   onConfirm,
   onCancel,
-  confirmLabel = "Upload with reason",
+  confirmLabel = "Save with reason",
   busy = false,
 }: {
   open: boolean;
@@ -69,8 +69,9 @@ export default function ExceptionModal({
           {title}
         </div>
         <p className="small" style={{ color: "var(--text-2)", marginBottom: 12, lineHeight: 1.45 }}>
-          This entry does not reconcile. You may still upload it, but you must state a reason.
-          The GM will see this in notifications.
+          Numbers do not balance. You can still save to the plant ledger — your reason is stored on the
+          entry and sent to the GM as an exception alert. The GM must acknowledge it; the trail stays
+          in notifications history.
         </p>
         <div
           style={{
@@ -103,7 +104,7 @@ export default function ExceptionModal({
             onReasonChange(e.target.value);
           }}
           onBlur={() => setTouched(true)}
-          placeholder="e.g. One reject held for re-inspection — defect code pending"
+          placeholder="e.g. 3 units still on hold for re-inspection — defect code pending after QA review"
           rows={3}
           style={{
             width: "100%",
@@ -121,7 +122,7 @@ export default function ExceptionModal({
         />
         {touched && !ok && (
           <div style={{ fontSize: 12, color: "var(--status-bad)", marginBottom: 10 }}>
-            Enter at least 4 characters before uploading.
+            Enter a short reason (at least 4 characters) so the GM can review this later.
           </div>
         )}
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
@@ -162,7 +163,7 @@ export default function ExceptionModal({
               opacity: busy ? 0.7 : 1,
             }}
           >
-            {busy ? "Uploading…" : confirmLabel}
+            {busy ? "Saving…" : confirmLabel}
           </button>
         </div>
       </div>

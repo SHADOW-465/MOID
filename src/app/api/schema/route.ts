@@ -14,6 +14,8 @@ import { z } from "zod";
 import { StageDef, DefectDef, SizeDef } from "@/lib/contract/d1";
 import { EMPTY_REGISTRY } from "@/core/ontology/empty-registry";
 import { getCatalogStore, type CompanyCatalog } from "@/core/ontology/store/catalog-store";
+import { mergePlantCatalog } from "@/core/ontology/plant-catalog";
+import { loadCatalog } from "@/core/ontology/load-catalog";
 import { getModStore } from "@/core/ontology/store/mod-store";
 import {
   getKnowledgeStore,
@@ -60,45 +62,16 @@ function toRegistry(catalog: CompanyCatalog, company: string) {
   };
 }
 
-/** Load master catalog; if empty, seed once from verified MOD merge (lazy migrate). */
-async function loadCatalog(company: string): Promise<CompanyCatalog> {
-  const store = getCatalogStore();
-  let catalog = await store.get(company);
-  if (catalog.stages.length > 0 || catalog.defects.length > 0 || catalog.sizes.length > 0) {
-    return catalog;
-  }
-
-  const verified = await getModStore().verified(company);
-  if (verified.length === 0) return catalog;
-
-  try {
-    for (const mod of verified) {
-      catalog = await store.mergeFromMod(mod);
-    }
-    return catalog;
-  } catch {
-    const stages = new Map<string, CompanyCatalog["stages"][number]>();
-    const defects = new Map<string, CompanyCatalog["defects"][number]>();
-    const sizes = new Map<string, CompanyCatalog["sizes"][number]>();
-    let fiscal = 4;
-    let last: string | null = null;
-    for (const mod of verified) {
-      for (const s of mod.document.stages ?? []) if (!stages.has(s.stageId)) stages.set(s.stageId, s);
-      for (const d of mod.document.defects ?? []) if (!defects.has(d.defectCode)) defects.set(d.defectCode, d);
-      for (const s of mod.document.sizes ?? []) if (!sizes.has(s.sizeId)) sizes.set(s.sizeId, s);
-      fiscal = mod.document.fiscalYearStartMonth ?? fiscal;
-      last = mod.modId;
-    }
-    return {
-      stages: [...stages.values()],
-      defects: [...defects.values()],
-      sizes: [...sizes.values()],
-      fiscalYearStartMonth: fiscal,
-      updatedAt: new Date().toISOString(),
-      lastMergedFrom: last,
-    };
-  }
-}
+/**
+ * Load master catalog; if empty, seed once from the AUTHORED plant catalog.
+ *
+ * This used to seed from a merge of verified MODs — i.e. from whatever the
+ * resolver had guessed each workbook's columns meant. That is what produced a
+ * 5-stage catalog with no upstream cascade and no production stage. The plant's
+ * process is written down in its SOPs; it is authored, not inferred.
+ */
+// loadCatalog lives in core/ontology/load-catalog.ts so that this route and
+// /api/entry-template can never seed differently.
 
 /** Verified MOD entities promoted into knowledge-shaped rows for the brain UI. */
 async function mappingsFromVerifiedMods(company: string): Promise<
@@ -247,8 +220,15 @@ const DeleteMappingBody = z.object({
   kind: KnowledgeKindSchema,
   key: z.string().min(1),
 });
+/** Bring the stored catalog up to the authored plant catalog. Additive and
+ *  label-preserving (see mergePlantCatalog) — never destructive, so it is safe
+ *  to run against a catalog someone has already edited by hand. */
+const LoadPlantCatalogBody = z.object({
+  action: z.literal("load-plant-catalog"),
+});
 
 const BodySchema = z.discriminatedUnion("action", [
+  LoadPlantCatalogBody,
   UpsertStageBody,
   UpsertDefectBody,
   UpsertSizeBody,
@@ -278,6 +258,9 @@ export async function POST(req: NextRequest) {
     const body = parsed.data;
 
     switch (body.action) {
+      case "load-plant-catalog":
+        catalog = await store.put(company, mergePlantCatalog(await store.get(company)));
+        break;
       case "upsert-stage":
         catalog = await store.upsertStage(company, body.stage);
         break;

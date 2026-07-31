@@ -30,7 +30,7 @@ export type MacroStage = {
 
 export const FRENCH_SIZES = [
   "6Fr", "8Fr", "10Fr", "12Fr", "14Fr", "16Fr", "18Fr",
-  "20Fr", "22Fr", "24Fr", "26Fr", "28Fr",
+  "20Fr", "22Fr", "24Fr", "26Fr", "28Fr", "30Fr",
 ] as const;
 
 /** FBC product variants on the shop floor (filter also offers "All Type"). */
@@ -38,12 +38,81 @@ export const PRODUCT_TYPES = ["2 way", "3 way", "Female"] as const;
 export type ProductType = (typeof PRODUCT_TYPES)[number];
 export const PRODUCT_TYPE_STORAGE_KEY = "moid_product_type";
 
-export const DEFAULT_OPERATORS = [
-  "MB Lakshun",
-  "Operator 2",
-  "Operator 3",
-  "Operator 4",
+// ─────────────────────────────────────────────────────────────────────────────
+// Catheter category / type / size cascade — same rules as the shop-floor
+// standalone matrix tool, applied here so Data Entry follows one source of
+// truth instead of drifting from it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const CATHETER_CATEGORIES = ["Male", "Female", "Peadiatric"] as const;
+export type CatheterCategory = (typeof CATHETER_CATEGORIES)[number];
+export const CATHETER_TYPES = ["2 way", "3 way"] as const;
+export type CatheterType = (typeof CATHETER_TYPES)[number];
+
+/** Only Male has a real choice of type — Type is hidden for Female/Peadiatric
+ *  and the record is written as "2 way" in the background either way. */
+export function typeIsSelectable(category: CatheterCategory): boolean {
+  return category === "Male";
+}
+
+const MALE_2WAY_FR = [6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30];
+const MALE_3WAY_FR = [16, 18, 20, 22, 24, 26, 28, 30]; // strictly starts at 16Fr
+const FEMALE_FR = [12, 14, 16, 18, 20, 22, 24, 26, 28, 30];
+const PEADIATRIC_FR = [6, 8, 10];
+
+/** Valid catheter sizes ("16Fr", …) for a category (+ type, for Male). */
+export function sizesFor(category: CatheterCategory, type: CatheterType): readonly string[] {
+  const fr =
+    category === "Female" ? FEMALE_FR
+    : category === "Peadiatric" ? PEADIATRIC_FR
+    : type === "3 way" ? MALE_3WAY_FR
+    : MALE_2WAY_FR;
+  return fr.map((n) => `${n}Fr`);
+}
+
+/** category + type collapsed to the single legacy `productType` string this app
+ *  already persists everywhere ("2 way" | "3 way" | "Female"). Peadiatric has no
+ *  legacy slot, so it travels as its own value — downstream code that doesn't
+ *  recognise it (filters, CSV) treats it as free text, same as any new type. */
+export function productTypeFor(category: CatheterCategory, type: CatheterType): string {
+  if (category === "Female") return "Female";
+  if (category === "Peadiatric") return "Peadiatric";
+  return type;
+}
+
+/** Inverse of productTypeFor, for loading a saved/draft record back into the
+ *  category+type controls. */
+export function categoryAndTypeFrom(productType: string | undefined | null): { category: CatheterCategory; type: CatheterType } {
+  if (productType === "Female") return { category: "Female", type: "2 way" };
+  if (productType === "Peadiatric") return { category: "Peadiatric", type: "2 way" };
+  if (productType === "3 way") return { category: "Male", type: "3 way" };
+  return { category: "Male", type: "2 way" };
+}
+
+/**
+ * Who is recording the entry, by role rather than by name.
+ *
+ * These are the roles the plant's own controlled forms sign off with
+ * (F/ASSEM/02:00 carries "Assembly Supervisor / Production Manager / Verified
+ * By"), so the ledger records a role that maps to a real signature authority
+ * instead of a free-typed name that nobody can validate later.
+ */
+export const ENTRY_ROLES = [
+  "Data Entry Operator",
+  "Supervisor",
+  "Production Manager",
+  "GM",
 ] as const;
+export type EntryRole = (typeof ENTRY_ROLES)[number];
+
+/** Coerce a stored value (older rows carry a person's name) to a valid role.
+ *  Anything unrecognised falls back to the default rather than leaving the
+ *  dropdown showing a value that is no longer selectable. */
+export function toEntryRole(value: string | null | undefined): EntryRole {
+  return (ENTRY_ROLES as readonly string[]).includes(value ?? "")
+    ? (value as EntryRole)
+    : ENTRY_ROLES[0];
+}
 
 const VISUAL_DEFECTS: DefectDef[] = [
   { key: "COAG", name: "COAG" },

@@ -17,7 +17,7 @@ export function frDigitsFromSize(size: string): string | null {
     s.match(/^(\d{1,2})$/);
   if (!m) return null;
   const n = Number(m[1]);
-  if (n < 6 || n > 28) return null;
+  if (n < 6 || n > 30) return null;
   return String(n);
 }
 
@@ -58,6 +58,25 @@ export function buildBatchId(date: string, size: string): string | null {
   const code = MONTH_CODES[month - 1];
   const dd = String(day).padStart(2, "0");
   return `${yy}${code}${dd}-${fr}`;
+}
+
+/**
+ * Normalize typed batch input: uppercase, insert the hyphen after YY+Month+DD.
+ * Examples: `26F2714` → `26F27-14`, `26f27-14` → `26F27-14`.
+ */
+export function formatBatchIdInput(raw: string): string {
+  const cleaned = raw
+    .toUpperCase()
+    .replace(/\s+/g, "")
+    .replace(/[^0-9A-L-]/g, "");
+  // Keep only the first hyphen positionally by rebuilding: prefix then size digits.
+  const noDash = cleaned.replace(/-/g, "");
+  if (noDash.length === 0) return "";
+  // YY (2) + month letter (1) + DD (2) = 5; remainder is FR size (≤2 digits).
+  if (noDash.length <= 5) return noDash;
+  const prefix = noDash.slice(0, 5);
+  const size = noDash.slice(5).replace(/[^0-9]/g, "").slice(0, 2);
+  return size ? `${prefix}-${size}` : prefix;
 }
 
 /**

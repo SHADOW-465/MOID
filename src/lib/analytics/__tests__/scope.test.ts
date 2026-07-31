@@ -8,6 +8,9 @@ import {
   listExcelSourceFiles,
   listBatchIds,
   eventBatchId,
+  describeActiveScope,
+  describeSourceFilter,
+  isPlantDefaultTweaks,
   type Scope,
 } from "../scope";
 import type { Event } from "@/lib/store/types";
@@ -276,5 +279,88 @@ describe("batch filter (batch-wise dashboard)", () => {
       batchIds: [],
     });
     expect(scope.batchIds).toBeUndefined();
+  });
+});
+
+describe("stage-category (shop-floor section) filter", () => {
+  const base = {
+    grain: "month" as const,
+    datePreset: "all" as const,
+    dateFrom: "",
+    dateTo: "",
+  };
+
+  it("defaults to assembly only — primary/secondary never inflate a KPI by accident", () => {
+    const scope = resolveScope([], base);
+    expect(scope.stageIds).toEqual(
+      expect.arrayContaining(["visual", "balloon", "valve-integrity", "final"]),
+    );
+    expect(scope.stageIds).not.toContain("production");
+    expect(scope.stageIds).not.toContain("secondary");
+  });
+
+  it("adding primary widens the scope to the upstream stages", () => {
+    const scope = resolveScope([], { ...base, stageCategories: ["assembly", "primary"] });
+    expect(scope.stageIds).toEqual(expect.arrayContaining(["visual", "production", "trimming"]));
+    expect(scope.stageIds).not.toContain("secondary");
+  });
+
+  it("selecting every section removes the restriction entirely", () => {
+    const scope = resolveScope([], {
+      ...base,
+      stageCategories: ["primary", "secondary", "assembly"],
+    });
+    expect(scope.stageIds).toBeUndefined();
+  });
+
+  it("a pinned station view still wins over the section filter", () => {
+    const scope = resolveScope([], { ...base, stageView: "production", stageCategories: ["assembly"] });
+    expect(scope.stageIds).toEqual(["production"]);
+  });
+});
+
+describe("describeActiveScope / plant default", () => {
+  const plantDefault = {
+    includeExcel: true,
+    includeDirectEntry: true,
+    excelFiles: [] as string[],
+    batchIds: [] as string[],
+    stageCategories: ["assembly"] as ("assembly")[],
+    stageView: "cumulative",
+  };
+
+  it("flags plant default and labels it clearly", () => {
+    expect(isPlantDefaultTweaks(plantDefault)).toBe(true);
+    expect(describeActiveScope(plantDefault)).toMatch(/Plant default/i);
+    expect(describeActiveScope(plantDefault)).toMatch(/full plant/i);
+  });
+
+  it("mentions sections and batches when narrowed", () => {
+    expect(
+      isPlantDefaultTweaks({
+        ...plantDefault,
+        stageCategories: ["assembly", "primary"],
+        batchIds: ["26F27-14"],
+      }),
+    ).toBe(false);
+    const s = describeActiveScope({
+      ...plantDefault,
+      stageCategories: ["assembly", "primary"],
+      batchIds: ["26F27-14"],
+    });
+    expect(s).toMatch(/Primary|Assembly/i);
+    expect(s).toMatch(/26F27-14/);
+  });
+
+  it("describeSourceFilter includes full plant when no batch filter", () => {
+    const scope = resolveScope([], {
+      grain: "month",
+      datePreset: "all",
+      dateFrom: "",
+      dateTo: "",
+      stageCategories: ["assembly"],
+    });
+    expect(describeSourceFilter(scope)).toMatch(/full plant/i);
+    expect(describeSourceFilter(scope)).toMatch(/Assembly/i);
   });
 });

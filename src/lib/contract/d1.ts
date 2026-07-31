@@ -111,6 +111,10 @@ export const StageDef = z.object({
   sizeWise: z.boolean().optional(),                 // render a size row per registry.sizes
   captures: z.array(StageCapture).optional(),       // which quantity columns this stage tracks
   isQualityGate: z.boolean().optional(),            // true for the 4 rejection inspection stages
+  /** Shop-floor section. Drives the Sources filter — analytics default to
+   *  assembly only, because that is what the plant's own reports mean by
+   *  "rejection". Optional so older persisted registries still parse. */
+  category: z.enum(["primary", "secondary", "assembly"]).optional(),
 });
 
 export const SizeDef = z.object({

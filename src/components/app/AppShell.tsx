@@ -8,6 +8,7 @@ import { useEvents } from "@/components/app/EventsContext";
 import {
   rejectionRate,
   stagesFor,
+  STAGE_CATEGORIES,
   totalRejected,
   totalChecked,
   fpy,
@@ -167,12 +168,25 @@ export default function AppShell({
     const ex = t.includeExcel;
     const de = t.includeDirectEntry;
     const batches = t.batchIds;
+    const cats = t.stageCategories;
+    const pinned = t.stageView && t.stageView !== "cumulative" ? t.stageView : null;
 
-    // Batch selection wins the chip label when set — that's the primary intent.
+    // Batch selection wins the chip label when set — primary investigation intent.
     if (batches.length === 1) return batches[0];
     if (batches.length > 1) return `${batches.length} batches`;
 
-    if (ex && de && t.excelFiles.length === 0) return "All sources";
+    // Station pin (from Sources tree or View menu).
+    if (pinned) return pinned.replace(/-/g, " ");
+
+    // Sections: adding Primary changes every KPI — must show on the chip.
+    if (cats.length === 0) return "No sections";
+    if (!(cats.length === 1 && cats[0] === "assembly")) {
+      return cats.length === STAGE_CATEGORIES.length
+        ? "All sections"
+        : cats.map((c) => c[0].toUpperCase() + c.slice(1, 4)).join(" + ");
+    }
+
+    if (ex && de && t.excelFiles.length === 0) return "Plant default";
     if (ex && de && t.excelFiles.length > 0) {
       return `Entry + ${t.excelFiles.length} file${t.excelFiles.length === 1 ? "" : "s"}`;
     }
@@ -183,7 +197,22 @@ export default function AppShell({
     }
     if (!ex && de) return "Data entry only";
     return "No sources";
-  }, [t.includeExcel, t.includeDirectEntry, t.excelFiles, t.batchIds]);
+  }, [t.includeExcel, t.includeDirectEntry, t.excelFiles, t.batchIds, t.stageCategories, t.stageView]);
+
+  /** Accent when scope is not plant default (or panel open). */
+  const sourcesScoped = useMemo(() => {
+    const cats = t.stageCategories;
+    const assemblyOnly = cats.length === 1 && cats[0] === "assembly";
+    const defaultView = !t.stageView || t.stageView === "cumulative";
+    return (
+      t.batchIds.length > 0 ||
+      t.excelFiles.length > 0 ||
+      !t.includeExcel ||
+      !t.includeDirectEntry ||
+      !assemblyOnly ||
+      !defaultView
+    );
+  }, [t.includeExcel, t.includeDirectEntry, t.excelFiles, t.batchIds, t.stageCategories, t.stageView]);
 
   /** Compact label for the merged date-window chip next to D/W/M/FY. */
   const rangeLabel = useMemo(() => {
@@ -447,6 +476,7 @@ export default function AppShell({
       includeDirectEntry: t.includeDirectEntry,
       excelFiles: t.excelFiles,
       batchIds: t.batchIds,
+      stageCategories: t.stageCategories,
     });
     return computeTrustScore(events, scope).pct;
   }, [events, suggestedGrain, t.datePreset, t.dateFrom, t.dateTo, t.includeExcel, t.includeDirectEntry, t.excelFiles, t.batchIds]);
@@ -1314,6 +1344,8 @@ export default function AppShell({
           <div
             role="button"
             tabIndex={0}
+            aria-haspopup="dialog"
+            aria-expanded={showSourcesPanel}
             onClick={(e) => {
               e.stopPropagation();
               setShowSourcesPanel(true);
@@ -1335,17 +1367,17 @@ export default function AppShell({
               borderRadius: "20px",
               padding: "3px 10px",
               background:
-                showSourcesPanel || t.batchIds.length > 0 || t.excelFiles.length > 0
+                showSourcesPanel || sourcesScoped
                   ? "var(--accent-weak)"
                   : "var(--surface-2)",
               color:
-                showSourcesPanel || t.batchIds.length > 0 || t.excelFiles.length > 0
+                showSourcesPanel || sourcesScoped
                   ? "var(--accent)"
                   : "var(--text)",
               cursor: "pointer",
               maxWidth: 180,
             }}
-            title="Sources, batches & Excel files"
+            title="Sources, sections, batches & Excel files"
           >
             <Icon name="split" size={11} style={{ color: "var(--text-3)", flexShrink: 0 }} />
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -1559,7 +1591,6 @@ export default function AppShell({
           scope={reportScope}
           periodLabel={dateRange ?? "all data"}
           onClose={() => setReportOpen(false)}
-          onDownloadData={handleExport}
         />
       )}
 

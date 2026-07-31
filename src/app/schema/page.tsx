@@ -618,6 +618,28 @@ export default function SchemaPage() {
                     ? "size"
                     : "mapping"}
             </button>
+            {/* Brings the catalog up to the full documented process (all stages,
+                every defect vocabulary, per-stage targets). Additive: your
+                renames and anything you added by hand are kept. */}
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => mutate({ action: "load-plant-catalog" }, "Plant catalog loaded — your edits were kept.")}
+              title="Add any missing stages, defect codes and sizes from the documented plant process. Never removes or renames what you have."
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                padding: "8px 14px",
+                borderRadius: 8,
+                border: "1px solid var(--border)",
+                background: "var(--surface-2)",
+                color: "var(--text)",
+                cursor: busy ? "default" : "pointer",
+                opacity: busy ? 0.6 : 1,
+              }}
+            >
+              Load plant catalog
+            </button>
           </div>
         </header>
 

@@ -390,17 +390,14 @@ function Spark({ points, tone }: { points: SeriesPoint[]; tone?: "good" | "warn"
   const color = tone === "bad" ? "var(--critical)" : tone === "good" ? "var(--positive)" : "var(--accent)";
   return (
     <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ overflow: "visible" }}>
-      <polyline 
-        points={d} 
-        fill="none" 
-        stroke={color} 
-        strokeWidth={1.5} 
-        pathLength={1}
-        style={{
-          strokeDasharray: "1",
-          strokeDashoffset: "1",
-          animation: "draw-line var(--duration-slow) var(--ease-out) forwards"
-        }}
+      <polyline
+        className="chart-line-stroke"
+        points={d}
+        fill="none"
+        stroke={color}
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+        strokeLinecap="round"
       />
     </svg>
   );
@@ -446,7 +443,7 @@ export function LineChart({
   target, 
   fmt, 
   mean, 
-  color = "var(--accent)",
+  color = "#C8421C",
   stage,
   metric,
   height = 280
@@ -537,8 +534,7 @@ export function LineChart({
 
   return (
     <div ref={containerRef} style={{ position: "relative", width: "100%", minWidth: 0 }} onMouseLeave={() => setHover(null)}>
-      {/* Zoom Controls */}
-      <div style={{
+      <div className="no-print" style={{
         position: "absolute",
         right: 12,
         top: -12,
@@ -596,28 +592,26 @@ export function LineChart({
             </g>
           )}
 
+          {/* Area + stroke: fully painted by default. draw-line animation is
+              screen-only — print freezes animations at their initial state, which
+              left stroke-dashoffset:1 (invisible line, dots only). */}
           {fillD && (
-            <path 
-              d={fillD} 
-              fill="var(--accent-weak)" 
-              style={{
-                opacity: 0,
-                animation: "fade-up 0.8s ease-out 1.2s forwards"
-              }}
+            <path
+              className="chart-area-fill"
+              d={fillD}
+              fill="var(--accent-weak)"
+              opacity={0.35}
             />
           )}
           {pathD && (
-            <path 
-              d={pathD} 
-              fill="none" 
-              stroke={color} 
-              strokeWidth={2} 
-              pathLength={1}
-              style={{
-                strokeDasharray: "1",
-                strokeDashoffset: "1",
-                animation: "draw-line var(--duration-slow) var(--ease-out) forwards"
-              }}
+            <path
+              className="chart-line-stroke"
+              d={pathD}
+              fill="none"
+              stroke={color}
+              strokeWidth={2.25}
+              strokeLinejoin="round"
+              strokeLinecap="round"
             />
           )}
 
@@ -817,18 +811,15 @@ export function MultiLine({
               ? `M ${x(startIdx)} ${y(data[startIdx].perStage[s.stageId] ?? 0)} ` + visibleData.map((d, idx) => `L ${x(startIdx + idx)} ${y(d.perStage[s.stageId] ?? 0)}`).join(" ")
               : "";
             return pathD ? (
-              <path 
-                key={s.stageId} 
-                fill="none" 
-                stroke={getStageColor(s, si)} 
-                strokeWidth={1.8} 
-                d={pathD} 
-                pathLength={1}
-                style={{
-                  strokeDasharray: "1",
-                  strokeDashoffset: "1",
-                  animation: `draw-line var(--duration-slow) var(--ease-out) ${si * 0.12}s forwards`
-                }}
+              <path
+                key={s.stageId}
+                className="chart-line-stroke"
+                fill="none"
+                stroke={getStageColor(s, si)}
+                strokeWidth={1.8}
+                d={pathD}
+                strokeLinejoin="round"
+                strokeLinecap="round"
               />
             ) : null;
           })}
@@ -879,33 +870,28 @@ export function MultiLine({
 
 
 export function BarsH({ rows, fmt }: { rows: { label: string; value: number; sub?: string }[]; fmt: (n: number) => string }) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
+  // Full width immediately — width:0→animate fails in print (snapshot before mount effect).
   if (!rows || rows.length === 0) {
     return <Empty label="No distribution records available." />;
   }
   const max = Math.max(...rows.map((r) => r.value), 1e-6);
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {rows.map((r, i) => (
         <div key={r.label}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 6 }}>
-            <span style={{ color: "var(--text)", fontWeight: 600 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, fontSize: 12.5, marginBottom: 5 }}>
+            <span style={{ color: "var(--text)", fontWeight: 600, minWidth: 0 }}>
               {r.label}
               {r.sub ? <span className="muted" style={{ fontSize: 11, fontWeight: 500 }}> · {r.sub}</span> : null}
             </span>
-            <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--text-2)" }}>{fmt(r.value)}</span>
+            <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--text)", flexShrink: 0 }}>{fmt(r.value)}</span>
           </div>
           <div style={{ height: 10, background: "var(--surface-2)", borderRadius: 5, overflow: "hidden", border: "1px solid var(--border)" }}>
-            <div style={{ 
-              width: mounted ? `${(r.value / max) * 100}%` : "0%", 
-              height: "100%", 
-              background: i === 0 ? "var(--accent)" : "color-mix(in srgb, var(--accent) 70%, transparent)",
-              transition: "width 1.2s cubic-bezier(0.2, 0.8, 0.2, 1)",
-              borderRadius: 5
+            <div style={{
+              width: `${(r.value / max) * 100}%`,
+              height: "100%",
+              background: i === 0 ? "var(--accent)" : "color-mix(in srgb, var(--accent) 72%, #14181f 8%)",
+              borderRadius: 5,
             }} />
           </div>
         </div>

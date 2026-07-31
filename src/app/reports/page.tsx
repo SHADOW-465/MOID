@@ -54,16 +54,6 @@ export default function ReportsPage() {
             embedded
             registry={registry}
             initialPresetId="builtin:gm-monthly"
-            onDownloadData={async () => {
-              const { buildAuditPackage } = await import("@/lib/audit-package");
-              const { blob, fileName } = await buildAuditPackage(events ?? [], { grain: "month" });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = fileName;
-              a.click();
-              URL.revokeObjectURL(url);
-            }}
           />
         )}
       </div>

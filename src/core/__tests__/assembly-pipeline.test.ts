@@ -97,11 +97,16 @@ maybe("ASSEMBLY workbook → ledger records", () => {
   });
 
   it("reaches Data Entry as four stations with their own capture columns", () => {
-    // Same call /api/entry-template makes. Publishing this MOD is what puts
-    // these stations on the Data Entry grid.
-    const template = templateFrom([
-      { modId: "m", version: 1, status: "verified", document: doc } as never,
-    ]);
+    // Data Entry projects the CATALOG, and publishing this MOD is what merges
+    // these stages/defects into it — so this is the same shape the grid renders.
+    const template = templateFrom({
+      stages: doc.stages,
+      defects: doc.defects,
+      sizes: doc.sizes,
+      fiscalYearStartMonth: 4,
+      updatedAt: null,
+      lastMergedFrom: "m",
+    });
 
     const byId = new Map(template.stages.map((s) => [s.stageId, s]));
     expect([...byId.keys()].sort()).toEqual(["balloon", "final", "valve-integrity", "visual"]);

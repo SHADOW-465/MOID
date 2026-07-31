@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { DEFAULT_STAGE_CATEGORIES, type StageCategory } from "@/core/ontology/plant-catalog";
 
 export type Theme = "light" | "dark";
 
@@ -37,6 +38,12 @@ export interface Tweaks {
    * Non-empty = only these batch IDs (as entered in Data Entry / on Excel rows).
    */
   batchIds: string[];
+  /**
+   * Shop-floor sections feeding analytics. Defaults to assembly ONLY — the
+   * plant's own reports mean assembly when they say "rejection %", so mixing
+   * primary/secondary in by default would silently change every KPI.
+   */
+  stageCategories: StageCategory[];
 }
 
 export const TWEAK_DEFAULTS: Tweaks = {
@@ -51,6 +58,7 @@ export const TWEAK_DEFAULTS: Tweaks = {
   includeDirectEntry: true,
   excelFiles: [],
   batchIds: [],
+  stageCategories: [...DEFAULT_STAGE_CATEGORIES],
 };
 
 interface Ctx {

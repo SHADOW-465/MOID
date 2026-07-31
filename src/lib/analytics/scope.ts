@@ -7,6 +7,15 @@
 
 import type { Event } from "@/lib/store/types";
 import { canonicalizeEvents } from "./canonical";
+import {
+  STAGE_CATEGORY,
+  STAGE_CATEGORIES,
+  DEFAULT_STAGE_CATEGORIES,
+  type StageCategory,
+} from "@/core/ontology/plant-catalog";
+
+export type { StageCategory };
+export { STAGE_CATEGORIES, DEFAULT_STAGE_CATEGORIES };
 
 export type Grain = "day" | "week" | "month" | "fy";
 
@@ -130,6 +139,101 @@ export function countBySourceChannel(events: Event[]): { excel: number; directEn
   return { excel, directEntry };
 }
 
+/** Reverse stageIds → shop-floor section labels (for Active / report summaries). */
+export function describeSectionsFromStageIds(stageIds?: string[]): string | null {
+  if (stageIds === undefined) return null; // no section restriction
+  if (stageIds.length === 0) return "No sections";
+  const cats = new Set<StageCategory>();
+  for (const id of stageIds) {
+    const c = STAGE_CATEGORY[id];
+    if (c) cats.add(c);
+  }
+  if (cats.size === 0) return null;
+  if (cats.size === STAGE_CATEGORIES.length) return "All sections";
+  if (cats.size === 1 && cats.has("assembly")) return "Assembly";
+  return STAGE_CATEGORIES.filter((c) => cats.has(c.id))
+    .map((c) => c.label.replace(/\s*\(.*\)$/, ""))
+    .join(" + ");
+}
+
+/**
+ * True when tweaks match plant default scope: both channels, assembly only,
+ * no batch/file restriction, cumulative stage view.
+ */
+export function isPlantDefaultTweaks(t: {
+  includeExcel?: boolean;
+  includeDirectEntry?: boolean;
+  excelFiles?: string[] | null;
+  batchIds?: string[] | null;
+  stageCategories?: StageCategory[] | null;
+  stageView?: string;
+}): boolean {
+  const ex = t.includeExcel !== false;
+  const de = t.includeDirectEntry !== false;
+  const files = !t.excelFiles || t.excelFiles.length === 0;
+  const batches = !t.batchIds || t.batchIds.length === 0;
+  const cats =
+    t.stageCategories === undefined || t.stageCategories === null
+      ? DEFAULT_STAGE_CATEGORIES
+      : t.stageCategories;
+  const assemblyOnly = cats.length === 1 && cats[0] === "assembly";
+  const view = !t.stageView || t.stageView === "cumulative";
+  return ex && de && files && batches && assemblyOnly && view;
+}
+
+/**
+ * Full human summary from live header controls (channels, sections, stage pin,
+ * batches, files). Prefer this in the Sources panel Active line.
+ */
+export function describeActiveScope(t: {
+  includeExcel?: boolean;
+  includeDirectEntry?: boolean;
+  excelFiles?: string[] | null;
+  batchIds?: string[] | null;
+  stageCategories?: StageCategory[] | null;
+  stageView?: string;
+}): string {
+  if (isPlantDefaultTweaks(t)) return "Plant default · Assembly · full plant";
+
+  const parts: string[] = [];
+  const ex = t.includeExcel !== false;
+  const de = t.includeDirectEntry !== false;
+  if (ex && de) parts.push("Excel + Data entry");
+  else if (ex) parts.push("Excel only");
+  else if (de) parts.push("Data entry only");
+  else parts.push("No channels");
+
+  const cats =
+    t.stageCategories === undefined || t.stageCategories === null
+      ? DEFAULT_STAGE_CATEGORIES
+      : t.stageCategories;
+  if (cats.length === 0) parts.push("no sections");
+  else if (cats.length === STAGE_CATEGORIES.length) parts.push("all sections");
+  else if (cats.length === 1 && cats[0] === "assembly") parts.push("Assembly");
+  else {
+    parts.push(
+      STAGE_CATEGORIES.filter((c) => cats.includes(c.id))
+        .map((c) => c.label.replace(/\s*\(.*\)$/, ""))
+        .join(" + "),
+    );
+  }
+
+  if (t.stageView && t.stageView !== "cumulative") {
+    parts.push(`station ${t.stageView}`);
+  }
+
+  const batches = t.batchIds ?? [];
+  if (batches.length === 1) parts.push(`batch ${batches[0]}`);
+  else if (batches.length > 1) parts.push(`${batches.length} batches`);
+  else parts.push("full plant");
+
+  const files = t.excelFiles ?? [];
+  if (ex && files.length === 1) parts.push(files[0]);
+  else if (ex && files.length > 1) parts.push(`${files.length} Excel files`);
+
+  return parts.join(" · ");
+}
+
 /** Human label for the Sources filter — used in report headers / cover. */
 export function describeSourceFilter(scope: Scope): string {
   const channels = scope.sourceChannels;
@@ -137,32 +241,37 @@ export function describeSourceFilter(scope: Scope): string {
   const batches = scope.batchIds;
   const excelOn = !channels || channels.includes("excel");
   const deOn = !channels || channels.includes("direct-entry");
+  const sections = describeSectionsFromStageIds(scope.stageIds);
 
-  const batchSuffix =
-    batches && batches.length > 0
-      ? batches.length === 1
-        ? ` · batch ${batches[0]}`
-        : ` · ${batches.length} batches`
-      : "";
+  const bits: string[] = [];
 
-  if (excelOn && deOn && (!files || files.length === 0)) {
-    return `All sources (Excel + Data entry)${batchSuffix}`;
+  if (channels && channels.length === 0) {
+    bits.push("No sources");
+  } else if (excelOn && deOn && (!files || files.length === 0)) {
+    bits.push("Excel + Data entry");
+  } else if (excelOn && deOn && files?.length) {
+    bits.push(
+      files.length === 1
+        ? `Data entry + Excel: ${files[0]}`
+        : `Data entry + ${files.length} Excel files`,
+    );
+  } else if (excelOn && !deOn) {
+    if (!files || files.length === 0) bits.push("Excel only");
+    else if (files.length === 1) bits.push(`Excel: ${files[0]}`);
+    else bits.push(`${files.length} Excel files`);
+  } else if (!excelOn && deOn) {
+    bits.push("Data entry only");
+  } else {
+    bits.push("All sources");
   }
-  if (excelOn && deOn && files?.length) {
-    return `Data entry + Excel: ${files.join(", ")}${batchSuffix}`;
-  }
-  if (excelOn && !deOn) {
-    if (!files || files.length === 0) return `Excel uploads only${batchSuffix}`;
-    if (files.length === 1) return `Excel: ${files[0]}${batchSuffix}`;
-    return `Excel files (${files.length}): ${files.join(", ")}${batchSuffix}`;
-  }
-  if (!excelOn && deOn) {
-    if (batches?.length === 1) return `Data entry · batch ${batches[0]}`;
-    if (batches && batches.length > 1) return `Data entry · ${batches.length} batches`;
-    return "Data entry only";
-  }
-  if (channels && channels.length === 0) return "No sources selected";
-  return batchSuffix ? `All sources${batchSuffix}` : "All sources";
+
+  if (sections) bits.push(sections);
+
+  if (batches && batches.length === 1) bits.push(`batch ${batches[0]}`);
+  else if (batches && batches.length > 1) bits.push(`${batches.length} batches`);
+  else bits.push("full plant");
+
+  return bits.join(" · ");
 }
 
 /** The week-of-month bucket containing `day` in `month`/`year`. Buckets are
@@ -325,6 +434,22 @@ export interface ScopeTweaks {
    * (matches eventBatchId — case-insensitive).
    */
   batchIds?: string[] | null;
+  /**
+   * Shop-floor sections to include. Undefined = the default (assembly only) —
+   * the plant's own reports mean assembly when they say "rejection %", so
+   * primary/secondary are opt-in rather than silently inflating every KPI.
+   * Empty array = explicitly none.
+   */
+  stageCategories?: StageCategory[] | null;
+}
+
+/** Stages belonging to the selected sections. Stages with no category (added by
+ *  hand on Data Schema) are always kept — never hide data we can't classify. */
+export function stagesInCategories(cats: StageCategory[], known: Record<string, StageCategory>): string[] {
+  const want = new Set(cats);
+  return Object.entries(known)
+    .filter(([, c]) => want.has(c))
+    .map(([id]) => id);
 }
 
 /**
@@ -364,7 +489,17 @@ export function resolveScope(events: Event[], t: ScopeTweaks): Scope {
     to = dataMax;
   }
 
-  const stageIds = t.stageView && t.stageView !== "cumulative" ? [t.stageView] : undefined;
+  // A station view pins one stage; otherwise the section filter decides. Both
+  // land in `stageIds`, so scopeEvents needs no new filter.
+  const cats = t.stageCategories === undefined || t.stageCategories === null
+    ? DEFAULT_STAGE_CATEGORIES
+    : t.stageCategories;
+  const categoryStages =
+    cats.length === STAGE_CATEGORIES.length
+      ? undefined // every section selected — no restriction
+      : stagesInCategories(cats, STAGE_CATEGORY);
+  const stageIds =
+    t.stageView && t.stageView !== "cumulative" ? [t.stageView] : categoryStages;
 
   const includeExcel = t.includeExcel !== false;
   const includeDirectEntry = t.includeDirectEntry !== false;

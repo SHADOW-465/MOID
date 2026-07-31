@@ -15,6 +15,12 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 type EntryMode = "matrix" | "period" | "ledger";
 
+const TAB_HINT: Record<EntryMode, string> = {
+  matrix: "One inspection, one batch, now.",
+  period: "Catch up many days for one stage.",
+  ledger: "Find, reuse, or permanently erase past rows.",
+};
+
 export default function DataEntryPage() {
   const { refreshEvents, events } = useEvents();
   const [activeTab, setActiveTab] = useState<EntryMode>("matrix");
@@ -34,7 +40,9 @@ export default function DataEntryPage() {
   useEffect(() => {
     if (t.grain === prevGrainRef.current) return;
     if (activeTab === "period" && monthlyDirty) {
-      const ok = confirm("You have unsaved changes in the period grid that haven't been submitted yet. Switching the Grain will discard them. Continue?");
+      const ok = confirm(
+        "You have unsaved changes in the period grid. Switching the grain will discard them. Continue?",
+      );
       if (!ok) {
         setTweak("grain", prevGrainRef.current);
         return;
@@ -61,7 +69,7 @@ export default function DataEntryPage() {
     product: "FBC",
     size: "All",
     machine: "All Machines",
-    batch: ""
+    batch: "",
   });
 
   const [notes, setNotes] = useState("");
@@ -81,7 +89,6 @@ export default function DataEntryPage() {
       const savedSize = localStorage.getItem("rais_hdr_size");
       const savedBatch = localStorage.getItem("rais_hdr_batch");
       const savedShift = localStorage.getItem("rais_hdr_shift");
-      // Mid-path jump from command palette / integrity focus: ?batch=&date=
       const urlParams = new URLSearchParams(window.location.search);
       const urlBatch = urlParams.get("batch");
       const urlDate = urlParams.get("date");
@@ -100,12 +107,18 @@ export default function DataEntryPage() {
       } else if (urlDate?.trim()) {
         setLedgerSearch(urlDate.trim());
       }
-      // Land the entry grid on the issue day when deep-linked from integrity focus
       if (urlDate?.trim() && /^\d{4}-\d{2}-\d{2}$/.test(urlDate.trim())) {
         setDate(urlDate.trim());
       }
     }
   }, []);
+
+  // Success feedback is brief on this surface.
+  useEffect(() => {
+    if (!success) return;
+    const id = window.setTimeout(() => setSuccess(null), 5000);
+    return () => window.clearTimeout(id);
+  }, [success]);
 
   const updateHdrField = (field: keyof typeof hdr, val: string) => {
     setHdr((prev) => {
@@ -131,37 +144,57 @@ export default function DataEntryPage() {
 
   const confirmLeavePeriodGrid = (): boolean => {
     if (activeTab !== "period" || !monthlyDirty) return true;
-    return confirm("You have unsaved changes in the period grid that haven't been submitted yet. Continuing will discard them. Continue?");
+    return confirm(
+      "You have unsaved changes in the period grid. Continuing will discard them. Continue?",
+    );
   };
 
   const entryCustomFields = useMemo(
     () => ({
-      operator: hdr.operator, supervisor: hdr.supervisor, machine: hdr.machine,
-      product: hdr.product, size: hdr.size, batch: hdr.batch, shift: hdr.shift, notes,
+      operator: hdr.operator,
+      supervisor: hdr.supervisor,
+      machine: hdr.machine,
+      product: hdr.product,
+      size: hdr.size,
+      batch: hdr.batch,
+      shift: hdr.shift,
+      notes,
     }),
     [hdr, notes],
   );
 
   const handleEditLedgerRecord = (rec: any) => {
     setHdr({
-      shift: rec.shift, operator: rec.operator, supervisor: rec.supervisor,
-      product: rec.product, size: rec.size, machine: rec.machine, batch: rec.batch,
+      shift: rec.shift,
+      operator: rec.operator,
+      supervisor: rec.supervisor,
+      product: rec.product,
+      size: rec.size,
+      machine: rec.machine,
+      batch: rec.batch,
     });
     setNotes(rec.notes || "");
     setActiveTab("period");
     setDate(rec.date);
-    setSuccess(`Record loaded for editing. Editing date: ${rec.date}. Use Period grid to revise quantities.`);
+    setSuccess(
+      `Opened ${rec.date} in the period grid. Revise quantities and save to update the ledger.`,
+    );
   };
 
   const handleDuplicateLedgerRecord = (rec: any) => {
     setHdr({
-      shift: rec.shift, operator: rec.operator, supervisor: rec.supervisor,
-      product: rec.product, size: rec.size, machine: rec.machine, batch: rec.batch,
+      shift: rec.shift,
+      operator: rec.operator,
+      supervisor: rec.supervisor,
+      product: rec.product,
+      size: rec.size,
+      machine: rec.machine,
+      batch: rec.batch,
     });
     setNotes(rec.notes || "");
     setActiveTab("period");
     setDate(today());
-    setSuccess("Header fields duplicated onto today's date. Enter today's quantities and Save.");
+    setSuccess("Header copied onto today. Enter today's quantities and save.");
   };
 
   const handleDeleteLedgerRecord = async (rec: any) => {
@@ -171,15 +204,11 @@ export default function DataEntryPage() {
       !confirm(
         `Permanently delete this ${recordType}?\n\n` +
           `${rec.date} · ${rec.shift}${rec.batch ? ` · batch ${rec.batch}` : ""}\n\n` +
-          "The numbers leave the dashboard and the audit trail entirely — this is not a correction, " +
-          "it is an erase, and it cannot be undone.",
+          "Removed from the dashboard and audit trail — this is an erase, not a correction, and cannot be undone.",
       )
     )
       return;
     try {
-      // Scope by source so deleting a manual test row can never take out
-      // uploaded data that happens to share the same day and sheet name.
-      // Pass batch when present so one batch-matrix row doesn't wipe siblings.
       const qs = new URLSearchParams({ date: rec.date, shift: rec.shift, source: rec.source });
       if (rec.batch) qs.set("batch", String(rec.batch).trim().toUpperCase());
       const res = await fetch(`/api/manual-entries?${qs}`, { method: "DELETE" });
@@ -189,11 +218,13 @@ export default function DataEntryPage() {
         throw new Error("No matching ledger events found for this record.");
       }
 
-      setSuccess(`Record for ${rec.date} (${rec.shift}) has been deleted successfully.`);
+      setSuccess(
+        `Removed from ledger and dashboard · ${rec.date} (${rec.shift}) — cannot be undone.`,
+      );
       loadLedger();
       refreshEvents().catch(console.error);
     } catch (e: any) {
-      alert("Error deleting: " + e.message);
+      alert("Could not delete: " + e.message);
     }
   };
 
@@ -236,7 +267,7 @@ export default function DataEntryPage() {
   const toggleSort = (col: string) => {
     setLedgerSort((prev) => ({
       col,
-      desc: prev.col === col ? !prev.desc : true
+      desc: prev.col === col ? !prev.desc : true,
     }));
   };
 
@@ -246,131 +277,258 @@ export default function DataEntryPage() {
     if (tab === "ledger") loadLedger();
   };
 
+  const ledgerEmpty = ledgerRecords.length === 0;
+  const searchActive = ledgerSearch.trim().length > 0;
+
   return (
     <AppShell active="data-entry">
-      <h1 style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 800, margin: "0 0 4px" }}>Data Entry</h1>
-      <p className="muted" style={{ fontSize: 13, margin: "0 0 16px", maxWidth: 720, lineHeight: 1.5 }}>
-        Log one batch at a time as you inspect it, or fill a whole day/week/month in one grid.
-        The defect columns are your own — they come from the files you{" "}
-        <a href="/staging" style={{ color: "var(--accent)", fontWeight: 600 }}>imported from Excel</a>.
-        Anything you save here appears on the Dashboard immediately.
+      <h1
+        style={{
+          fontFamily: "var(--font-display)",
+          fontSize: "var(--text-3xl, 28px)",
+          fontWeight: 700,
+          margin: "0 0 4px",
+          letterSpacing: "var(--tracking-tight, -0.02em)",
+          lineHeight: "var(--leading-tight, 1.15)",
+        }}
+      >
+        Data Entry
+      </h1>
+      <p className="muted" style={{ fontSize: 14, margin: "0 0 6px", maxWidth: 640, lineHeight: 1.5 }}>
+        {TAB_HINT[activeTab]}
       </p>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-          <TabButton active={activeTab === "matrix"} onClick={() => switchTab("matrix")} first>
-            Log a batch
-          </TabButton>
-          <TabButton active={activeTab === "period"} onClick={() => switchTab("period")}>
-            Fill a period
-          </TabButton>
-          <TabButton active={activeTab === "ledger"} onClick={() => switchTab("ledger")} last>
-            What I&apos;ve entered
-          </TabButton>
-        </div>
+      <p className="muted" style={{ fontSize: 13, margin: "0 0 16px", maxWidth: 720, lineHeight: 1.45 }}>
+        Defect columns come from your{" "}
+        <a href="/staging" style={{ color: "var(--accent)", fontWeight: 600 }}>
+          imported Excel
+        </a>{" "}
+        schema. Saves appear on the Dashboard immediately.
+      </p>
+
+      <div
+        role="tablist"
+        aria-label="Data entry mode"
+        style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 16 }}
+      >
+        <TabButton active={activeTab === "matrix"} onClick={() => switchTab("matrix")} first>
+          Log a batch
+        </TabButton>
+        <TabButton active={activeTab === "period"} onClick={() => switchTab("period")}>
+          Fill a period
+        </TabButton>
+        <TabButton active={activeTab === "ledger"} onClick={() => switchTab("ledger")} last>
+          What I&apos;ve entered
+        </TabButton>
       </div>
 
       {success && (
-        <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 9, background: "var(--positive-weak)", border: "1px solid var(--positive)", color: "var(--positive)", fontSize: 13, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div
+          style={{
+            marginBottom: 16,
+            padding: "10px 14px",
+            borderRadius: 9,
+            background: "var(--positive-weak)",
+            border: "1px solid var(--positive)",
+            color: "var(--positive)",
+            fontSize: 13,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 12,
+          }}
+        >
           <span>{success}</span>
-          <button onClick={() => setSuccess(null)} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 16, color: "var(--positive)", fontWeight: 700 }}>&times;</button>
+          <button
+            type="button"
+            onClick={() => setSuccess(null)}
+            aria-label="Dismiss"
+            style={{
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              fontSize: 16,
+              color: "var(--positive)",
+              fontWeight: 700,
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
         </div>
       )}
 
-      {activeTab === "matrix" && (
-        <BatchMatrixEntry onSynced={() => loadLedger()} />
-      )}
+      {activeTab === "matrix" && <BatchMatrixEntry onSynced={() => loadLedger()} />}
 
       {activeTab === "period" && (
         <div>
-          <p className="small" style={{ color: "var(--text-2)", marginBottom: 12 }}>
-            One row per day for the period below — good for catching up on a backlog.
-            For live shop-floor entry use <strong>Log a batch</strong> instead.
-          </p>
-          <div style={{ display: "flex", gap: 14, alignItems: "flex-end", marginBottom: 16, padding: 16, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12 }}>
-            <label className="muted" style={{ fontSize: 11, display: "flex", flexDirection: "column", gap: 4 }}>
-              {t.grain === "day" && "Report Date"}
-              {t.grain === "week" && "Report Week"}
-              {t.grain === "month" && "Report Month"}
-              {t.grain === "fy" && "Report FY"}
+          {/* Single meta surface — who/when + optional remarks, not three cards */}
+          <div
+            style={{
+              marginBottom: 16,
+              padding: 16,
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: 12,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 14,
+                alignItems: "flex-end",
+                marginBottom: 14,
+              }}
+            >
+              <label style={fieldLabel}>
+                {t.grain === "day" && "Report date"}
+                {t.grain === "week" && "Report week"}
+                {t.grain === "month" && "Report month"}
+                {t.grain === "fy" && "Report FY"}
 
-              {t.grain === "day" && (
-                <input type="date" value={date} onChange={(e) => {
-                  const newDate = e.target.value;
-                  if (!confirmLeavePeriodGrid()) return;
-                  setDate(newDate);
-                }} style={{ ...inp, width: 160 }} />
-              )}
+                {t.grain === "day" && (
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={(e) => {
+                      if (!confirmLeavePeriodGrid()) return;
+                      setDate(e.target.value);
+                    }}
+                    style={{ ...inp, width: 160, marginTop: 4 }}
+                  />
+                )}
 
-              {t.grain === "week" && (
-                <WeekPicker value={date} onChange={(next) => {
-                  if (!confirmLeavePeriodGrid()) return;
-                  setDate(next);
-                }} />
-              )}
+                {t.grain === "week" && (
+                  <div style={{ marginTop: 4 }}>
+                    <WeekPicker
+                      value={date}
+                      onChange={(next) => {
+                        if (!confirmLeavePeriodGrid()) return;
+                        setDate(next);
+                      }}
+                    />
+                  </div>
+                )}
 
-              {t.grain === "month" && (
-                <input type="month" value={date.slice(0, 7)} onChange={(e) => {
-                  if (!confirmLeavePeriodGrid()) return;
-                  setDate(`${e.target.value}-01`);
-                }} style={{ ...inp, width: 160 }} />
-              )}
+                {t.grain === "month" && (
+                  <input
+                    type="month"
+                    value={date.slice(0, 7)}
+                    onChange={(e) => {
+                      if (!confirmLeavePeriodGrid()) return;
+                      setDate(`${e.target.value}-01`);
+                    }}
+                    style={{ ...inp, width: 160, marginTop: 4 }}
+                  />
+                )}
 
-              {t.grain === "fy" && (
-                <select value={fyStartYear} onChange={(e) => {
-                  if (!confirmLeavePeriodGrid()) return;
-                  const y = Number(e.target.value);
-                  setFyStartYear(y);
-                  setFyOpenMonth(`${y}-04-01`);
-                }} style={{ ...inp, width: 160 }}>
-                  {fyOptions.map((y) => (
-                    <option key={y} value={y}>FY{y}-{String((y + 1) % 100).padStart(2, "0")}</option>
-                  ))}
+                {t.grain === "fy" && (
+                  <select
+                    value={fyStartYear}
+                    onChange={(e) => {
+                      if (!confirmLeavePeriodGrid()) return;
+                      const y = Number(e.target.value);
+                      setFyStartYear(y);
+                      setFyOpenMonth(`${y}-04-01`);
+                    }}
+                    style={{ ...inp, width: 160, marginTop: 4 }}
+                  >
+                    {fyOptions.map((y) => (
+                      <option key={y} value={y}>
+                        FY{y}-{String((y + 1) % 100).padStart(2, "0")}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </label>
+
+              <label style={fieldLabel}>
+                Shift
+                <select
+                  value={hdr.shift}
+                  onChange={(e) => updateHdrField("shift", e.target.value)}
+                  style={{ ...inp, width: 140, marginTop: 4 }}
+                >
+                  <option>Day Shift</option>
+                  <option>Night Shift</option>
                 </select>
-              )}
-            </label>
+              </label>
 
-            <label className="muted" style={{ fontSize: 11, display: "flex", flexDirection: "column", gap: 4 }}>
-              Shift
-              <select value={hdr.shift} onChange={(e) => updateHdrField("shift", e.target.value)} style={{ ...inp, width: 140 }}>
-                <option>Day Shift</option>
-                <option>Night Shift</option>
-              </select>
-            </label>
-          </div>
+              <label style={fieldLabel}>
+                Operator <span style={{ color: "var(--status-bad)" }}>*</span>
+                <input
+                  style={{ ...inp, width: 160, marginTop: 4 }}
+                  value={hdr.operator}
+                  onChange={(e) => updateHdrField("operator", e.target.value)}
+                  placeholder="Your name"
+                  aria-required
+                />
+              </label>
 
-          <Section title="Operator & Batch Information">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-              <Field label="Operator *">
-                <input style={inp} value={hdr.operator} onChange={(e) => updateHdrField("operator", e.target.value)} placeholder="Required" />
-              </Field>
-              <Field label="Supervisor">
-                <input style={inp} value={hdr.supervisor} onChange={(e) => updateHdrField("supervisor", e.target.value)} placeholder="Supervisor name" />
-              </Field>
-              <Field label="Product">
-                <input style={inp} value={hdr.product} onChange={(e) => updateHdrField("product", e.target.value)} />
-              </Field>
-              <Field label="Size (French)">
-                <input style={inp} value={hdr.size} onChange={(e) => updateHdrField("size", e.target.value)} />
-              </Field>
-              <Field label="Machine">
-                <input style={inp} value={hdr.machine} onChange={(e) => updateHdrField("machine", e.target.value)} />
-              </Field>
-              <Field label="Batch / Lot No.">
-                <input style={inp} value={hdr.batch} onChange={(e) => updateHdrField("batch", e.target.value)} placeholder="e.g. 26F27-14" />
-              </Field>
+              <label style={fieldLabel}>
+                Supervisor
+                <input
+                  style={{ ...inp, width: 140, marginTop: 4 }}
+                  value={hdr.supervisor}
+                  onChange={(e) => updateHdrField("supervisor", e.target.value)}
+                />
+              </label>
+
+              <label style={fieldLabel}>
+                Batch / lot
+                <input
+                  style={{ ...inp, width: 140, marginTop: 4, fontFamily: "var(--font-mono)" }}
+                  value={hdr.batch}
+                  onChange={(e) => updateHdrField("batch", e.target.value)}
+                  placeholder="e.g. 26F27-14"
+                />
+              </label>
             </div>
-          </Section>
 
-          <Section title="Additional Notes / Remarks">
-            <Field label="Remarks">
-              <textarea
-                style={{ ...inp, minHeight: 60, fontFamily: "inherit" }}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="General shift report remarks or notes..."
-              />
-            </Field>
-          </Section>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                gap: 12,
+                paddingTop: 12,
+                borderTop: "1px solid var(--border)",
+              }}
+            >
+              <label style={fieldLabel}>
+                Product
+                <input
+                  style={{ ...inp, marginTop: 4 }}
+                  value={hdr.product}
+                  onChange={(e) => updateHdrField("product", e.target.value)}
+                />
+              </label>
+              <label style={fieldLabel}>
+                Size (French)
+                <input
+                  style={{ ...inp, marginTop: 4 }}
+                  value={hdr.size}
+                  onChange={(e) => updateHdrField("size", e.target.value)}
+                />
+              </label>
+              <label style={fieldLabel}>
+                Machine
+                <input
+                  style={{ ...inp, marginTop: 4 }}
+                  value={hdr.machine}
+                  onChange={(e) => updateHdrField("machine", e.target.value)}
+                />
+              </label>
+              <label style={{ ...fieldLabel, gridColumn: "1 / -1" }}>
+                Remarks
+                <textarea
+                  style={{ ...inp, marginTop: 4, minHeight: 48, fontFamily: "inherit", resize: "vertical" }}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Optional notes for this period…"
+                />
+              </label>
+            </div>
+          </div>
 
           {t.grain === "fy" && (
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 16 }}>
@@ -379,12 +537,27 @@ export default function DataEntryPage() {
                 const year = month >= 4 ? fyStartYear : fyStartYear + 1;
                 const anchor = `${year}-${String(month).padStart(2, "0")}-01`;
                 const on = fyOpenMonth.slice(0, 7) === anchor.slice(0, 7);
-                const label = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][month - 1];
+                const label = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][
+                  month - 1
+                ];
                 return (
-                  <button key={anchor} onClick={() => { if (confirmLeavePeriodGrid()) setFyOpenMonth(anchor); }}
-                    style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border-strong)",
+                  <button
+                    key={anchor}
+                    type="button"
+                    onClick={() => {
+                      if (confirmLeavePeriodGrid()) setFyOpenMonth(anchor);
+                    }}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 8,
+                      border: "1px solid var(--border-strong)",
                       background: on ? "var(--accent)" : "var(--surface-2)",
-                      color: on ? "var(--text-invert)" : "var(--text-2)", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                      color: on ? "var(--text-invert)" : "var(--text-2)",
+                      fontWeight: 600,
+                      fontSize: 12,
+                      cursor: "pointer",
+                    }}
+                  >
                     {label}
                   </button>
                 );
@@ -405,140 +578,261 @@ export default function DataEntryPage() {
               }
             }}
             customFields={entryCustomFields}
-            blockedReason={hdr.operator.trim() ? null : "Operator name is required."}
+            blockedReason={hdr.operator.trim() ? null : "Enter the operator name before saving."}
             onDirtyChange={setMonthlyDirty}
           />
         </div>
       )}
 
       {activeTab === "ledger" && (
-        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 16 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <div
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: 12,
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              marginBottom: 16,
+              gap: 16,
+              flexWrap: "wrap",
+            }}
+          >
             <div>
-              <h2 style={{ fontFamily: "var(--font-display)", fontSize: 18, fontWeight: 800, margin: 0 }}>
+              <h2
+                style={{
+                  fontFamily: "var(--font-display)",
+                  fontSize: 18,
+                  fontWeight: 700,
+                  margin: 0,
+                }}
+              >
                 Everything entered so far
               </h2>
-              <p className="muted" style={{ fontSize: 12.5, margin: "4px 0 0", maxWidth: 560, lineHeight: 1.5 }}>
-                Every save, manual or imported. <strong>Edit</strong> loads a row back into the grid;{" "}
-                <strong>Delete</strong> erases it from the dashboard and the audit trail for good — useful
-                for clearing out test entries.
+              <p className="muted" style={{ fontSize: 13, margin: "4px 0 0", maxWidth: 560, lineHeight: 1.5 }}>
+                <strong>Open in period grid</strong> loads a row for revision.{" "}
+                <strong>Delete permanently</strong> erases it from the dashboard and audit trail —
+                useful for clearing test entries.
               </p>
             </div>
-            <div style={{ position: "relative", width: 300 }}>
+            <div style={{ position: "relative", width: "min(300px, 100%)" }}>
               <input
-                type="text"
-                placeholder="Search by date, batch, operator…"
+                type="search"
+                placeholder="Search date, batch, operator…"
                 value={ledgerSearch}
                 onChange={(e) => setLedgerSearch(e.target.value)}
-                style={{ ...inp, paddingRight: 32 }}
+                aria-label="Search entries"
+                style={{ ...inp, paddingRight: 12 }}
               />
-              <span style={{ position: "absolute", right: 10, top: 8, color: "var(--text-3)" }}>🔍</span>
             </div>
           </div>
 
-          <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ color: "var(--text-3)", textAlign: "left", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.03em", borderBottom: "1.5px solid var(--border-strong)" }}>
-                <th style={{ ...th, cursor: "pointer" }} onClick={() => toggleSort("date")}>Date {ledgerSort.col === "date" ? (ledgerSort.desc ? "▼" : "▲") : ""}</th>
-                <th style={{ ...th, cursor: "pointer" }} onClick={() => toggleSort("shift")}>Shift/Sheet {ledgerSort.col === "shift" ? (ledgerSort.desc ? "▼" : "▲") : ""}</th>
-                <th style={{ ...th, cursor: "pointer" }} onClick={() => toggleSort("source")}>Source {ledgerSort.col === "source" ? (ledgerSort.desc ? "▼" : "▲") : ""}</th>
-                <th style={{ ...th, cursor: "pointer" }} onClick={() => toggleSort("operator")}>Operator {ledgerSort.col === "operator" ? (ledgerSort.desc ? "▼" : "▲") : ""}</th>
-                <th style={{ ...th, cursor: "pointer" }} onClick={() => toggleSort("machine")}>Machine {ledgerSort.col === "machine" ? (ledgerSort.desc ? "▼" : "▲") : ""}</th>
-                <th style={{ ...th, cursor: "pointer" }} onClick={() => toggleSort("product")}>Product {ledgerSort.col === "product" ? (ledgerSort.desc ? "▼" : "▲") : ""}</th>
-                <th style={th}>Checked</th>
-                <th style={th}>Rejected</th>
-                <th style={th}>Rej %</th>
-                <th style={{ ...th, cursor: "pointer" }} onClick={() => toggleSort("recordedAt")}>Last Saved/Edited {ledgerSort.col === "recordedAt" ? (ledgerSort.desc ? "▼" : "▲") : ""}</th>
-                <th style={{ ...th, textAlign: "right" }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredLedger.length === 0 ? (
-                <tr>
-                  <td colSpan={11} style={{ ...td, textAlign: "center", padding: 24, color: "var(--text-3)" }}>
-                    No manual or uploaded entry records found matching search.
-                  </td>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
+              <thead>
+                <tr
+                  style={{
+                    color: "var(--text-3)",
+                    textAlign: "left",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    borderBottom: "1px solid var(--border-strong)",
+                  }}
+                >
+                  <th style={{ ...th, cursor: "pointer" }} onClick={() => toggleSort("date")}>
+                    Date {ledgerSort.col === "date" ? (ledgerSort.desc ? "▼" : "▲") : ""}
+                  </th>
+                  <th style={{ ...th, cursor: "pointer" }} onClick={() => toggleSort("shift")}>
+                    Shift / sheet {ledgerSort.col === "shift" ? (ledgerSort.desc ? "▼" : "▲") : ""}
+                  </th>
+                  <th style={{ ...th, cursor: "pointer" }} onClick={() => toggleSort("source")}>
+                    Source {ledgerSort.col === "source" ? (ledgerSort.desc ? "▼" : "▲") : ""}
+                  </th>
+                  <th style={{ ...th, cursor: "pointer" }} onClick={() => toggleSort("operator")}>
+                    Operator {ledgerSort.col === "operator" ? (ledgerSort.desc ? "▼" : "▲") : ""}
+                  </th>
+                  <th style={{ ...th, cursor: "pointer" }} onClick={() => toggleSort("machine")}>
+                    Machine {ledgerSort.col === "machine" ? (ledgerSort.desc ? "▼" : "▲") : ""}
+                  </th>
+                  <th style={{ ...th, cursor: "pointer" }} onClick={() => toggleSort("product")}>
+                    Product {ledgerSort.col === "product" ? (ledgerSort.desc ? "▼" : "▲") : ""}
+                  </th>
+                  <th style={th}>Checked</th>
+                  <th style={th}>Rejected</th>
+                  <th style={th}>Rej %</th>
+                  <th style={{ ...th, cursor: "pointer" }} onClick={() => toggleSort("recordedAt")}>
+                    Last saved {ledgerSort.col === "recordedAt" ? (ledgerSort.desc ? "▼" : "▲") : ""}
+                  </th>
+                  <th style={{ ...th, textAlign: "right" }}>Actions</th>
                 </tr>
-              ) : (
-                filteredLedger.map((rec, idx) => {
-                  let chk = 0;
-                  let rej = 0;
-                  Object.values(rec.stageData).forEach((sData: any) => {
-                    chk += Number(sData["Checked Qty"]) || 0;
-                    rej += Number(sData["Rejected Qty"]) || 0;
-                  });
-                  const rate = chk ? (rej / chk) * 100 : 0;
-
-                  return (
-                    <tr key={idx} style={{ borderBottom: "1px solid var(--border)", background: idx % 2 === 0 ? "transparent" : "var(--surface-2)" }}>
-                      <td style={{ ...td, fontWeight: 700 }}>{rec.date}</td>
-                      <td style={td}>{rec.shift}</td>
-                      <td style={td}>
-                        <span style={{
-                          fontSize: 11,
-                          padding: "2px 6px",
-                          borderRadius: 4,
-                          background: rec.source === "Direct Entry" ? "var(--accent-weak)" : "var(--surface-3)",
-                          color: rec.source === "Direct Entry" ? "var(--accent-text)" : "var(--text-2)",
-                          fontWeight: 600
-                        }}>
-                          {rec.source}
-                        </span>
-                      </td>
-                      <td style={td}>{rec.operator}</td>
-                      <td style={td}>{rec.machine}</td>
-                      <td style={td}>{rec.product} ({rec.size})</td>
-                      <td style={{ ...td, fontFamily: "var(--font-mono)" }}>{chk.toLocaleString()}</td>
-                      <td style={{ ...td, fontFamily: "var(--font-mono)", color: "var(--status-bad)" }}>{rej.toLocaleString()}</td>
-                      <td style={{ ...td, fontFamily: "var(--font-mono)", color: rate > 10 ? "var(--status-bad)" : "inherit" }}>{rate.toFixed(2)}%</td>
-                      <td style={td}>
-                        {rec.recordedAt ? new Date(rec.recordedAt).toLocaleString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit"
-                        }) : "—"}
-                      </td>
-                      <td style={{ ...td, textAlign: "right" }}>
-                        <div style={{ display: "inline-flex", gap: 8 }}>
+              </thead>
+              <tbody>
+                {filteredLedger.length === 0 ? (
+                  <tr>
+                    <td colSpan={11} style={{ ...td, textAlign: "center", padding: 32, color: "var(--text-3)" }}>
+                      {ledgerEmpty ? (
+                        <span style={{ lineHeight: 1.5 }}>
+                          No entries yet.
+                          <br />
                           <button
-                            onClick={() => handleEditLedgerRecord(rec)}
-                            style={{ background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: 12, fontWeight: 700 }}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDuplicateLedgerRecord(rec)}
-                            style={{ background: "transparent", border: "none", color: "var(--status-good)", cursor: "pointer", fontSize: 12, fontWeight: 700 }}
-                          >
-                            Duplicate
-                          </button>
-                          {/* Outlined, not a bare link — an erase must not look
-                              like Edit and Duplicate sitting next to it. */}
-                          <button
-                            onClick={() => handleDeleteLedgerRecord(rec)}
-                            title="Erase this entry from the ledger — cannot be undone"
+                            type="button"
+                            onClick={() => switchTab("matrix")}
                             style={{
-                              background: "transparent",
-                              border: "1px solid color-mix(in srgb, var(--status-bad) 45%, transparent)",
-                              borderRadius: 9999,
-                              padding: "3px 12px",
-                              color: "var(--status-bad)",
-                              cursor: "pointer",
-                              fontSize: 12,
+                              marginTop: 10,
+                              background: "var(--accent)",
+                              color: "var(--text-invert)",
+                              border: "none",
+                              borderRadius: 8,
+                              padding: "8px 14px",
                               fontWeight: 700,
+                              fontSize: 13,
+                              cursor: "pointer",
                             }}
                           >
-                            Delete
+                            Log a batch
                           </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                        </span>
+                      ) : searchActive ? (
+                        <>No matches for &ldquo;{ledgerSearch.trim()}&rdquo;.</>
+                      ) : (
+                        <>No entries match.</>
+                      )}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredLedger.map((rec, idx) => {
+                    let chk = 0;
+                    let rej = 0;
+                    Object.values(rec.stageData).forEach((sData: any) => {
+                      chk += Number(sData["Checked Qty"]) || 0;
+                      rej += Number(sData["Rejected Qty"]) || 0;
+                    });
+                    const rate = chk ? (rej / chk) * 100 : 0;
+
+                    return (
+                      <tr
+                        key={idx}
+                        style={{
+                          borderBottom: "1px solid var(--border)",
+                          background: idx % 2 === 0 ? "transparent" : "var(--surface-2)",
+                        }}
+                      >
+                        <td style={{ ...td, fontWeight: 700, color: "var(--text)" }}>{rec.date}</td>
+                        <td style={td}>{rec.shift}</td>
+                        <td style={td}>
+                          <span
+                            style={{
+                              fontSize: 12,
+                              padding: "2px 8px",
+                              borderRadius: 9999,
+                              background:
+                                rec.source === "Direct Entry" ? "var(--accent-weak)" : "var(--surface-3)",
+                              color:
+                                rec.source === "Direct Entry" ? "var(--accent-text)" : "var(--text-2)",
+                              fontWeight: 600,
+                            }}
+                          >
+                            {rec.source}
+                          </span>
+                        </td>
+                        <td style={td}>{rec.operator}</td>
+                        <td style={td}>{rec.machine}</td>
+                        <td style={td}>
+                          {rec.product} ({rec.size})
+                        </td>
+                        <td style={{ ...td, fontFamily: "var(--font-mono)", color: "var(--text)" }}>
+                          {chk.toLocaleString()}
+                        </td>
+                        <td
+                          style={{
+                            ...td,
+                            fontFamily: "var(--font-mono)",
+                            color: rej > 0 ? "var(--status-bad)" : "var(--text-2)",
+                            fontWeight: rej > 0 ? 600 : 400,
+                          }}
+                        >
+                          {rej.toLocaleString()}
+                        </td>
+                        <td
+                          style={{
+                            ...td,
+                            fontFamily: "var(--font-mono)",
+                            color: rate > 10 ? "var(--status-bad)" : "inherit",
+                          }}
+                        >
+                          {rate.toFixed(2)}%
+                        </td>
+                        <td style={td}>
+                          {rec.recordedAt
+                            ? new Date(rec.recordedAt).toLocaleString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })
+                            : "—"}
+                        </td>
+                        <td style={{ ...td, textAlign: "right" }}>
+                          <div style={{ display: "inline-flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                            <button
+                              type="button"
+                              onClick={() => handleEditLedgerRecord(rec)}
+                              style={{
+                                background: "transparent",
+                                border: "none",
+                                color: "var(--accent)",
+                                cursor: "pointer",
+                                fontSize: 12,
+                                fontWeight: 700,
+                              }}
+                            >
+                              Open in period grid
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDuplicateLedgerRecord(rec)}
+                              style={{
+                                background: "transparent",
+                                border: "none",
+                                color: "var(--text-2)",
+                                cursor: "pointer",
+                                fontSize: 12,
+                                fontWeight: 600,
+                              }}
+                            >
+                              Duplicate
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteLedgerRecord(rec)}
+                              title="Erase this entry from the ledger — cannot be undone"
+                              style={{
+                                background: "transparent",
+                                border: "1px solid color-mix(in srgb, var(--status-bad) 45%, transparent)",
+                                borderRadius: 9999,
+                                padding: "3px 12px",
+                                color: "var(--status-bad)",
+                                cursor: "pointer",
+                                fontSize: 12,
+                                fontWeight: 700,
+                              }}
+                            >
+                              Delete permanently
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </AppShell>
@@ -560,6 +854,9 @@ function TabButton({
 }) {
   return (
     <button
+      type="button"
+      role="tab"
+      aria-selected={active}
       onClick={onClick}
       style={{
         padding: "8px 16px",
@@ -577,43 +874,36 @@ function TabButton({
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div style={{ border: "1px solid var(--border)", borderRadius: 12, background: "var(--surface)", padding: 16, marginBottom: 16 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>{title}</div>
-      {children}
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label style={{ display: "block" }}>
-      <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>{label}</div>
-      {children}
-    </label>
-  );
-}
+const fieldLabel: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 600,
+  color: "var(--text-2)",
+  display: "flex",
+  flexDirection: "column",
+  gap: 0,
+};
 
 const inp: React.CSSProperties = {
   width: "100%",
-  padding: "7px 10px",
+  padding: "8px 10px",
   borderRadius: 8,
   border: "1px solid var(--border)",
   background: "var(--bg)",
   color: "var(--text)",
   fontSize: 13,
   fontFamily: "inherit",
-  outline: "none"
+  outline: "none",
+  boxSizing: "border-box",
 };
 
 const th: React.CSSProperties = {
   padding: "10px 12px",
   fontWeight: 600,
-  borderBottom: "1px solid var(--border)"
+  borderBottom: "1px solid var(--border)",
+  whiteSpace: "nowrap",
 };
 
 const td: React.CSSProperties = {
   padding: "10px 12px",
-  color: "var(--text-2)"
+  color: "var(--text-2)",
 };

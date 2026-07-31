@@ -15,10 +15,15 @@ import { canApprove, isPersonaId } from "@/lib/persona";
 export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
-  const status = req.nextUrl.searchParams.get("status") ?? "open";
+  const statusParam = req.nextUrl.searchParams.get("status") ?? "open";
   const type = req.nextUrl.searchParams.get("type") as NotificationType | null;
+  const status =
+    statusParam === "all" || statusParam === "closed" || statusParam === "open" ||
+    statusParam === "acked" || statusParam === "approved" || statusParam === "denied"
+      ? statusParam
+      : "open";
   const list = listNotifications({
-    status: status === "all" ? "all" : (status as "open"),
+    status: status as "open" | "all" | "closed" | "acked" | "approved" | "denied",
     type: type || undefined,
   });
   return NextResponse.json({ notifications: list, openCount: openCount() });
@@ -53,6 +58,7 @@ export async function PATCH(req: NextRequest) {
     const id = body?.id as string | undefined;
     const action = body?.action as "ack" | "approve" | "deny" | undefined;
     const actorPersona = body?.actorPersona as string | undefined;
+    const note = typeof body?.note === "string" ? body.note : undefined;
 
     if (!id || !action) {
       return NextResponse.json({ error: "id and action required" }, { status: 400 });
@@ -61,17 +67,30 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "invalid action" }, { status: 400 });
     }
 
-    // Approve/deny require GM capability (interim persona header honesty).
-    if ((action === "approve" || action === "deny") && (!isPersonaId(actorPersona) || !canApprove(actorPersona))) {
-      return NextResponse.json({ error: "Only GM may approve or deny" }, { status: 403 });
+    // Any resolution action requires GM approve capability (interim persona honesty).
+    if (!isPersonaId(actorPersona) || !canApprove(actorPersona)) {
+      return NextResponse.json(
+        { error: "Only GM may acknowledge, approve, or deny alerts" },
+        { status: 403 },
+      );
     }
 
     const existing = listNotifications({ status: "all" }).find((n) => n.id === id);
     if (!existing) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }
+    if (existing.status !== "open") {
+      return NextResponse.json(
+        { error: `Already ${existing.status} by ${existing.resolvedBy ?? "someone"}` },
+        { status: 409 },
+      );
+    }
 
-    const updated = patchNotification(id, action);
+    const updated = patchNotification(id, {
+      action,
+      actor: actorPersona,
+      note,
+    });
     if (!updated) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }

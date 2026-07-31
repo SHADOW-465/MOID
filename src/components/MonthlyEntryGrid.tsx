@@ -4,9 +4,9 @@
 // Spreadsheet-style entry surface for /data-entry — one row per calendar day
 // of a selected period, for a chosen Stage (+ Size for size-wise stages).
 //
-// Grid definition comes from GET /api/entry-template (verified MOD layout +
-// per-stage capture/defect columns). Never from a company-wide hardcoded
-// defect catalog or /api/schema registry shim.
+// Grid definition comes from GET /api/entry-template — a projection of the
+// company catalog (stages, their capture columns, their own defect set).
+// Edited on Data Schema, never inferred here and never hardcoded.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StageDayRecord } from "@/lib/ingest/emit";
@@ -17,7 +17,7 @@ import { type EntryGrain, resolvePeriod, stepPeriod, periodLabel } from "@/lib/e
 import QtyInput from "@/components/entry/QtyInput";
 
 type TemplateColumn = { key: string; label: string; type: "number"; required: boolean };
-type TemplateDefect = { defectCode: string; label: string; sources?: string[] };
+type TemplateDefect = { defectCode: string; label: string };
 type TemplateStage = {
   stageId: string;
   label: string;
@@ -25,17 +25,11 @@ type TemplateStage = {
   isQualityGate: boolean;
   columns: TemplateColumn[];
   defects: TemplateDefect[];
-  layout: {
-    sheet: string;
-    tableId: string;
-    headerRows: (string | number | null)[][];
-    merges: unknown[];
-  } | null;
 };
 type EntryTemplate = {
   stages: TemplateStage[];
   sizes: { sizeId: string; label: string }[];
-  generatedFrom?: { modId: string; version: number; fileName: string }[];
+  source?: string;
 };
 
 /** Record field keyed by entry-template column key. */
@@ -450,8 +444,8 @@ export default function MonthlyEntryGrid({
         }
       }
       setSuccess(
-        `${payload.length} day(s) saved for ${rangeLabel}.` +
-          (mismatches.length ? ` ${mismatches.length} logged as unreconciled with your reason.` : ""),
+        `On the ledger · ${payload.length} day(s) · ${rangeLabel}` +
+          (mismatches.length ? ` · ${mismatches.length} unreconciled with your reason` : ""),
       );
       setReconcileReason("");
       setDirty(false);
@@ -470,6 +464,12 @@ export default function MonthlyEntryGrid({
     const hit = rec.defects.find((x) => defectMatches(x.raw, d.defectCode, d.label));
     return hit != null ? hit.value : null;
   };
+
+  useEffect(() => {
+    if (!success) return;
+    const id = window.setTimeout(() => setSuccess(null), 4800);
+    return () => window.clearTimeout(id);
+  }, [success]);
 
   if (templateLoading) {
     return <div className="muted" style={{ padding: 48, textAlign: "center" }}>Loading entry template…</div>;
@@ -513,10 +513,7 @@ export default function MonthlyEntryGrid({
     );
   }
 
-  const sourceHint =
-    template.generatedFrom?.length
-      ? template.generatedFrom.map((g) => g.fileName).slice(0, 3).join(", ")
-      : null;
+  const sourceHint = template.source ?? null;
 
   return (
     <div>
@@ -560,12 +557,13 @@ export default function MonthlyEntryGrid({
           </span>
         )}
         <button
+          type="button"
           onClick={saveMonth}
           disabled={saving || invalidCount > 0 || !!blockedReason || needsReason}
           style={{
             marginLeft: "auto",
-            background: "var(--status-good)",
-            color: "#fff",
+            background: "var(--accent)",
+            color: "var(--text-invert)",
             border: "none",
             borderRadius: 9999,
             padding: "8px 20px",
@@ -579,10 +577,10 @@ export default function MonthlyEntryGrid({
           {saving
             ? "Saving…"
             : grain === "day"
-              ? "Save Day"
+              ? "Save day to ledger"
               : grain === "week"
-                ? "Save Week"
-                : "Save Month"}
+                ? "Save week to ledger"
+                : "Save month to ledger"}
         </button>
         {sourceHint && (
           <span className="muted" style={{ fontSize: 11, maxWidth: 220, textAlign: "right" }} title={sourceHint}>
@@ -618,7 +616,7 @@ export default function MonthlyEntryGrid({
           }}
         >
           <div style={{ fontWeight: 700, marginBottom: 6 }}>
-            {mismatches.length} day(s) don&apos;t reconcile
+            Defect counts don&apos;t add up on {mismatches.length} day{mismatches.length === 1 ? "" : "s"}
           </div>
           <ul style={{ margin: "0 0 10px 0", paddingLeft: 18, fontFamily: "var(--font-mono)", fontSize: 12 }}>
             {mismatches.map((m) => (
@@ -682,9 +680,9 @@ export default function MonthlyEntryGrid({
               style={{
                 color: "var(--text-3)",
                 background: "var(--surface-2)",
-                fontSize: 10,
-                textTransform: "uppercase",
-                borderBottom: "1.5px solid var(--border-strong)",
+                fontSize: 12,
+                fontWeight: 600,
+                borderBottom: "1px solid var(--border-strong)",
               }}
             >
               <th
@@ -709,10 +707,7 @@ export default function MonthlyEntryGrid({
                 <th
                   key={d.defectCode}
                   style={eth}
-                  title={
-                    `${i + 1}. ${d.label} (${d.defectCode})` +
-                    (d.sources?.length ? ` — from ${d.sources.join(", ")}` : "")
-                  }
+                  title={`${i + 1}. ${d.label} (${d.defectCode})`}
                 >
                   {/* Schema label, not the code — a rename on Data Schema has to
                       be visible here, and the ordinal matches the sheet order. */}
@@ -858,31 +853,7 @@ export default function MonthlyEntryGrid({
         </div>
       )}
 
-      <div style={{ display: "flex", justifyContent: "center", marginTop: 16 }}>
-        <button
-          onClick={saveMonth}
-          disabled={saving || invalidCount > 0 || !!blockedReason || needsReason}
-          style={{
-            background: "var(--status-good)",
-            color: "#fff",
-            border: "none",
-            borderRadius: 9,
-            padding: "10px 22px",
-            fontSize: 14,
-            fontWeight: 700,
-            cursor: saving || invalidCount > 0 || blockedReason || needsReason ? "not-allowed" : "pointer",
-            opacity: saving || invalidCount > 0 || blockedReason || needsReason ? 0.6 : 1,
-          }}
-        >
-          {saving
-            ? "Saving…"
-            : grain === "day"
-              ? "Save Day"
-              : grain === "week"
-                ? "Save Week"
-                : "Save Month"}
-        </button>
-      </div>
+      {/* Primary save lives in the period toolbar above the grid */}
     </div>
   );
 }

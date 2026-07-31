@@ -5,6 +5,8 @@ import type {
   PlantNotification,
   NotificationStatus,
   NotificationType,
+  NotificationActionKind,
+  NotificationHistoryEntry,
 } from "./types";
 
 const STORAGE_KEY = "moid_notifications";
@@ -16,6 +18,12 @@ type CreateInput = {
   createdBy: string;
   targetPersona?: PlantNotification["targetPersona"];
   payload: PlantNotification["payload"];
+};
+
+type PatchInput = {
+  action: NotificationActionKind;
+  actor?: string;
+  note?: string;
 };
 
 // Server-side / test process memory
@@ -46,8 +54,14 @@ function toBrowser(list: PlantNotification[]): void {
 
 function all(): PlantNotification[] {
   const browser = fromBrowser();
-  if (browser) return browser;
-  return mem();
+  if (browser) return browser.map(normalize);
+  return mem().map(normalize);
+}
+
+/** Older stored rows may lack history[] — fill defaults without dropping data. */
+function normalize(n: PlantNotification): PlantNotification {
+  const history = Array.isArray(n.history) ? n.history : [];
+  return { ...n, history };
 }
 
 function write(list: PlantNotification[]): void {
@@ -56,12 +70,16 @@ function write(list: PlantNotification[]): void {
 }
 
 export function listNotifications(filter?: {
-  status?: NotificationStatus | "all";
+  status?: NotificationStatus | "all" | "closed";
   type?: NotificationType;
 }): PlantNotification[] {
   let list = all().slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   if (filter?.status && filter.status !== "all") {
-    list = list.filter((n) => n.status === filter.status);
+    if (filter.status === "closed") {
+      list = list.filter((n) => n.status !== "open");
+    } else {
+      list = list.filter((n) => n.status === filter.status);
+    }
   }
   if (filter?.type) list = list.filter((n) => n.type === filter.type);
   return list;
@@ -84,24 +102,43 @@ export function createNotification(input: CreateInput): PlantNotification {
     createdBy: input.createdBy,
     targetPersona: input.targetPersona ?? "gm",
     payload: input.payload,
+    history: [],
   };
   write([n, ...all()]);
   return n;
 }
 
-export function patchNotification(
-  id: string,
-  action: "ack" | "approve" | "deny",
-): PlantNotification | null {
+export function patchNotification(id: string, input: PatchInput | NotificationActionKind): PlantNotification | null {
+  const patch: PatchInput =
+    typeof input === "string" ? { action: input } : input;
+
   const list = all();
   const idx = list.findIndex((n) => n.id === id);
   if (idx < 0) return null;
+
+  const now = new Date().toISOString();
+  const actor = (patch.actor ?? "gm").trim() || "gm";
+  const note = patch.note?.trim() || undefined;
+
   const status: NotificationStatus =
-    action === "ack" ? "acked" : action === "approve" ? "approved" : "denied";
-  const next = {
-    ...list[idx],
+    patch.action === "ack" ? "acked" : patch.action === "approve" ? "approved" : "denied";
+
+  const entry: NotificationHistoryEntry = {
+    action: patch.action,
+    at: now,
+    by: actor,
+    ...(note ? { note } : {}),
+  };
+
+  const prev = list[idx];
+  const next: PlantNotification = {
+    ...prev,
     status,
-    updatedAt: new Date().toISOString(),
+    updatedAt: now,
+    history: [...(prev.history ?? []), entry],
+    resolvedBy: actor,
+    resolvedAt: now,
+    resolutionNote: note,
   };
   const copy = list.slice();
   copy[idx] = next;
