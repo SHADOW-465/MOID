@@ -6,6 +6,7 @@ import AppShell from "@/components/app/AppShell";
 import { useEvents } from "@/components/app/EventsContext";
 import BatchMatrixEntry from "@/components/BatchMatrixEntry";
 import EntryHistory from "@/components/EntryHistory";
+import Tabs from "@/components/ui/Tabs";
 import type { AuditEntryRow, AuditEventLike } from "@/lib/analytics/audit-sessions";
 
 type EntryMode = "matrix" | "history";
@@ -77,17 +78,16 @@ export default function DataEntryPage() {
         </p>
       </header>
 
-      <div
-        role="tablist"
-        aria-label="Data entry mode"
-        style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 16 }}
-      >
-        <TabButton active={activeTab === "matrix"} onClick={() => setActiveTab("matrix")} first>
-          Log a batch
-        </TabButton>
-        <TabButton active={activeTab === "history"} onClick={() => setActiveTab("history")} last>
-          History
-        </TabButton>
+      <div style={{ marginBottom: 16 }}>
+        <Tabs
+          ariaLabel="Data entry mode"
+          active={activeTab}
+          onSelect={(id) => setActiveTab(id as EntryMode)}
+          items={[
+            { id: "matrix", label: "Log a batch" },
+            { id: "history", label: "History" },
+          ]}
+        />
       </div>
 
       {success && (
@@ -139,43 +139,5 @@ export default function DataEntryPage() {
         <EntryHistory events={(events ?? []) as AuditEventLike[]} onReuse={handleReuse} />
       )}
     </AppShell>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-  first,
-  last,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-  first?: boolean;
-  last?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      onClick={onClick}
-      style={{
-        padding: "8px 16px",
-        minHeight: 36,
-        border: "none",
-        borderRadius: first ? "8px 0 0 8px" : last ? "0 8px 8px 0" : 0,
-        background: active ? "var(--accent)" : "var(--surface-2)",
-        color: active ? "var(--text-invert)" : "var(--text-2)",
-        fontWeight: 700,
-        fontSize: "var(--text-sm)",
-        fontFamily: "inherit",
-        cursor: "pointer",
-        transition: "background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out)",
-      }}
-    >
-      {children}
-    </button>
   );
 }

@@ -769,14 +769,17 @@ export default function AppShell({
   const toggleBtnColor = "var(--text-2)";
 
   return (
-    <div style={{ 
+    <div className="app-shell" style={{ 
       minHeight: "100vh", 
       background: "var(--bg)", 
       color: "var(--text)", 
       display: "grid", 
+      // minmax(0, 1fr), not 1fr: a bare 1fr track refuses to shrink below its
+      // content, so the topbar's pill cluster pushed the whole page wider than
+      // the viewport on narrow screens.
       gridTemplateColumns: sidebarCollapsed 
-        ? "calc(48px + var(--space-4)) 1fr" 
-        : "calc(180px + var(--space-4)) 1fr", 
+        ? "calc(48px + var(--space-4)) minmax(0, 1fr)" 
+        : "calc(180px + var(--space-4)) minmax(0, 1fr)", 
       gridTemplateRows: "calc(var(--header-h) + var(--space-4)) 1fr calc(var(--footer-h) + var(--space-4))", 
       gridTemplateAreas: `"side top" "side main" "side status"`,
       transition: "grid-template-columns 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)"
@@ -1035,7 +1038,7 @@ export default function AppShell({
       </aside>
 
       {/* Topbar / Masthead */}
-      <header style={{ 
+      <header className="app-topbar" style={{ 
         gridArea: "top", 
         background: "var(--bg)", 
         margin: "var(--space-4) var(--space-4) 0 var(--space-4)", 

@@ -96,10 +96,17 @@
   --critical:      #F87171;
   --critical-weak: rgba(248, 113, 113, 0.1);
 
-  /* Elevation */
-  --shadow-1: 0 0 0 transparent;
-  --shadow-2: 0 0 0 transparent;
-  --shadow-3: 0 0 0 transparent;
+  /* Elevation.
+     These were all `0 0 0 transparent`, so in dark mode a hovered card, an
+     open menu and a modal had no depth cue at all — every raised surface sat
+     flat on the page. Dark UI can't lean on soft grey shadows, so elevation
+     is carried by a light top hairline plus a deeper cast below. */
+  --shadow-1: 0 1px 0 rgba(255,255,255,0.03) inset,
+              0 1px 2px rgba(0,0,0,0.4);
+  --shadow-2: 0 1px 0 rgba(255,255,255,0.04) inset,
+              0 4px 10px -2px rgba(0,0,0,0.55);
+  --shadow-3: 0 1px 0 rgba(255,255,255,0.05) inset,
+              0 14px 32px -8px rgba(0,0,0,0.7);
 
   /* Data-visualization dark palette */
   --viz-1: #FF6B3D;
@@ -601,6 +608,38 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .tracked-tight { letter-spacing: -0.015em; }
 .tracked-wide  { letter-spacing: 0.04em; }
 .hidden { display: none !important; }
+
+/* =========================================================
+   App shell — narrow viewports
+   =========================================================
+   The topbar's scope pills + jump + role + export cluster is ~580px wide and
+   cannot shrink; on a phone it pushed the whole page into horizontal scroll.
+   The cluster scrolls inside its own track instead, and the page never does.
+*/
+html, body { overflow-x: clip; }
+
+.app-topbar {
+  gap: var(--space-3);
+  min-width: 0;
+}
+.app-topbar > * { min-width: 0; }
+
+@media (max-width: 900px) {
+  /* The row itself scrolls; the document does not. */
+  .app-topbar {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    justify-content: flex-start;
+  }
+  .app-topbar::-webkit-scrollbar { display: none; }
+  .app-topbar > * { flex: 0 0 auto; }
+
+  /* Sidebar drops to the icon rail — 180px of labels is not worth a third of
+     a phone screen. */
+  .app-shell { grid-template-columns: calc(48px + var(--space-4)) minmax(0, 1fr) !important; }
+  .app-shell > aside { width: 48px !important; }
+}
 
 *::-webkit-scrollbar { width: 8px; height: 8px; }
 *::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
