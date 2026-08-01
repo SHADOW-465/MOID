@@ -20,12 +20,13 @@ import {
   filterEntryRows,
   groupByBatchThenStage,
   isDirectEntry,
+  batchFiguresInconsistent,
   type AuditBatchGroup,
   type AuditEntryRow,
   type AuditEventLike,
 } from "@/lib/analytics/audit-sessions";
 import { buildBatchProgress, progressFor } from "@/lib/analytics/batch-progress";
-import LotProgress, { lotStatusTone } from "@/components/LotProgress";
+import LotProgress from "@/components/LotProgress";
 import { usePersona } from "@/components/app/PersonaContext";
 
 type SourceScope = "mine" | "all";
@@ -41,6 +42,43 @@ const STAGE_LABEL: Record<string, string> = {
 };
 
 const stageLabel = (id: string) => STAGE_LABEL[id] ?? id;
+
+/** One column template for the list header and every row, so figures align. */
+/** "15–31 Jul" / "15 Jul – 2 Aug" / "15 Jul". */
+function compactRange(from: string, to: string): string {
+  const fmt = (iso: string, withMonth: boolean) => {
+    const d = new Date(`${iso}T00:00:00Z`);
+    if (Number.isNaN(d.getTime())) return iso;
+    const day = d.getUTCDate();
+    return withMonth
+      ? `${day} ${d.toLocaleString("en", { month: "short", timeZone: "UTC" })}`
+      : String(day);
+  };
+  if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(from)) return from;
+  if (from === to) return fmt(from, true);
+  const sameMonth = from.slice(0, 7) === to.slice(0, 7);
+  return `${fmt(from, !sameMonth)}–${fmt(to, true)}`;
+}
+
+const HISTORY_COLS = "16px minmax(92px, 1.1fr) minmax(96px, 0.9fr) 150px 76px 76px 76px";
+
+/** Right-aligned tabular figure; a zero reads as a dash, not a loud 0. */
+function Cell({ value, tone }: { value: number; tone?: string }) {
+  return (
+    <span
+      style={{
+        fontFamily: "var(--font-mono)",
+        fontSize: "var(--text-sm)",
+        fontWeight: value > 0 ? 600 : 400,
+        color: value > 0 ? (tone ?? "var(--text)") : "var(--text-3)",
+        textAlign: "right",
+        fontVariantNumeric: "tabular-nums",
+      }}
+    >
+      {value > 0 ? value.toLocaleString() : "\u2014"}
+    </span>
+  );
+}
 
 function fmtDate(iso: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
@@ -223,6 +261,30 @@ export default function EntryHistory({
         <EmptyState searching={searching} query={search.trim()} scope={scope} />
       ) : (
         <div>
+          <div
+            aria-hidden="true"
+            style={{
+              display: "grid",
+              gridTemplateColumns: HISTORY_COLS,
+              gap: 12,
+              padding: "6px var(--pad-card)",
+              borderBottom: "1px solid var(--border)",
+              background: "var(--surface-2)",
+              fontSize: "var(--text-2xs)",
+              fontWeight: 600,
+              letterSpacing: "var(--tracking-label)",
+              textTransform: "uppercase",
+              color: "var(--text-3)",
+            }}
+          >
+            <span />
+            <span>Batch</span>
+            <span>Dates</span>
+            <span>Gates</span>
+            <span style={{ textAlign: "right" }}>Checked</span>
+            <span style={{ textAlign: "right" }}>Accepted</span>
+            <span style={{ textAlign: "right" }}>Rejected</span>
+          </div>
           {groups.map((g) => (
             <HistoryBatch
               key={g.batch}
@@ -258,8 +320,8 @@ function HistoryBatch({
   canErase: boolean;
 }) {
   const noBatch = g.batch === "(no batch)";
-  const tone = progress ? lotStatusTone(progress) : null;
-  const dateLine = g.dateFrom === g.dateTo ? fmtDate(g.dateFrom) : `${fmtDate(g.dateFrom)} → ${fmtDate(g.dateTo)}`;
+  const dateLine = compactRange(g.dateFrom, g.dateTo);
+  const impossible = batchFiguresInconsistent(g);
 
   return (
     <article className="audit-row" style={{ borderTop: "1px solid var(--border)" }}>
@@ -269,12 +331,13 @@ function HistoryBatch({
         aria-expanded={open}
         style={{
           width: "100%",
-          display: "flex",
+          display: "grid",
+          gridTemplateColumns: HISTORY_COLS,
           alignItems: "center",
-          gap: 14,
-          padding: "12px var(--pad-card)",
+          gap: 12,
+          padding: "9px var(--pad-card)",
           border: "none",
-          background: open ? "var(--accent-weak)" : "transparent",
+          background: open ? "var(--surface-2)" : "transparent",
           cursor: "pointer",
           fontFamily: "inherit",
           textAlign: "left",
@@ -284,53 +347,51 @@ function HistoryBatch({
         <span
           aria-hidden="true"
           style={{
-            flexShrink: 0,
             width: 16,
-            color: tone?.color ?? "var(--text-3)",
-            fontSize: 11,
+            color: "var(--text-3)",
+            fontSize: 9,
             transform: open ? "rotate(90deg)" : "none",
             transition: "transform var(--duration-fast) var(--ease-out)",
           }}
         >
-          ▶
+          &#9654;
         </span>
 
-        <div style={{ flex: 1, minWidth: 0, display: "grid", gap: 6 }}>
-          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "4px 10px" }}>
+        <span
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: "var(--text-md)",
+            fontWeight: 700,
+            letterSpacing: "0.03em",
+            color: noBatch ? "var(--text-3)" : "var(--text)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {noBatch ? "No batch id" : g.batch}
+          {impossible && (
             <span
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: "var(--text-lg)",
-                fontWeight: 700,
-                letterSpacing: "0.04em",
-                color: noBatch ? "var(--text-3)" : "var(--text)",
-              }}
+              title="Accepted is higher than checked — a gate is missing from this lot, so the two figures cover different lots. Open it to see which gate."
+              style={{ marginLeft: 6, color: "var(--warning)", fontFamily: "var(--font-sans)" }}
             >
-              {noBatch ? "No batch id" : g.batch}
+              &#9888;
             </span>
-            <span className="muted" style={{ fontSize: "var(--text-sm)" }}>{dateLine}</span>
-          </div>
-
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", fontSize: "var(--text-sm)", color: "var(--text-2)" }}>
-            <span>
-              <Num>{g.checkedQty.toLocaleString()}</Num> checked
-            </span>
-            <span>
-              <Num tone="var(--positive)">{g.acceptedQty.toLocaleString()}</Num> accepted
-            </span>
-            {g.rejectedQty > 0 && (
-              <span>
-                <Num tone="var(--critical)">{g.rejectedQty.toLocaleString()}</Num> rejected
-              </span>
-            )}
-          </div>
-
-          {progress && progress.doneCount > 0 && (
-            <div style={{ maxWidth: 340 }}>
-              <LotProgress progress={progress} showLabels={open} />
-            </div>
           )}
-        </div>
+        </span>
+
+        <span className="muted" style={{ fontSize: "var(--text-xs)", whiteSpace: "nowrap" }}>
+          {dateLine}
+        </span>
+
+        <span style={{ minWidth: 0 }}>
+          {progress && progress.doneCount > 0 && (
+            <LotProgress progress={progress} showLabels={false} />
+          )}
+        </span>
+
+        <Cell value={g.checkedQty} />
+        <Cell value={g.acceptedQty} tone="var(--positive)" />
+        <Cell value={g.rejectedQty} tone="var(--critical)" />
       </button>
 
       {open && (

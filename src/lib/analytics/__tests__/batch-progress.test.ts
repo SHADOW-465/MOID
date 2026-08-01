@@ -1,5 +1,5 @@
 import { buildBatchProgress, progressFor, ASSEMBLY_GATES } from "../batch-progress";
-import type { AuditEventLike } from "../audit-sessions";
+import { batchFiguresInconsistent, type AuditEventLike } from "../audit-sessions";
 
 const ev = (
   batch: string,
@@ -83,4 +83,14 @@ test("events with no batch are skipped; unknown lot returns null", () => {
   const map = buildBatchProgress([ev("", "visual", "2026-06-27")]);
   expect(map.size).toBe(0);
   expect(progressFor(map, "26F27-14")).toBeNull();
+});
+
+test("a batch whose accepted exceeds its checked is flagged, not printed as fine", () => {
+  // Real shape from the ledger: a skipped gate stops the cascade, so the last
+  // gate's own larger lot count lands in acceptedQty.
+  expect(batchFiguresInconsistent({ checkedQty: 2330, acceptedQty: 2353 })).toBe(true);
+  expect(batchFiguresInconsistent({ checkedQty: 6350, acceptedQty: 5738 })).toBe(false);
+  expect(batchFiguresInconsistent({ checkedQty: 100, acceptedQty: 100 })).toBe(false);
+  // No lot in yet — nothing to contradict.
+  expect(batchFiguresInconsistent({ checkedQty: 0, acceptedQty: 40 })).toBe(false);
 });

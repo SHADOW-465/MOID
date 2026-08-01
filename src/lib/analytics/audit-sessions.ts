@@ -316,6 +316,23 @@ export interface AuditBatchGroup {
   sources: ("manual" | "excel" | "mixed")[];
 }
 
+/**
+ * True when a batch's headline figures cannot both be right.
+ *
+ * `checkedQty` is the FIRST gate's checked (the lot going in) and `acceptedQty`
+ * is the LAST gate's accepted (good units coming out), so accepted can only
+ * exceed checked when the gate chain has a hole — a skipped gate stops the
+ * stage-to-stage cascade below, and a later station's own (larger) lot count
+ * passes straight through. Real data, impossible pair: surface it on the row
+ * instead of printing it as though it were fine.
+ */
+export function batchFiguresInconsistent(g: {
+  checkedQty: number;
+  acceptedQty: number;
+}): boolean {
+  return g.checkedQty > 0 && g.acceptedQty > g.checkedQty;
+}
+
 function sizeOf(e: AuditEventLike): string | null {
   const s = (e as { size?: string | null }).size;
   return s != null && String(s).trim() ? String(s).trim() : null;

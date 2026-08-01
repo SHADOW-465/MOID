@@ -961,25 +961,47 @@ export function ProcessFlow({ rows }: { rows: StageRow[] }) {
   );
 }
 
-export function AuditVerificationTable({ 
-  sourceFiles,
-  validation,
-  integrity,
-  overrides,
-  completeness
-}: { 
-  sourceFiles: string;
-  validation: number;
-  integrity: number;
-  overrides: number;
-  completeness: number;
+export function AuditVerificationTable({
+  summary,
+}: {
+  summary: {
+    sourceFiles: number;
+    verifiedValues: number;
+    totalValues: number;
+    verifiedPct: number;
+    manualOverrides: number;
+    unresolvedValues: number;
+  };
 }) {
+  // Every row is a count off the ledger. Nothing here is a target or an
+  // estimate, so nothing is styled as "passing" — a count is just a count.
+  const n = (v: number) => v.toLocaleString();
   const items = [
-    { label: "Source Files Processed", value: sourceFiles, ok: true, warn: false },
-    { label: "Data Validation Checks", value: `${validation}%`, ok: validation >= 95, warn: validation < 95 },
-    { label: "Formula Integrity", value: `${integrity}%`, ok: integrity >= 95, warn: integrity < 95 },
-    { label: "Manual Overrides", value: String(overrides), ok: overrides === 0, warn: overrides > 0 },
-    { label: "Data Completeness", value: `${completeness}%`, ok: completeness >= 95, warn: completeness < 95 },
+    { label: "Source files", value: n(summary.sourceFiles), ok: false, warn: false },
+    {
+      label: "Values verified",
+      value: summary.totalValues === 0 ? "—" : `${summary.verifiedPct}%`,
+      ok: false,
+      warn: false,
+    },
+    {
+      label: "Resolved / total",
+      value: summary.totalValues === 0 ? "—" : `${n(summary.verifiedValues)} / ${n(summary.totalValues)}`,
+      ok: false,
+      warn: false,
+    },
+    {
+      label: "Unresolved values",
+      value: n(summary.unresolvedValues),
+      ok: false,
+      warn: summary.unresolvedValues > 0,
+    },
+    {
+      label: "Corrections",
+      value: n(summary.manualOverrides),
+      ok: false,
+      warn: false,
+    },
   ];
 
   return (

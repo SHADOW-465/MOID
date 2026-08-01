@@ -901,15 +901,9 @@ export default function Dashboard() {
  
                 <Card 
                   title="Audit &amp; Verification" 
-                  onClick={() => openModal("Audit & Verification", `Ledger verification metrics derived from processed source files.`, <div style={{ minHeight: 200, display: "flex", flexDirection: "column", justifyContent: "center" }}><AuditVerificationTable sourceFiles={m.audit.sourceFilesProcessed} validation={m.audit.dataValidationChecks} integrity={m.audit.formulaIntegrity} overrides={m.audit.manualOverrides} completeness={m.audit.dataCompleteness} /></div>)}
+                  onClick={() => openModal("Audit & Verification", "Counted off the ledger in the current scope — no targets, no estimates.", <div style={{ minHeight: 200, display: "flex", flexDirection: "column", justifyContent: "center" }}><AuditVerificationTable summary={m.audit} /></div>)}
                 >
-                  <AuditVerificationTable 
-                    sourceFiles={m.audit.sourceFilesProcessed}
-                    validation={m.audit.dataValidationChecks}
-                    integrity={m.audit.formulaIntegrity}
-                    overrides={m.audit.manualOverrides}
-                    completeness={m.audit.dataCompleteness}
-                  />
+                  <AuditVerificationTable summary={m.audit} />
                   <div style={{ marginTop: 12, display: "flex", justifyContent: "center" }}>
                     <button 
                       onClick={(e) => { e.stopPropagation(); router.push("/audit"); }}

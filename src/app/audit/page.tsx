@@ -19,6 +19,7 @@ import {
   groupAuditSessions,
   groupByBatchThenStage,
   isDirectEntry,
+  batchFiguresInconsistent,
   type AuditBatchGroup,
   type AuditDatePreset,
   type AuditEntryRow,
@@ -44,6 +45,71 @@ import {
 type ViewMode = "batch" | "sessions" | "raw";
 
 const STAGE_ORDER = ["visual", "eye-punching", "balloon", "valve-integrity", "final"];
+
+/**
+ * One shared column template for the batch list: chevron / id / dates /
+ * progress / checked / accepted / rejected / rate. The header strip and every
+ * row read from this, so the numbers stay in aligned columns instead of
+ * wrapping as free text — 78 stacked cards were unscannable.
+ */
+/** "15–31 Jul" / "15 Jul – 2 Aug" / "15 Jul". Full ISO on both ends was the
+ *  widest column on the row and the least-read information on it. */
+function compactRange(from: string, to: string): string {
+  const fmt = (iso: string, withMonth: boolean) => {
+    const d = new Date(`${iso}T00:00:00Z`);
+    if (Number.isNaN(d.getTime())) return iso;
+    const day = d.getUTCDate();
+    return withMonth
+      ? `${day} ${d.toLocaleString("en", { month: "short", timeZone: "UTC" })}`
+      : String(day);
+  };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return from;
+  if (from === to) return fmt(from, true);
+  const sameMonth = from.slice(0, 7) === to.slice(0, 7);
+  return `${fmt(from, !sameMonth)}–${fmt(to, true)}`;
+}
+
+const AUDIT_ROW_COLS = "16px minmax(96px, 1.1fr) minmax(94px, 0.9fr) 150px 78px 78px 78px 62px";
+
+/** Right-aligned tabular figure. Zero renders as a dash, not a loud 0. */
+function Num({ value, tone }: { value: number; tone?: string }) {
+  return (
+    <span
+      style={{
+        fontFamily: "var(--font-mono)",
+        fontSize: "var(--text-sm)",
+        fontWeight: value > 0 ? 600 : 400,
+        color: value > 0 ? (tone ?? "var(--text)") : "var(--text-3)",
+        textAlign: "right",
+        fontVariantNumeric: "tabular-nums",
+      }}
+    >
+      {value > 0 ? value.toLocaleString() : "—"}
+    </span>
+  );
+}
+
+/** Rejection rate — the number a QM actually scans for. */
+function Rate({ checked, rejected }: { checked: number; rejected: number }) {
+  if (!checked || !rejected) {
+    return <span style={{ textAlign: "right", color: "var(--text-3)", fontSize: "var(--text-sm)" }}>—</span>;
+  }
+  const r = (rejected / checked) * 100;
+  return (
+    <span
+      style={{
+        fontFamily: "var(--font-mono)",
+        fontSize: "var(--text-sm)",
+        fontWeight: 600,
+        textAlign: "right",
+        fontVariantNumeric: "tabular-nums",
+        color: r >= 5 ? "var(--critical)" : r >= 2 ? "var(--warning)" : "var(--text-2)",
+      }}
+    >
+      {r.toFixed(1)}%
+    </span>
+  );
+}
 
 function stageLabel(id: string): string {
   const map: Record<string, string> = {
@@ -541,6 +607,34 @@ export default function AuditPage() {
             <Empty text="No matching records. Widen the date range or clear search." />
           ) : viewMode === "batch" ? (
             <div>
+              {/* Column header — the rows below are a table, so label them once
+                  instead of repeating "checked / accepted / rejected" on every
+                  single row the way the old card layout did. */}
+              <div
+                aria-hidden="true"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: AUDIT_ROW_COLS,
+                  gap: 12,
+                  padding: "6px 16px",
+                  borderBottom: "1px solid var(--border)",
+                  background: "var(--surface-2)",
+                  fontSize: "var(--text-2xs)",
+                  fontWeight: 600,
+                  letterSpacing: "var(--tracking-label)",
+                  textTransform: "uppercase",
+                  color: "var(--text-3)",
+                }}
+              >
+                <span />
+                <span>Batch</span>
+                <span>Dates</span>
+                <span>Gates</span>
+                <span style={{ textAlign: "right" }}>Checked</span>
+                <span style={{ textAlign: "right" }}>Accepted</span>
+                <span style={{ textAlign: "right" }}>Rejected</span>
+                <span style={{ textAlign: "right" }}>Rate</span>
+              </div>
               {(pageSlice as AuditBatchGroup[]).map((g) => (
                 <BatchAccordion
                   key={g.batch}
@@ -613,8 +707,8 @@ function BatchAccordion({
 }) {
   const stage: AuditStageBucket | undefined =
     g.stages.find((s) => s.stageId === activeStage) ?? g.stages[0];
-  const dateLine =
-    g.dateFrom === g.dateTo ? g.dateFrom : `${g.dateFrom} – ${g.dateTo}`;
+  const dateLine = compactRange(g.dateFrom, g.dateTo);
+  const impossible = batchFiguresInconsistent(g);
   const noBatch = g.batch === "(no batch)";
   const hasReject = g.rejectedQty > 0;
 
@@ -623,12 +717,11 @@ function BatchAccordion({
       className="audit-row"
       style={{
         borderTop: "1px solid var(--border)",
-        background: open
-          ? hasReject
-            ? "color-mix(in srgb, var(--critical-weak) 55%, var(--surface))"
-            : "color-mix(in srgb, var(--accent-weak) 70%, var(--surface))"
-          : "var(--surface)",
-        transition: "background 0.18s var(--ease-out)",
+        // Closed rows stay plain. Tinting every row that has any rejection made
+        // 78 of 78 rows red, which carries no information — the Rate column
+        // already says which ones are actually bad.
+        background: open ? "var(--surface-2)" : "var(--surface)",
+        transition: "background var(--duration-fast) var(--ease-out)",
       }}
     >
       <button
@@ -638,12 +731,14 @@ function BatchAccordion({
           onToggle();
         }}
         aria-expanded={open}
+        className="audit-batch-row"
         style={{
           width: "100%",
-          display: "flex",
+          display: "grid",
+          gridTemplateColumns: AUDIT_ROW_COLS,
           alignItems: "center",
-          gap: 14,
-          padding: "14px 16px",
+          gap: 12,
+          padding: "9px 16px",
           border: "none",
           background: "transparent",
           cursor: "pointer",
@@ -652,62 +747,47 @@ function BatchAccordion({
         }}
       >
         <Chevron open={open} tone={hasReject ? "critical" : "accent"} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px 8px" }}>
+
+        <span
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: "var(--text-md)",
+            fontWeight: 700,
+            letterSpacing: "0.03em",
+            color: noBatch ? "var(--text-3)" : "var(--text)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {noBatch ? "No batch" : g.batch}
+          {impossible && (
             <span
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 16,
-                fontWeight: 700,
-                letterSpacing: "0.04em",
-                color: noBatch ? "var(--text-3)" : "var(--text)",
-              }}
+              title="Accepted is higher than checked — a gate is missing from this lot, so these two figures are measured over different lots. Open the batch to see which gate."
+              style={{ marginLeft: 6, color: "var(--warning)", fontFamily: "var(--font-sans)" }}
             >
-              {noBatch ? "No batch" : g.batch}
+              &#9888;
             </span>
-            <TonePill tone="neutral">
-              {g.stages.length} stage{g.stages.length === 1 ? "" : "s"}
-            </TonePill>
-            <TonePill tone="positive">
-              {g.rowCount} row{g.rowCount === 1 ? "" : "s"}
-            </TonePill>
-            {hasReject && (
-              <TonePill tone="critical">{g.rejectedQty.toLocaleString()} rejected</TonePill>
-            )}
-          </div>
-          <div style={{ marginTop: 5, fontSize: 13, color: "var(--text-2)", display: "flex", flexWrap: "wrap", gap: "4px 12px" }}>
-            <span>{dateLine}</span>
-            {g.checkedQty > 0 && (
-              <span>
-                <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--text)" }}>
-                  {g.checkedQty.toLocaleString()}
-                </span>{" "}
-                checked
-              </span>
-            )}
-            {g.acceptedQty > 0 && (
-              <span>
-                <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--positive)" }}>
-                  {g.acceptedQty.toLocaleString()}
-                </span>{" "}
-                accepted
-              </span>
-            )}
-            {hasReject && (
-              <span>
-                <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--critical)" }}>
-                  {g.rejectedQty.toLocaleString()}
-                </span>{" "}
-                rejected
-              </span>
-            )}
-          </div>
-          {progress && progress.doneCount > 0 && (
-            <div style={{ marginTop: 8, maxWidth: 360 }}>
-              <LotProgress progress={progress} showLabels={open} />
-            </div>
           )}
-        </div>
+        </span>
+
+        <span className="small" style={{ fontSize: "var(--text-xs)", whiteSpace: "nowrap" }}>
+          {dateLine}
+        </span>
+
+        <span style={{ minWidth: 0 }}>
+          {progress && progress.doneCount > 0 ? (
+            <LotProgress progress={progress} showLabels={false} />
+          ) : (
+            <span className="small" style={{ fontSize: "var(--text-2xs)" }}>
+              {g.stages.length} stage{g.stages.length === 1 ? "" : "s"}
+            </span>
+          )}
+        </span>
+
+        <Num value={g.checkedQty} />
+        <Num value={g.acceptedQty} tone="var(--positive)" />
+        <Num value={g.rejectedQty} tone={hasReject ? "var(--critical)" : undefined} />
+        <Rate checked={g.checkedQty} rejected={g.rejectedQty} />
       </button>
 
       {open && stage && (

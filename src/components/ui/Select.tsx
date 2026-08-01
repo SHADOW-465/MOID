@@ -83,6 +83,7 @@ export default function Select({
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [query, setQuery] = useState("");
+  const [hover, setHover] = useState(false);
   const [rect, setRect] = useState<{ left: number; top: number; width: number; drop: "down" | "up" } | null>(
     null,
   );
@@ -235,15 +236,22 @@ export default function Select({
     }
   };
 
-  const pad = size === "sm" ? "5px 9px" : "8px 11px";
-  const font = size === "sm" ? "var(--text-xs)" : "var(--text-md)";
-  const minH = size === "sm" ? 30 : 36;
+  // Quiet by default. A dropdown is a value the user reads far more often than
+  // a control they click, so at rest it is text plus a small chevron; the box
+  // only draws itself on hover, focus and while open. Boxing every one of them
+  // at full strength is what made a screen of six read as heavy.
+  const pad = size === "sm" ? "3px 6px 3px 8px" : "5px 8px 5px 10px";
+  const font = size === "sm" ? "var(--text-xs)" : "var(--text-sm)";
+  const minH = size === "sm" ? 26 : 30;
 
+  const resting = hover || open || error;
   const borderColor = error
     ? "var(--critical)"
     : open
       ? "var(--accent)"
-      : "var(--border-strong)";
+      : hover
+        ? "var(--border-strong)"
+        : "transparent";
 
   return (
     <>
@@ -261,28 +269,33 @@ export default function Select({
         disabled={disabled || loading}
         onClick={() => !loading && setOpen((o) => !o)}
         onKeyDown={onKeyDown}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
         className={className}
         data-select-open={open || undefined}
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 8,
+          gap: 5,
           width: block ? "100%" : undefined,
           minHeight: minH,
           padding: pad,
           textAlign: "left",
           borderRadius: "var(--radius-sm)",
           border: `1px solid ${borderColor}`,
-          background: disabled ? "var(--surface-2)" : "var(--surface)",
+          background: disabled
+            ? "transparent"
+            : resting
+              ? "var(--surface)"
+              : "transparent",
           color: selected ? "var(--text)" : "var(--text-3)",
           fontFamily: mono ? "var(--font-mono)" : "inherit",
           fontSize: font,
           fontWeight: 500,
           cursor: disabled || loading ? "not-allowed" : "pointer",
-          opacity: disabled ? 0.6 : 1,
-          boxShadow: open ? "0 0 0 3px var(--accent-weak)" : "none",
+          opacity: disabled ? 0.5 : 1,
           transition:
-            "border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out)",
+            "border-color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out)",
           ...style,
         }}
       >
@@ -397,14 +410,14 @@ export default function Select({
                         display: "flex",
                         alignItems: "center",
                         gap: 8,
-                        padding: "7px 10px",
+                        padding: "5px 9px",
                         borderRadius: "var(--radius-sm)",
                         cursor: o.disabled ? "not-allowed" : "pointer",
                         opacity: o.disabled ? 0.45 : 1,
                         background: isActive ? "var(--accent-weak)" : "transparent",
                         color: isSel ? "var(--accent-text)" : "var(--text)",
                         fontWeight: isSel ? 600 : 400,
-                        fontSize: "var(--text-md)",
+                        fontSize: "var(--text-sm)",
                         fontFamily: mono ? "var(--font-mono)" : "inherit",
                         lineHeight: 1.35,
                       }}

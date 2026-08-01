@@ -8,18 +8,38 @@ export interface TrustScoreResult {
   unresolved: number;
 }
 
+/**
+ * Ledger verification counts for the dashboard panel.
+ *
+ * Every field here is counted off the events in scope. The previous version
+ * returned `dataValidationChecks: 96`, `formulaIntegrity: 94` and
+ * `dataCompleteness: 98` as hard-coded constants, and fell back to inventing
+ * "24/24" source files and 3 manual overrides when the real counts were zero —
+ * on the one screen whose entire job is to say the numbers can be trusted, and
+ * against this codebase's own rule that no KPI may originate from anything but
+ * deterministic maths over the ledger.
+ */
 export interface AuditSummaryResult {
-  sourceFilesProcessed: string; // e.g., "24/24"
-  dataValidationChecks: number; // e.g., 96
-  formulaIntegrity: number;     // e.g., 94
-  manualOverrides: number;      // e.g., 3
-  dataCompleteness: number;     // e.g., 98
+  /** Distinct provenance files in scope. */
+  sourceFiles: number;
+  /** Events whose value resolved exactly or by rule (not fuzzy/llm-guessed). */
+  verifiedValues: number;
+  /** Events in scope, the denominator for `verifiedValues`. */
+  totalValues: number;
+  /** Share of `totalValues` that is verified, 0–100, one decimal. */
+  verifiedPct: number;
+  /** CorrectionEvents — a real supersede, not an estimate. */
+  manualOverrides: number;
+  /** Events carrying a defect breakdown or quantity we could not resolve. */
+  unresolvedValues: number;
 }
 
 export function trustScore(events: Event[], scope: Scope): TrustScoreResult {
   const ev = scopeEvents(events, scope);
+  // An empty ledger scores zero. Returning 98.4% for no data at all made a
+  // brand-new install look verified before a single value existed.
   if (ev.length === 0) {
-    return { pct: 98.4, verified: 98, assumed: 1, unresolved: 1 };
+    return { pct: 0, verified: 0, assumed: 0, unresolved: 0 };
   }
 
   let verified = 0;
@@ -50,16 +70,19 @@ export function trustScore(events: Event[], scope: Scope): TrustScoreResult {
 
 export function auditSummary(events: Event[], scope: Scope): AuditSummaryResult {
   const ev = scopeEvents(events, scope);
-  const distinctFiles = new Set(ev.map(e => e.provenance?.file).filter(Boolean));
-  
-  // Count manual overrides (Correction events)
-  const manualOverrides = ev.filter(e => e.eventType === "correction").length;
+  const distinctFiles = new Set(
+    ev.map((e) => e.provenance?.file).filter((f): f is string => !!f),
+  );
+
+  const trust = trustScore(events, scope);
 
   return {
-    sourceFilesProcessed: distinctFiles.size > 0 ? `${distinctFiles.size}/${distinctFiles.size}` : "24/24",
-    dataValidationChecks: 96,
-    formulaIntegrity: 94,
-    manualOverrides: manualOverrides || 3,
-    dataCompleteness: 98,
+    sourceFiles: distinctFiles.size,
+    verifiedValues: trust.verified,
+    totalValues: ev.length,
+    // Zero events means nothing has been verified — not "98.4% verified".
+    verifiedPct: ev.length === 0 ? 0 : Math.round((trust.verified / ev.length) * 1000) / 10,
+    manualOverrides: ev.filter((e) => e.eventType === "correction").length,
+    unresolvedValues: trust.unresolved,
   };
 }
