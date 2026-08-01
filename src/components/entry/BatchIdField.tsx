@@ -25,6 +25,21 @@ import {
 
 const today = () => new Date().toISOString().slice(0, 10);
 
+/** "Aug" — the full month name was the widest cell and what forced the wrap. */
+function shortMonth(monthIndex: number): string {
+  return new Date(Date.UTC(2000, monthIndex, 1)).toLocaleString("en", {
+    month: "short",
+    timeZone: "UTC",
+  });
+}
+
+/** "5 Aug" — day and month only, for the second date on a one-line summary. */
+function shortDate(iso: string): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return `${d.getUTCDate()} ${d.toLocaleString("en", { month: "short", timeZone: "UTC" })}`;
+}
+
 function prettyDate(iso: string): string {
   const d = new Date(`${iso}T00:00:00Z`);
   if (Number.isNaN(d.getTime())) return iso;
@@ -37,8 +52,6 @@ export default function BatchIdField({
   batchDate,
   onBatchDateChange,
   size,
-  onSizeChange,
-  sizeOptions,
   disabled = false,
   recordedOn,
 }: {
@@ -48,8 +61,6 @@ export default function BatchIdField({
   batchDate: string;
   onBatchDateChange: (iso: string) => void;
   size: string;
-  onSizeChange: (size: string) => void;
-  sizeOptions: readonly string[];
   disabled?: boolean;
   /** Shown only to contrast the two dates when they differ. */
   recordedOn: string;
@@ -111,87 +122,126 @@ export default function BatchIdField({
 
   return (
     <>
-      <input
-        value={batchId}
-        onChange={(e) => onBatchIdChange(e.target.value)}
-        disabled={disabled}
-        maxLength={10}
-        placeholder="26F27-14"
-        aria-label="Batch or lot ID"
-        title="Lot identity. Type it, or set the lot date below. It never changes when Recorded on moves."
-        style={{
-          width: "100%",
-          padding: "8px 10px",
-          borderRadius: "var(--radius-sm)",
-          border: "1px solid var(--border-strong)",
-          background: "var(--surface)",
-          fontFamily: "var(--font-mono)",
-          fontWeight: 700,
-          fontSize: 15,
-          letterSpacing: "0.04em",
-          textTransform: "uppercase",
-          color: "var(--accent)",
-          boxSizing: "border-box",
-        }}
-      />
-
-      {/* The breakdown is also the control: it names the parts of the code, so
-          clicking it to edit those parts is where the hand already goes. */}
-      <button
-        ref={triggerRef}
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        aria-haspopup="dialog"
-        style={{
-          width: "100%",
-          marginTop: 6,
-          padding: "5px 7px",
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "center",
-          gap: 4,
-          borderRadius: "var(--radius-sm)",
-          border: `1px solid ${open ? "var(--accent)" : "transparent"}`,
-          background: open ? "var(--surface)" : "transparent",
-          cursor: disabled ? "not-allowed" : "pointer",
-          textAlign: "left",
-          fontFamily: "inherit",
-          transition: "border-color var(--duration-fast) var(--ease-out)",
-        }}
-      >
-        {parsed ? (
-          <>
-            <Part label="Yr" value={parsed.year2} />
-            <Part label="Mo" value={parsed.monthName} />
-            <Part label="Day" value={parsed.day} />
-            <Part label="Sz" value={parsed.sizeFr ? `${parsed.sizeFr} FR` : "—"} muted={!parsed.sizeFr} />
-          </>
-        ) : (
-          <span style={{ fontSize: "var(--text-xs)", color: "var(--status-warn, #d97706)" }}>
-            {batchId.trim() ? "Incomplete — YY + month letter + DD + size" : "No lot set"}
-          </span>
-        )}
-        <span
+      {/* Row 1: the code and its one action, side by side. Keeping the action
+          on this row is what stops it orphaning onto a line of its own. */}
+      <div style={{ display: "flex", alignItems: "stretch", gap: 6 }}>
+        <input
+          value={batchId}
+          onChange={(e) => onBatchIdChange(e.target.value)}
+          disabled={disabled}
+          maxLength={10}
+          placeholder="26F27-14"
+          aria-label="Batch or lot ID"
+          title="Lot identity. Type it, or set the lot date. It never changes when Recorded on moves."
           style={{
-            marginLeft: "auto",
-            fontSize: "var(--text-2xs)",
-            fontWeight: 600,
+            flex: 1,
+            minWidth: 0,
+            padding: "8px 10px",
+            borderRadius: "var(--radius-sm)",
+            border: "1px solid var(--border-strong)",
+            background: "var(--surface)",
+            fontFamily: "var(--font-mono)",
+            fontWeight: 700,
+            fontSize: 15,
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+            // Ink, not accent. This is data, and Audit and History already
+            // render batch ids in ink — three accent-coloured things stacked in
+            // one column left nothing for the real action to stand out against.
+            color: "var(--text)",
+            boxSizing: "border-box",
+          }}
+        />
+        <button
+          ref={triggerRef}
+          type="button"
+          disabled={disabled}
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          aria-haspopup="dialog"
+          aria-label="Change lot date"
+          style={{
+            flexShrink: 0,
+            padding: "0 10px",
+            borderRadius: "var(--radius-sm)",
+            border: `1px solid ${open ? "var(--accent)" : "var(--border)"}`,
+            background: open ? "var(--accent-weak)" : "transparent",
+            // The only accent in the block, so it reads as the one thing to click.
             color: "var(--accent-text)",
+            fontSize: "var(--text-xs)",
+            fontWeight: 600,
+            fontFamily: "inherit",
             whiteSpace: "nowrap",
+            cursor: disabled ? "not-allowed" : "pointer",
+            opacity: disabled ? 0.5 : 1,
+            transition:
+              "background-color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out)",
           }}
         >
-          Set lot date
-        </span>
-      </button>
+          Change
+        </button>
+      </div>
 
+      {/* Row 2: how the code is composed. A fixed four-column grid, not a
+          wrapping row of pills — the pills reflowed onto two lines in this
+          narrow column and the whole block read as congested. The grid always
+          holds one line and the values stay in aligned columns. */}
+      {parsed ? (
+        <div
+          style={{
+            marginTop: 8,
+            display: "grid",
+            // Yr / Mo / Day size to their content; Sz takes the remainder,
+            // because "14 FR" is wider than the other three and equal columns
+            // clipped it.
+            gridTemplateColumns: "repeat(3, auto) minmax(0, 1fr)",
+            gap: "0 6px",
+            padding: "6px 8px",
+            borderRadius: "var(--radius-sm)",
+            background: "var(--surface-2)",
+            border: "1px solid var(--border)",
+          }}
+        >
+          <Part label="Yr" value={parsed.year2} mono />
+          <Part label="Mo" value={shortMonth(parsed.monthIndex)} />
+          <Part label="Day" value={parsed.day} mono />
+          <Part
+            label="Sz"
+            value={parsed.sizeFr ? `${parsed.sizeFr} FR` : "—"}
+            mono
+            muted={!parsed.sizeFr}
+          />
+        </div>
+      ) : (
+        <p
+          style={{
+            margin: "8px 0 0",
+            fontSize: "var(--text-xs)",
+            color: "var(--warning)",
+            lineHeight: 1.45,
+          }}
+        >
+          {batchId.trim()
+            ? "Not a full lot code yet — it needs a size, like 26F27-14"
+            : "No lot set"}
+        </p>
+      )}
+
+      {/* Only when the two dates actually differ. On a same-day entry this
+          would be restating the grid above it. */}
       {spansDays && parsed && (
         <p
-          className="small"
-          style={{ margin: "5px 0 0", fontSize: "var(--text-2xs)", lineHeight: 1.4 }}
+          style={{
+            margin: "5px 0 0",
+            fontSize: "var(--text-2xs)",
+            color: "var(--text-3)",
+            lineHeight: 1.45,
+          }}
         >
-          Lot opened {prettyDate(batchDate)} · you are recording {prettyDate(recordedOn)}.
+          Lot opened{" "}
+          <span style={{ color: "var(--text-2)", fontWeight: 600 }}>{prettyDate(batchDate)}</span> ·
+          recording{" "}
+          <span style={{ color: "var(--text-2)", fontWeight: 600 }}>{shortDate(recordedOn)}</span>
         </p>
       )}
 
@@ -199,7 +249,7 @@ export default function BatchIdField({
         <div
           ref={panelRef}
           role="dialog"
-          aria-label="Lot date and size"
+          aria-label="Lot date"
           className="dropdown-panel"
           style={{
             position: "fixed",
@@ -217,58 +267,20 @@ export default function BatchIdField({
           }}
         >
           <div>
-            <h3 style={{ margin: 0, fontSize: "var(--text-md)", fontWeight: 600 }}>Lot identity</h3>
+            <h3 style={{ margin: 0, fontSize: "var(--text-md)", fontWeight: 600 }}>Lot date</h3>
             <p className="small" style={{ margin: "2px 0 0", fontSize: "var(--text-2xs)", lineHeight: 1.45 }}>
-              The day this lot was started. Fixed for the life of the batch — moving
-              &ldquo;Recorded on&rdquo; will not change it.
+              The day this lot started. Moving &ldquo;Recorded on&rdquo; never changes it.
             </p>
           </div>
 
-          <label style={{ display: "grid", gap: 4 }}>
-            <span style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--text-2)" }}>
-              Batch date
-            </span>
-            <input
-              ref={dateRef}
-              type="date"
-              value={batchDate}
-              onChange={(e) => e.target.value && onBatchDateChange(e.target.value)}
-              style={fieldStyle}
-            />
-          </label>
-
-          <label style={{ display: "grid", gap: 4 }}>
-            <span style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--text-2)" }}>
-              Size
-            </span>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-              {sizeOptions.map((s) => {
-                const on = s === size;
-                return (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => onSizeChange(s)}
-                    aria-pressed={on}
-                    style={{
-                      padding: "3px 8px",
-                      minHeight: 26,
-                      borderRadius: "var(--radius-pill)",
-                      border: `1px solid ${on ? "var(--accent)" : "var(--border)"}`,
-                      background: on ? "var(--accent-weak)" : "transparent",
-                      color: on ? "var(--accent-text)" : "var(--text-2)",
-                      fontFamily: "var(--font-mono)",
-                      fontSize: "var(--text-2xs)",
-                      fontWeight: on ? 700 : 500,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {s}
-                  </button>
-                );
-              })}
-            </div>
-          </label>
+          <input
+            ref={dateRef}
+            type="date"
+            value={batchDate}
+            onChange={(e) => e.target.value && onBatchDateChange(e.target.value)}
+            aria-label="Lot date"
+            style={fieldStyle}
+          />
 
           <div
             style={{
@@ -291,12 +303,17 @@ export default function BatchIdField({
                 fontWeight: 700,
                 fontSize: 15,
                 letterSpacing: "0.04em",
-                color: preview ? "var(--accent)" : "var(--text-3)",
+                color: preview ? "var(--text)" : "var(--text-3)",
               }}
             >
               {preview ?? "—"}
             </span>
           </div>
+
+          <p className="small" style={{ margin: 0, fontSize: "var(--text-2xs)", lineHeight: 1.45 }}>
+            The <strong style={{ color: "var(--text-2)" }}>{size}</strong> suffix follows the Size
+            field above.
+          </p>
 
           <div style={{ display: "flex", gap: 6 }}>
             <button
@@ -320,23 +337,46 @@ export default function BatchIdField({
   );
 }
 
-function Part({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
+/** One cell of the composition grid: label above value, left-aligned. */
+function Part({
+  label,
+  value,
+  mono,
+  muted,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+  muted?: boolean;
+}) {
   return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "baseline",
-        gap: 3,
-        padding: "1px 6px",
-        borderRadius: "var(--radius-pill)",
-        background: "var(--surface-2)",
-        border: "1px solid var(--border)",
-        fontSize: "var(--text-2xs)",
-        whiteSpace: "nowrap",
-      }}
-    >
-      <span style={{ color: "var(--text-3)", fontWeight: 600 }}>{label}</span>
-      <span style={{ color: muted ? "var(--text-3)" : "var(--text)", fontWeight: 600 }}>{value}</span>
+    <span style={{ display: "grid", gap: 1, minWidth: 0 }}>
+      <span
+        style={{
+          fontSize: "var(--text-2xs)",
+          fontWeight: 600,
+          letterSpacing: "var(--tracking-label)",
+          textTransform: "uppercase",
+          color: "var(--text-3)",
+          lineHeight: 1.2,
+        }}
+      >
+        {label}
+      </span>
+      <span
+        style={{
+          fontSize: "var(--text-xs)",
+          fontWeight: 600,
+          color: muted ? "var(--text-3)" : "var(--text-2)",
+          fontFamily: mono ? "var(--font-mono)" : "inherit",
+          lineHeight: 1.25,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {value}
+      </span>
     </span>
   );
 }

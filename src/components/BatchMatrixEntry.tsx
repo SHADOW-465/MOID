@@ -59,6 +59,14 @@ import LotProgress from "@/components/LotProgress";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
+/** "1 Aug" — a date the way an operator says it, not "2026-08-01". */
+function shortEntryDate(iso: string | null): string {
+  if (!iso) return "an earlier day";
+  const d = new Date(`${iso}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return `${d.getUTCDate()} ${d.toLocaleString("en", { month: "short", timeZone: "UTC" })}`;
+}
+
 /** In-progress (unsubmitted) batch form — restored on return to Data Entry. */
 const DRAFT_KEY = "moid_entry_draft_batch";
 
@@ -1494,8 +1502,6 @@ export default function BatchMatrixEntry({
                 batchDate={batchDate}
                 onBatchDateChange={setBatchDate}
                 size={size}
-                onSizeChange={setSize}
-                sizeOptions={catheterSizeOptions}
                 disabled={!mayEdit}
                 recordedOn={date}
               />
@@ -1511,12 +1517,24 @@ export default function BatchMatrixEntry({
                 >
                   <LotProgress progress={lotProgress} activeStageId={stageId} />
                   {stageAlreadyDone && (
+                    // Contained, not floating orange text. The station name is
+                    // already selected above, so it is not repeated here, and
+                    // the date reads the way a person says it.
                     <p
-                      className="small"
-                      style={{ marginTop: 6, marginBottom: 0, fontSize: "var(--text-2xs)", color: "var(--status-warn, #d97706)" }}
+                      style={{
+                        margin: "8px 0 0",
+                        padding: "6px 8px",
+                        borderRadius: "var(--radius-sm)",
+                        border: "1px solid color-mix(in srgb, var(--warning) 35%, transparent)",
+                        background: "var(--warning-weak)",
+                        color: "var(--warning)",
+                        fontSize: "var(--text-2xs)",
+                        lineHeight: 1.45,
+                      }}
                     >
-                      {processLabel(macro, micro)} already recorded for this lot on{" "}
-                      {stageAlreadyDone.date} — saving again adds a second entry.
+                      Already recorded for this lot on{" "}
+                      <strong>{shortEntryDate(stageAlreadyDone.date)}</strong>. Saving adds a second
+                      entry rather than replacing it.
                     </p>
                   )}
                 </div>
