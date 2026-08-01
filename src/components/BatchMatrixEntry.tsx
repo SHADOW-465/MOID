@@ -52,6 +52,7 @@ import { usePersona } from "@/components/app/PersonaContext";
 import QtyInput from "@/components/entry/QtyInput";
 import ExceptionModal from "@/components/entry/ExceptionModal";
 import { loadDraft, saveDraft } from "@/lib/entry/draft";
+import BatchIdField from "@/components/entry/BatchIdField";
 import { buildBatchProgress, progressFor } from "@/lib/analytics/batch-progress";
 import type { AuditEventLike } from "@/lib/analytics/audit-sessions";
 import LotProgress from "@/components/LotProgress";
@@ -64,7 +65,7 @@ const DRAFT_KEY = "moid_entry_draft_batch";
 interface BatchDraft {
   macro: MacroId; micro: string; date: string; size: string;
   productType?: string;
-  operator: string; shift: string; batchId: string; batchManual: boolean;
+  operator: string; shift: string; batchId: string; batchDate: string;
   checked: number; trolleys: number; bin: string;
   accept: number; hold: number; reject: number;
   defects: Record<string, number>; remarks: string;
@@ -193,7 +194,14 @@ export default function BatchMatrixEntry({
   const [operator, setOperator] = useState<string>(ENTRY_ROLES[0]);
   const [shift, setShift] = useState("Day Shift");
   const [batchId, setBatchId] = useState(() => buildBatchId(today(), "14Fr") ?? "");
-  const [batchManual, setBatchManual] = useState(false);
+  /**
+   * The day this LOT was started — the only input to the date part of the code.
+   * Deliberately separate from `date` ("Recorded on"), which is the day this
+   * station ran the lot. A batch spans several days on the floor, so the two
+   * must not be the same value: coupling them renamed the lot every time the
+   * operator moved to the next day's entry.
+   */
+  const [batchDate, setBatchDate] = useState(today);
   const [exceptionOpen, setExceptionOpen] = useState(false);
   const [exceptionKind, setExceptionKind] = useState<"qty" | "defect" | null>(null);
   const [exceptionReason, setExceptionReason] = useState("");
@@ -263,7 +271,9 @@ export default function BatchMatrixEntry({
       if (d.productType) applyProductType(d.productType);
       if (d.operator) setOperator(toEntryRole(d.operator));
       if (d.shift) setShift(d.shift);
-      setBatchId(d.batchId); setBatchManual(d.batchManual);
+      setBatchId(d.batchId);
+      // Older drafts carry no batchDate — recover it from the code itself.
+      setBatchDate(d.batchDate || parseBatchId(d.batchId)?.date || today());
       setChecked(d.checked); setTrolleys(d.trolleys); setBin(d.bin);
       setAccept(d.accept); setHold(d.hold); setReject(d.reject);
       setDefects(d.defects ?? {}); setRemarks(d.remarks);
@@ -301,10 +311,10 @@ export default function BatchMatrixEntry({
       DRAFT_KEY,
       empty
         ? null
-        : { macro, micro, date, size, productType, operator, shift, batchId, batchManual,
+        : { macro, micro, date, size, productType, operator, shift, batchId, batchDate,
             checked, trolleys, bin, accept, hold, reject, defects, remarks },
     );
-  }, [macro, micro, date, size, productType, operator, shift, batchId, batchManual,
+  }, [macro, micro, date, size, productType, operator, shift, batchId, batchDate,
       checked, trolleys, bin, accept, hold, reject, defects, remarks]);
 
   // Schema from the company catalog (Data Schema), projected by /api/entry-template.
@@ -353,27 +363,14 @@ export default function BatchMatrixEntry({
     };
   }, []);
 
-  // Auto lot ID from production date + size only while unlocked.
-  // Once locked (manual type or first qty), date can move day-to-day without
-  // rewriting the lot — batches span multiple calendar days on the floor.
+  // The lot code is composed from the lot's own date plus size. `date`
+  // ("Recorded on") is not in this chain and must never be added to it — that
+  // coupling is the bug this replaces. No lock flag is needed because there is
+  // nothing to lock against.
   useEffect(() => {
-    if (batchManual) return;
-    const id = buildBatchId(date, size);
+    const id = buildBatchId(batchDate, size);
     if (id) setBatchId(id);
-  }, [date, size, batchManual]);
-
-  // Size change while lot is locked: keep date-coded prefix, update FR suffix only.
-  useEffect(() => {
-    if (!batchManual) return;
-    setBatchId((cur) => {
-      const fr = frDigitsFromSize(size);
-      if (!fr) return cur;
-      const p = parseBatchId(cur);
-      if (!p?.year2 || !p.monthCode || !p.day) return cur;
-      const next = `${p.year2}${p.monthCode}${p.day}-${fr}`;
-      return next === cur.toUpperCase() ? cur : next;
-    });
-  }, [size, batchManual]);
+  }, [batchDate, size]);
 
   const isPrimary = macro === "primary";
   const isSecondary = macro === "secondary";
@@ -584,9 +581,6 @@ export default function BatchMatrixEntry({
   const touchQty = useCallback(() => {
     userTouchedQty.current = true;
     setPrefillNote(null);
-    // Lock lot ID once quantities are entered so changing "production date"
-    // for the next process day does not invent a new batch code.
-    setBatchManual(true);
     // Editing after a mismatch prompt invalidates the pending A12 choice.
     setA12(null);
     setA12Choice(null);
@@ -604,37 +598,30 @@ export default function BatchMatrixEntry({
     resetQtys();
   };
 
+  /**
+   * Typing a lot code is the same act as picking its parts, so it writes back
+   * into `batchDate` and `size`. It still never touches "Recorded on" — the
+   * same lot is inspected across days.
+   */
   const onBatchInput = (raw: string) => {
     const formatted = formatBatchIdInput(raw);
     setBatchId(formatted);
-    setBatchManual(true);
     const p = parseBatchId(formatted);
-    // Size from the lot code is binding; production date is NOT — the same lot
-    // is inspected across days, so we never rewrite "recorded on" from the ID.
+    if (p?.date) setBatchDate(p.date);
     if (p?.sizeFr) {
       const display = toDisplaySize(p.sizeFr);
       if (display) setSize(display);
     }
   };
 
-  // History → Reuse: adopt the lot id, locked, and leave "Recorded on" alone.
-  // That is the multi-day rule — a lot carries across days, the entry date does
-  // not follow it backwards.
+  // History → Reuse: adopt the lot id and its date, leaving "Recorded on"
+  // alone. A lot carries across days; the entry date does not follow it back.
   useEffect(() => {
     if (!prefillBatchId) return;
     onBatchInput(prefillBatchId);
     onPrefillConsumed?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefillBatchId]);
-
-  /** Explicitly re-seed lot from production date + size (opt-in after lock). */
-  const rebuildBatchFromDate = () => {
-    const id = buildBatchId(date, size);
-    if (id) {
-      setBatchId(id);
-      setBatchManual(false);
-    }
-  };
 
   // Defect qty changes update local state; Reject is re-derived from defect
   // sum (when any defect > 0) or from the Checked − Accept (− Hold) remainder.
@@ -657,7 +644,6 @@ export default function BatchMatrixEntry({
    * the operator can no longer see reflected in the dropdown.
    */
   const applyCategory = (next: CatheterCategory) => {
-    setBatchManual(false);
     setCategory(next);
     const nextType = typeIsSelectable(next) ? catheterType : "2 way";
     if (!typeIsSelectable(next)) setCatheterType("2 way");
@@ -667,7 +653,6 @@ export default function BatchMatrixEntry({
   };
 
   const applyCatheterType = (next: CatheterType) => {
-    setBatchManual(false);
     setCatheterType(next);
     setProductType(productTypeFor(category, next));
     const options = sizesFor(category, next);
@@ -687,8 +672,9 @@ export default function BatchMatrixEntry({
 
   const clearFormKeepContext = () => {
     resetQtys();
-    setBatchManual(false);
-    const id = buildBatchId(date, size);
+    // Keep the lot: clearing quantities to enter the next station is the exact
+    // multi-day case, so the code must survive it.
+    const id = buildBatchId(batchDate, size);
     if (id) setBatchId(id);
   };
 
@@ -763,7 +749,6 @@ export default function BatchMatrixEntry({
       if (rec.productType) localStorage.setItem(PRODUCT_TYPE_STORAGE_KEY, String(rec.productType));
       setEditing(null);
       clearFormKeepContext();
-      setBatchManual(false);
       setMsg(
         revising
           ? `On the ledger · ${rec.batchId} · ${rec.processName} — previous row superseded.`
@@ -1085,7 +1070,10 @@ export default function BatchMatrixEntry({
     setOperator(toEntryRole(rec.operator));
     setShift(rec.shift);
     setBatchId(rec.batchId);
-    setBatchManual(true);
+    {
+      const p = parseBatchId(rec.batchId);
+      if (p?.date) setBatchDate(p.date);
+    }
     setChecked(rec.checked);
     setTrolleys(rec.trolleys ?? 0);
     setBin(rec.bin ?? "");
@@ -1111,7 +1099,6 @@ export default function BatchMatrixEntry({
   function cancelEdit() {
     setEditing(null);
     clearFormKeepContext();
-    setBatchManual(false);
   }
 
   /**
@@ -1438,11 +1425,8 @@ export default function BatchMatrixEntry({
                 <input
                   type="date"
                   value={date}
-                  onChange={(e) => {
-                    // Never unlock/rewrite lot just because inspection day moved.
-                    setDate(e.target.value);
-                  }}
-                  title="Day this station ran the lot — not the batch origin date"
+                  onChange={(e) => setDate(e.target.value)}
+                  title="Day this station ran the lot. The batch code is set from the lot's own date, under Batch / lot ID — moving this never renames the lot."
                   style={{ ...inp, marginTop: 4 }}
                 />
               </label>
@@ -1475,7 +1459,7 @@ export default function BatchMatrixEntry({
                 <Select
                   value={size}
                   disabled={!mayEdit}
-                  onChange={(v) => { setBatchManual(false); setSize(v); }}
+                  onChange={setSize}
                   options={catheterSizeOptions.map((s) => ({ value: s, label: s }))}
                   mono
                   ariaLabel="Size"
@@ -1504,45 +1488,24 @@ export default function BatchMatrixEntry({
             </FieldCol>
 
             <FieldCol label="Batch / lot ID">
-              <input
-                value={batchId}
-                onChange={(e) => onBatchInput(e.target.value)}
-                maxLength={10}
-                placeholder="26F27-14"
-                title="Lot identity. Auto-hyphenates as you type. Locked once you enter quantities so production date can change across days."
-                style={{
-                  ...inp,
-                  fontFamily: "var(--font-mono)",
-                  fontWeight: 700,
-                  fontSize: 15,
-                  letterSpacing: "0.04em",
-                  textTransform: "uppercase",
-                  color: "var(--accent)",
-                }}
+              <BatchIdField
+                batchId={batchId}
+                onBatchIdChange={onBatchInput}
+                batchDate={batchDate}
+                onBatchDateChange={setBatchDate}
+                size={size}
+                onSizeChange={setSize}
+                sizeOptions={catheterSizeOptions}
+                disabled={!mayEdit}
+                recordedOn={date}
               />
-              {parsed ? (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 8 }}>
-                  <span style={badge("blue")}>Yr: {parsed.year2}</span>
-                  <span style={badge("green")}>Mo: {parsed.monthName}</span>
-                  <span style={badge("amber")}>Day: {parsed.day}</span>
-                  {parsed.sizeFr ? (
-                    <span style={badge("purple")}>Sz: {parsed.sizeFr} FR</span>
-                  ) : (
-                    <span style={badge("amber")}>Sz: —</span>
-                  )}
-                </div>
-              ) : batchId.trim() ? (
-                <p className="small" style={{ marginTop: 6, color: "var(--status-warn, #d97706)", fontSize: 11 }}>
-                  Incomplete — format YY + month letter + DD + size (e.g. 26F27-14)
-                </p>
-              ) : null}
               {isAssembly && lotProgress && lotProgress.doneCount > 0 && (
                 <div
                   style={{
                     marginTop: 8,
                     padding: "7px 9px",
                     border: "1px solid var(--border)",
-                    borderRadius: 6,
+                    borderRadius: "var(--radius-sm)",
                     background: "var(--surface-2, var(--surface))",
                   }}
                 >
@@ -1550,7 +1513,7 @@ export default function BatchMatrixEntry({
                   {stageAlreadyDone && (
                     <p
                       className="small"
-                      style={{ marginTop: 6, marginBottom: 0, fontSize: 11, color: "var(--status-warn, #d97706)" }}
+                      style={{ marginTop: 6, marginBottom: 0, fontSize: "var(--text-2xs)", color: "var(--status-warn, #d97706)" }}
                     >
                       {processLabel(macro, micro)} already recorded for this lot on{" "}
                       {stageAlreadyDone.date} — saving again adds a second entry.
@@ -1558,39 +1521,6 @@ export default function BatchMatrixEntry({
                   )}
                 </div>
               )}
-              <div
-                className="small"
-                style={{
-                  marginTop: 6,
-                  color: "var(--text-3)",
-                  lineHeight: 1.4,
-                  fontSize: 11.5,
-                  display: "flex",
-                  flexWrap: "wrap",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                <span>
-                  {batchManual
-                    ? "Lot locked — production date is the inspection day only."
-                    : "Auto from production date + size until locked."}
-                </span>
-                {batchManual && (
-                  <button
-                    type="button"
-                    onClick={rebuildBatchFromDate}
-                    style={{
-                      ...btnGhost,
-                      padding: "2px 8px",
-                      fontSize: 11,
-                      fontWeight: 600,
-                    }}
-                  >
-                    Rebuild from date
-                  </button>
-                )}
-              </div>
             </FieldCol>
           </div>
         </div>
