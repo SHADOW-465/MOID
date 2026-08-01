@@ -20,6 +20,7 @@ import {
   groupByBatchThenStage,
   isDirectEntry,
   batchFiguresInconsistent,
+  listRowSizes,
   type AuditBatchGroup,
   type AuditDatePreset,
   type AuditEntryRow,
@@ -70,6 +71,20 @@ function compactRange(from: string, to: string): string {
 }
 
 const AUDIT_ROW_COLS = "16px minmax(96px, 1.1fr) minmax(94px, 0.9fr) 150px 78px 78px 78px 62px";
+
+/** "31 Jul, 09:56" — the wall-clock moment a row was written. */
+function fmtStamp(iso: string): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? "—"
+    : d.toLocaleString("en-GB", {
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+}
 
 /** Right-aligned tabular figure. Zero renders as a dash, not a loud 0. */
 function Num({ value, tone }: { value: number; tone?: string }) {
@@ -134,6 +149,9 @@ export default function AuditPage() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [stageFilter, setStageFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
+  const [sizeFilter, setSizeFilter] = useState("all");
+  /** Lot completion, same vocabulary as Data Entry -> History. */
+  const [statusFilter, setStatusFilter] = useState<"all" | "open" | "complete">("all");
   const [page, setPage] = useState(0);
 
   /** Which batches are expanded */
@@ -165,7 +183,7 @@ export default function AuditPage() {
 
   useEffect(() => {
     setPage(0);
-  }, [searchQuery, typeFilter, stageFilter, sourceFilter, datePreset, viewMode]);
+  }, [searchQuery, typeFilter, stageFilter, sourceFilter, sizeFilter, statusFilter, datePreset, viewMode]);
 
   const commentsMap = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -215,19 +233,37 @@ export default function AuditPage() {
     [events, datePreset]
   );
 
-  const entryRows = useMemo(() => {
-    return filterEntryRows(buildEntryRows(datedEvents, commentsMap), {
-      source: sourceFilter as "all" | "manual" | "excel",
-      stageId: stageFilter,
-      search: searchQuery,
-    });
-  }, [datedEvents, commentsMap, sourceFilter, stageFilter, searchQuery]);
+  const allRows = useMemo(
+    () => buildEntryRows(datedEvents, commentsMap),
+    [datedEvents, commentsMap],
+  );
 
-  const batchGroups = useMemo(() => groupByBatchThenStage(entryRows), [entryRows]);
+  /** Offer only sizes that actually exist in range — never a dead option. */
+  const sizeOptions = useMemo(() => listRowSizes(allRows), [allRows]);
+
+  const entryRows = useMemo(
+    () =>
+      filterEntryRows(allRows, {
+        source: sourceFilter as "all" | "manual" | "excel",
+        stageId: stageFilter,
+        size: sizeFilter,
+        search: searchQuery,
+      }),
+    [allRows, sourceFilter, stageFilter, sizeFilter, searchQuery],
+  );
 
   /** Lot completion — over ALL events, never the filtered set, or a stage filter
    *  would make every lot look unfinished. */
   const batchProgress = useMemo(() => buildBatchProgress(events), [events]);
+
+  const batchGroups = useMemo(() => {
+    const groups = groupByBatchThenStage(entryRows);
+    if (statusFilter === "all") return groups;
+    return groups.filter((g) => {
+      const complete = progressFor(batchProgress, g.batch)?.status === "complete";
+      return statusFilter === "complete" ? complete : !complete;
+    });
+  }, [entryRows, statusFilter, batchProgress]);
 
   /**
    * Erase a displayed row from the ledger. This is the ONLY erase path in the
@@ -489,10 +525,12 @@ export default function AuditPage() {
             />
           </div>
 
+          {/* Search stays wide; every filter is a fixed, equal track so the row
+              stays a readable rank of controls as options come and go. */}
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: viewMode === "raw" ? "1.5fr 1fr 1fr 1fr" : "1.5fr 1fr 1fr",
+              gridTemplateColumns: "minmax(180px, 1.6fr) repeat(auto-fit, minmax(132px, 1fr))",
               gap: 8,
             }}
           >
@@ -520,6 +558,32 @@ export default function AuditPage() {
               ]}
               ariaLabel="Filter by stage"
             />
+            {sizeOptions.length > 0 && (
+              <Select
+                value={sizeFilter}
+                onChange={setSizeFilter}
+                options={[
+                  { value: "all", label: "All sizes" },
+                  ...sizeOptions.map((sz) => ({ value: sz, label: sz })),
+                ]}
+                mono
+                ariaLabel="Filter by size"
+              />
+            )}
+            {/* Lot completion is a batch-level idea, so it is offered only where
+                the list is batches. */}
+            {viewMode === "batch" && (
+              <Select
+                value={statusFilter}
+                onChange={(v) => setStatusFilter(v as "all" | "open" | "complete")}
+                options={[
+                  { value: "all", label: "Any status" },
+                  { value: "open", label: "In progress" },
+                  { value: "complete", label: "Complete" },
+                ]}
+                ariaLabel="Filter by lot status"
+              />
+            )}
             {viewMode === "raw" && (
               <Select
                 value={typeFilter}
@@ -953,6 +1017,7 @@ function EntryGrid({
                 "Accepted",
                 "Rejected",
                 "Defects",
+                "Saved",
                 "Source",
                 ...(onErase ? ["Erase"] : []),
               ].map((h) => (
@@ -1042,6 +1107,21 @@ function EntryGrid({
                       </span>
                     ))
                   )}
+                </td>
+                {/* When the row was written, as distinct from the business day
+                    it covers — the pair is what makes a late or back-dated
+                    entry visible. */}
+                <td
+                  style={{
+                    padding: "10px 12px",
+                    fontSize: 12.5,
+                    color: "var(--text-2)",
+                    whiteSpace: "nowrap",
+                    fontFamily: "var(--font-mono)",
+                  }}
+                  title={r.recordedAt || undefined}
+                >
+                  {fmtStamp(r.recordedAt)}
                 </td>
                 <td style={{ padding: "10px 12px", fontSize: 13 }}>
                   {r.source === "manual" ? (

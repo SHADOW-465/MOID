@@ -21,6 +21,7 @@ import {
   groupByBatchThenStage,
   isDirectEntry,
   batchFiguresInconsistent,
+  listRowSizes,
   type AuditBatchGroup,
   type AuditEntryRow,
   type AuditEventLike,
@@ -111,13 +112,21 @@ export default function EntryHistory({
   const [search, setSearch] = useState("");
   const [scope, setScope] = useState<SourceScope>("mine");
   const [status, setStatus] = useState<StatusScope>("all");
+  const [size, setSize] = useState("all");
   const [openBatch, setOpenBatch] = useState<string | null>(null);
 
   const progressMap = useMemo(() => buildBatchProgress(events), [events]);
 
-  const groups = useMemo(() => {
+  /** Sizes are scoped to the current source so the list never offers a dead option. */
+  const scopedRows = useMemo(() => {
     const scoped = scope === "mine" ? events.filter(isDirectEntry) : events;
-    const rows = filterEntryRows(buildEntryRows(scoped), { search });
+    return buildEntryRows(scoped);
+  }, [events, scope]);
+
+  const sizeOptions = useMemo(() => listRowSizes(scopedRows), [scopedRows]);
+
+  const groups = useMemo(() => {
+    const rows = filterEntryRows(scopedRows, { search, size });
     const all = groupByBatchThenStage(rows);
     if (status === "all") return all;
     return all.filter((g) => {
@@ -125,7 +134,7 @@ export default function EntryHistory({
       const complete = p?.status === "complete";
       return status === "complete" ? complete : !complete;
     });
-  }, [events, scope, search, status, progressMap]);
+  }, [scopedRows, search, size, status, progressMap]);
 
   const summary = useMemo(() => {
     let open = 0;
@@ -239,6 +248,18 @@ export default function EntryHistory({
             { value: "complete", label: "Complete" },
           ]}
         />
+        {sizeOptions.length > 0 && (
+          <SegGroup
+            label="Size"
+            value={size}
+            onChange={setSize}
+            mono
+            options={[
+              { value: "all", label: "All" },
+              ...sizeOptions.map((sz) => ({ value: sz, label: sz.replace(/^Fr/i, "") })),
+            ]}
+          />
+        )}
         <p className="muted" style={{ margin: 0, fontSize: "var(--text-sm)", marginLeft: "auto" }}>
           <Num>{summary.batches}</Num> batch{summary.batches === 1 ? "" : "es"} ·{" "}
           <Num>{summary.rows}</Num> row{summary.rows === 1 ? "" : "s"}
@@ -521,11 +542,14 @@ function SegGroup({
   value,
   onChange,
   options,
+  mono,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   options: { value: string; label: string }[];
+  /** Mono digits for codes like French sizes, so widths stay even. */
+  mono?: boolean;
 }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -549,7 +573,7 @@ function SegGroup({
                 fontSize: "var(--text-xs)",
                 fontWeight: on ? 700 : 500,
                 cursor: "pointer",
-                fontFamily: "inherit",
+                fontFamily: mono ? "var(--font-mono)" : "inherit",
                 transition:
                   "background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out)",
               }}

@@ -602,11 +602,26 @@ export function groupByBatchThenStage(rows: AuditEntryRow[]): AuditBatchGroup[] 
   return groups;
 }
 
+/** Canonical size ids present on a set of rows, smallest French size first. */
+export function listRowSizes(rows: AuditEntryRow[]): string[] {
+  const set = new Set<string>();
+  for (const r of rows) if (r.size) set.add(r.size);
+  // "Fr6" before "Fr10": compare the number, not the string.
+  return [...set].sort((a, b) => {
+    const na = Number(a.replace(/\D/g, ""));
+    const nb = Number(b.replace(/\D/g, ""));
+    if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na - nb;
+    return a.localeCompare(b);
+  });
+}
+
 export function filterEntryRows(
   rows: AuditEntryRow[],
   opts: {
     source?: "all" | "manual" | "excel";
     stageId?: string;
+    /** Canonical size id ("Fr14"); "all" or omitted keeps every size. */
+    size?: string;
     search?: string;
     exceptionsOnly?: boolean;
   }
@@ -616,6 +631,7 @@ export function filterEntryRows(
     if (opts.source === "manual" && r.source !== "manual") return false;
     if (opts.source === "excel" && r.source !== "excel") return false;
     if (opts.stageId && opts.stageId !== "all" && r.stageId !== opts.stageId) return false;
+    if (opts.size && opts.size !== "all" && r.size !== opts.size) return false;
     if (opts.exceptionsOnly && r.commentCount === 0 && !r.hasCorrection) return false;
     if (q) {
       const hay = [

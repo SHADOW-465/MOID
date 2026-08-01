@@ -788,6 +788,8 @@ export default function FloatingDetailModal({
                       ...stageOpts.map((s) => ({ value: s.id, label: s.label })),
                     ]}
                     size="sm"
+                    variant="pill"
+                    block={false}
                     ariaLabel="Filter by stage"
                   />
                   {sizeOpts.length > 0 && (
@@ -800,6 +802,8 @@ export default function FloatingDetailModal({
                       ]}
                       size="sm"
                       mono
+                      variant="pill"
+                      block={false}
                       ariaLabel="Filter by size"
                     />
                   )}
@@ -815,6 +819,8 @@ export default function FloatingDetailModal({
                       { value: "other", label: "Other" },
                     ]}
                     size="sm"
+                    variant="pill"
+                    block={false}
                     ariaLabel="Filter by kind"
                   />
                   <input

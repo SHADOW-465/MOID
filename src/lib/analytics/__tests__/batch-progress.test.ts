@@ -1,5 +1,10 @@
 import { buildBatchProgress, progressFor, ASSEMBLY_GATES } from "../batch-progress";
-import { batchFiguresInconsistent, type AuditEventLike } from "../audit-sessions";
+import {
+  batchFiguresInconsistent,
+  filterEntryRows,
+  listRowSizes,
+  type AuditEventLike,
+} from "../audit-sessions";
 
 const ev = (
   batch: string,
@@ -93,4 +98,44 @@ test("a batch whose accepted exceeds its checked is flagged, not printed as fine
   expect(batchFiguresInconsistent({ checkedQty: 100, acceptedQty: 100 })).toBe(false);
   // No lot in yet — nothing to contradict.
   expect(batchFiguresInconsistent({ checkedQty: 0, acceptedQty: 40 })).toBe(false);
+});
+
+test("size options are offered smallest-first and only when rows exist", () => {
+  const rows = [
+    { size: "Fr14" },
+    { size: "Fr6" },
+    { size: "Fr10" },
+    { size: "Fr14" },
+    { size: null },
+  ] as Parameters<typeof listRowSizes>[0];
+  // Fr6 before Fr10 — string sort would put "Fr10" first.
+  expect(listRowSizes(rows)).toEqual(["Fr6", "Fr10", "Fr14"]);
+  expect(listRowSizes([] as Parameters<typeof listRowSizes>[0])).toEqual([]);
+});
+
+test("the size filter keeps only matching rows, and 'all' keeps everything", () => {
+  const row = (size: string | null, batch: string) =>
+    ({
+      id: `${batch}-${size}`,
+      date: "2026-07-15",
+      batch,
+      stageId: "visual",
+      size,
+      checked: 10,
+      accepted: 9,
+      rejected: 1,
+      defects: [],
+      source: "manual",
+      fileLabel: "Data Entry",
+      recordedAt: "2026-07-15T08:00:00.000Z",
+      eventIds: [],
+      commentCount: 0,
+      hasCorrection: false,
+      shifts: ["Day Shift"],
+    }) as Parameters<typeof filterEntryRows>[0][number];
+
+  const rows = [row("Fr14", "A"), row("Fr6", "B"), row(null, "C")];
+  expect(filterEntryRows(rows, { size: "Fr14" }).map((r) => r.batch)).toEqual(["A"]);
+  expect(filterEntryRows(rows, { size: "all" })).toHaveLength(3);
+  expect(filterEntryRows(rows, {})).toHaveLength(3);
 });

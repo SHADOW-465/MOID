@@ -62,19 +62,9 @@ export default function DataEntryPage() {
         </h1>
         <p
           className="muted"
-          style={{ fontSize: "var(--text-md)", margin: "0 0 4px", maxWidth: "68ch", lineHeight: "var(--leading-body)" }}
+          style={{ fontSize: "var(--text-md)", margin: 0, maxWidth: "68ch", lineHeight: "var(--leading-body)" }}
         >
           {TAB_HINT[activeTab]}
-        </p>
-        <p
-          className="muted"
-          style={{ fontSize: "var(--text-sm)", margin: 0, maxWidth: "68ch", lineHeight: "var(--leading-body)" }}
-        >
-          Defect columns come from your{" "}
-          <a href="/staging" style={{ color: "var(--accent)", fontWeight: 600 }}>
-            imported Excel
-          </a>{" "}
-          schema. Saves appear on the Dashboard immediately.
         </p>
       </header>
 

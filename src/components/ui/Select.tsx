@@ -49,6 +49,13 @@ export interface SelectProps {
   size?: "sm" | "md";
   /** Mono type in the trigger + list — for ids, codes, cell refs. */
   mono?: boolean;
+  /**
+   * "quiet" (default): text + chevron, box only on hover/focus/open — the
+   * right density when several selects sit inline with plain text.
+   * "pill": always-boxed filled chip. For a standalone filter bar, where the
+   * control needs to read as a control even before the pointer arrives.
+   */
+  variant?: "quiet" | "pill";
   ariaLabel?: string;
   id?: string;
   /** Applied to the trigger button. */
@@ -77,6 +84,7 @@ export default function Select({
   style,
   className,
   block = true,
+  variant = "quiet",
 }: SelectProps) {
   const reactId = useId();
   const listId = `${id ?? reactId}-listbox`;
@@ -236,22 +244,36 @@ export default function Select({
     }
   };
 
+  const pill = variant === "pill";
+
   // Quiet by default. A dropdown is a value the user reads far more often than
   // a control they click, so at rest it is text plus a small chevron; the box
   // only draws itself on hover, focus and while open. Boxing every one of them
   // at full strength is what made a screen of six read as heavy.
-  const pad = size === "sm" ? "3px 6px 3px 8px" : "5px 8px 5px 10px";
+  //
+  // The pill variant inverts that: a standalone filter bar has no surrounding
+  // text for a quiet control to blend into, so each filter needs to read as a
+  // control from the first glance — always boxed, always showing its chevron.
+  const pad = pill
+    ? size === "sm"
+      ? "6px 10px 6px 12px"
+      : "8px 12px 8px 14px"
+    : size === "sm"
+      ? "3px 6px 3px 8px"
+      : "5px 8px 5px 10px";
   const font = size === "sm" ? "var(--text-xs)" : "var(--text-sm)";
-  const minH = size === "sm" ? 26 : 30;
+  const minH = pill ? (size === "sm" ? 32 : 36) : size === "sm" ? 26 : 30;
 
-  const resting = hover || open || error;
+  const resting = pill || hover || open || error;
   const borderColor = error
     ? "var(--critical)"
     : open
       ? "var(--accent)"
-      : hover
+      : pill
         ? "var(--border-strong)"
-        : "transparent";
+        : hover
+          ? "var(--border-strong)"
+          : "transparent";
 
   return (
     <>
@@ -281,17 +303,19 @@ export default function Select({
           minHeight: minH,
           padding: pad,
           textAlign: "left",
-          borderRadius: "var(--radius-sm)",
+          borderRadius: pill ? "var(--radius-pill)" : "var(--radius-sm)",
           border: `1px solid ${borderColor}`,
           background: disabled
             ? "transparent"
             : resting
-              ? "var(--surface)"
+              ? pill
+                ? "var(--surface-2)"
+                : "var(--surface)"
               : "transparent",
           color: selected ? "var(--text)" : "var(--text-3)",
           fontFamily: mono ? "var(--font-mono)" : "inherit",
           fontSize: font,
-          fontWeight: 500,
+          fontWeight: pill ? 600 : 500,
           cursor: disabled || loading ? "not-allowed" : "pointer",
           opacity: disabled ? 0.5 : 1,
           transition:
