@@ -3,6 +3,7 @@
 
 import type { Event } from "@/lib/store/types";
 import { type Scope, scopeEvents, periodKey, periodLabel, periodsIn } from "./scope";
+import { STAGE_CATEGORY } from "@/core/ontology/plant-catalog";
 
 /** Structural catalog type — the caller's MOD catalog (or a test fixture). */
 export type Registry = { stages: any[]; defects: any[]; sizes: any[]; fiscalYearStartMonth: number };
@@ -187,16 +188,47 @@ export function totalRejected(events: Event[], scope: Scope): MetricValue {
   return { value: aggregate(ev).rejected, sourceEventIds: ids(ev, (e) => isRej(e) || e.eventType === "rejection") };
 }
 
-/** Units that entered the line = the ENTRY stage's checked qty (first registry
- *  stage with data — Visual). NOT Σ-checked across stages (that quadruple-counts
- *  the same physical units). */
+/**
+ * Units that entered the line.
+ *
+ * Two rules, and they are different on purpose:
+ *
+ *  1. WITHIN a section, take the ENTRY stage only — the first stage of that
+ *     section that has data. Units flow through the gates, so a catheter
+ *     checked at Visual is the same catheter checked at Balloon, Valve and
+ *     Final. Summing across gates would count it four times.
+ *     Assembly alone -> Visual's checked. Nothing downstream is added.
+ *
+ *  2. ACROSS sections, SUM the section entries. Primary, Secondary and
+ *     Assembly are separate departments, each reporting its own throughput, so
+ *     selecting all three answers "how much did each department handle" —
+ *     6,400 dipped + 5,930 entering Assembly, not just the earliest one.
+ *
+ * Before this, rule 2 did not exist: a single `find()` over every in-scope
+ * stage returned Production's checked and silently discarded Assembly's the
+ * moment both sections were selected.
+ *
+ * Stages the catalog cannot classify share one bucket rather than each opening
+ * their own, so an unclassified stage can never multiply the total.
+ */
 export function totalChecked(events: Event[], scope: Scope, registry: Registry = DERIVED_REGISTRY): MetricValue {
   const ev = scopeEvents(events, scope);
   const stages = perStageAgg(ev, registry);
-  const entry = stages.find((s) => s.checked > 0);
+
+  const entries: { stageId: string; checked: number }[] = [];
+  const claimed = new Set<string>();
+  for (const s of stages) {
+    if (s.checked <= 0) continue;
+    const bucket = STAGE_CATEGORY[s.stageId] ?? "uncategorised";
+    if (claimed.has(bucket)) continue; // a later gate in the same section
+    claimed.add(bucket);
+    entries.push({ stageId: s.stageId, checked: s.checked });
+  }
+
+  const entryIds = new Set(entries.map((e) => e.stageId));
   return {
-    value: entry?.checked ?? 0,
-    sourceEventIds: ids(ev, (e) => isProd(e) && stageOf(e) === (entry?.stageId ?? null)),
+    value: entries.reduce((sum, e) => sum + e.checked, 0),
+    sourceEventIds: ids(ev, (e) => isProd(e) && entryIds.has(stageOf(e) ?? "")),
   };
 }
 

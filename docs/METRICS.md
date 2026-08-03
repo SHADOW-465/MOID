@@ -68,7 +68,7 @@ Visual on this batch: `286 / 5,930 = 4.82%`.
 | KPI | Rule | Why |
 | --- | --- | --- |
 | **Overall Rejection %** | `Σ stageRate` over every in-scope stage | Plant convention. Their REJECTION ANALYSIS sheet totals the column of per-stage percentages. It is a **funnel-loss** figure, *not* `total rejected ÷ total checked`. |
-| **Quantity Checked** | `checked` of the **first in-scope stage with data** | Units that entered the line. Summing checked across stages counts the same physical catheter once per gate and inflates the denominator ~4×. |
+| **Quantity Checked** | **Σ over selected sections** of that section's **entry-stage** checked | Two rules, see §3a. Never a sum across gates *within* a section. |
 | **Total Rejected** | `Σ rejected` over all in-scope stages | A raw count. This one *is* a sum — a unit rejected at Visual and another at Final are two different units. |
 | **First Pass Yield** | `Π (1 − stageRate)` | Rolled-throughput yield: the share of entering units clearing every gate untouched. Not `1 − overallRate`. |
 
@@ -82,7 +82,35 @@ Batch `26G04-14`, all five stages present:
 | valve-integrity | 2,400 | 40 | 1.67% |
 | final | 5,376 | 90 | 1.67% |
 
-`Σ rates = 9.56%` · `FPY = Π(1−r) = 90.75%` · `Quantity Checked = 6,400` (production is first).
+`Σ rates = 9.56%` · `FPY = Π(1−r) = 90.75%` · `Quantity Checked = 6,400 + 5,930 = 12,330`
+(Primary's entry plus Assembly's entry — see §3a).
+
+### 3a. Quantity Checked — the two rules
+
+**Within a section: the entry stage only.** Units flow through the gates, so the
+catheter checked at Visual is the same catheter checked at Balloon, Valve and
+Final. Assembly's checked is Visual's `5,930`. Balloon's `5,459`, Valve's
+`2,400` and Final's `5,376` are **not** added — that would count the same units
+four times.
+
+**Across sections: sum the entries.** Primary, Secondary and Assembly are
+separate departments, each reporting its own throughput. Selecting all three
+answers "how much did each department handle".
+
+| Sections selected | Entry stages taken | Quantity Checked |
+| --- | --- | ---: |
+| Assembly (default) | visual | **5,930** |
+| Primary | production | **6,400** |
+| Primary + Assembly | production, visual | **12,330** |
+| All three | production, secondary, visual | production + secondary + visual |
+
+The entry stage is the first stage **of that section, in catalog order**, that
+has a production event — not the first event to appear in the ledger. This
+matters: the real ledger for `26G04-14` emits `valve-integrity` before
+`visual`, and Assembly's entry must still be Visual.
+
+Stages the catalog cannot classify share a single bucket, so a hand-added stage
+on Data Schema can never multiply the total.
 
 Scope the screen to Visual alone and the same rules give
 `rate = 4.82%`, `checked = 5,930`, `FPY = 95.18%` — one stage, so the sum and
@@ -106,8 +134,8 @@ secondary are opt-in via the Sources panel, so they never silently inflate a KPI
 Consequences worth stating plainly:
 
 - On the default dashboard, **Quantity Checked = Visual's checked**, because
-  Visual is the first *assembly* stage. Tick "Primary" in Sources and it becomes
-  production's checked instead — a bigger number, and correctly so.
+  Visual is Assembly's entry stage. Tick "Primary" in Sources and production's
+  checked is **added**, not substituted — see §3a.
 - `Overall Rejection %` gains a term per section you enable. Turning on Primary
   adds production's rate to the sum.
 - `visual` has `captures: HELD` — it is the **only** gate that records rework.
