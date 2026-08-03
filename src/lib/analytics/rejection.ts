@@ -3,7 +3,6 @@
 
 import type { Event } from "@/lib/store/types";
 import { type Scope, scopeEvents, periodKey, periodLabel, periodsIn } from "./scope";
-import { STAGE_CATEGORY } from "@/core/ontology/plant-catalog";
 
 /** Structural catalog type — the caller's MOD catalog (or a test fixture). */
 export type Registry = { stages: any[]; defects: any[]; sizes: any[]; fiscalYearStartMonth: number };
@@ -189,46 +188,36 @@ export function totalRejected(events: Event[], scope: Scope): MetricValue {
 }
 
 /**
- * Units that entered the line.
+ * Units that entered the line = the checked qty of the single most UPSTREAM
+ * in-scope stage that has data.
  *
- * Two rules, and they are different on purpose:
+ * One rule, and it holds whether one section is selected or all three, because
+ * Primary -> Secondary -> Assembly are sequential departments handling the SAME
+ * physical catheters, not parallel lines:
  *
- *  1. WITHIN a section, take the ENTRY stage only — the first stage of that
- *     section that has data. Units flow through the gates, so a catheter
- *     checked at Visual is the same catheter checked at Balloon, Valve and
- *     Final. Summing across gates would count it four times.
- *     Assembly alone -> Visual's checked. Nothing downstream is added.
+ *   Assembly alone           -> Visual's 5,930
+ *   Primary alone            -> Production's 6,400
+ *   Primary + Assembly       -> Production's 6,400
  *
- *  2. ACROSS sections, SUM the section entries. Primary, Secondary and
- *     Assembly are separate departments, each reporting its own throughput, so
- *     selecting all three answers "how much did each department handle" —
- *     6,400 dipped + 5,930 entering Assembly, not just the earliest one.
+ * The tube dipped at Production is the tube inspected at Visual. Summing the
+ * sections would count it twice, exactly as summing Visual + Balloon + Valve +
+ * Final would count it four times. Selecting an upstream section moves the
+ * measuring point upstream; it never adds a second one.
  *
- * Before this, rule 2 did not exist: a single `find()` over every in-scope
- * stage returned Production's checked and silently discarded Assembly's the
- * moment both sections were selected.
+ * "Most upstream" means first in catalog order (production, …, visual, balloon,
+ * valve-fixing, valve-integrity, final), not first to appear in the ledger —
+ * the ledger emits a batch's gates in arbitrary order.
  *
- * Stages the catalog cannot classify share one bucket rather than each opening
- * their own, so an unclassified stage can never multiply the total.
+ * Total Rejected is the opposite case and IS summed: a unit scrapped at Visual
+ * and another scrapped at Final are two different units.
  */
 export function totalChecked(events: Event[], scope: Scope, registry: Registry = DERIVED_REGISTRY): MetricValue {
   const ev = scopeEvents(events, scope);
   const stages = perStageAgg(ev, registry);
-
-  const entries: { stageId: string; checked: number }[] = [];
-  const claimed = new Set<string>();
-  for (const s of stages) {
-    if (s.checked <= 0) continue;
-    const bucket = STAGE_CATEGORY[s.stageId] ?? "uncategorised";
-    if (claimed.has(bucket)) continue; // a later gate in the same section
-    claimed.add(bucket);
-    entries.push({ stageId: s.stageId, checked: s.checked });
-  }
-
-  const entryIds = new Set(entries.map((e) => e.stageId));
+  const entry = stages.find((s) => s.checked > 0);
   return {
-    value: entries.reduce((sum, e) => sum + e.checked, 0),
-    sourceEventIds: ids(ev, (e) => isProd(e) && entryIds.has(stageOf(e) ?? "")),
+    value: entry?.checked ?? 0,
+    sourceEventIds: ids(ev, (e) => isProd(e) && stageOf(e) === (entry?.stageId ?? null)),
   };
 }
 
