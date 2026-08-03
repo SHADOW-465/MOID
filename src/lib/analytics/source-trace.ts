@@ -2,7 +2,17 @@
 // Mirrors Audit trail discipline: summarize → group → open one slice → detail.
 // Never invents quantities; only rolls up rows already attached to the metric.
 
-export type SourceKind = "checked" | "accepted" | "rejected" | "defect" | "other";
+/**
+ * "rework" is deliberately its own kind, not a flavour of "checked".
+ *
+ * A rework/hold event is units pulled OUT of the flow at a gate, not units that
+ * entered it. Folding them into checked made View Source disagree with the
+ * dashboard: batch 26G04-14 at Visual reported 6,115 checked (5,930 produced +
+ * 185 held) against the dashboard's 5,930, and 286/6,115 = 4.68% instead of the
+ * 4.82% every other screen showed. lib/analytics/rejection.ts has always kept
+ * rework in its own StageAgg bucket; this mirrors that.
+ */
+export type SourceKind = "checked" | "accepted" | "rejected" | "rework" | "defect" | "other";
 
 export type SourceGroupMode =
   | "stage"
@@ -70,6 +80,8 @@ export interface SourceSummary {
   checkedQty: number;
   acceptedQty: number;
   rejectedQty: number;
+  /** Held / reworked units — never folded into checkedQty. */
+  reworkQty: number;
   defectQty: number;
   /** Top group label for the default mode (stage / defect / size). */
   topDriver: { label: string; sharePct: number; mode: SourceGroupMode } | null;
@@ -101,7 +113,7 @@ export const STAGE_LABELS: Record<string, string> = {
   final: "Final Inspection",
 };
 
-const KIND_ORDER: SourceKind[] = ["checked", "accepted", "rejected", "defect", "other"];
+const KIND_ORDER: SourceKind[] = ["checked", "accepted", "rejected", "rework", "defect", "other"];
 
 export function fileBasename(path: string): string {
   if (!path) return "—";
@@ -128,8 +140,8 @@ export function stageSortKey(stageId: string | undefined, stageLabel: string): n
   return 99;
 }
 
-/** One consolidated ledger entry — the checked / accepted / rejected / defect
- *  kind-rows of a single (date · batch · size · stage · file) collapsed into one
+/** One consolidated ledger entry — the checked / accepted / rejected / rework /
+ *  defect kind-rows of a single (date · batch · size · stage · file) collapsed into one
  *  line, the way the Audit Trail shows it. */
 export interface SourceEntryRow {
   key: string;
@@ -143,6 +155,8 @@ export interface SourceEntryRow {
   checkedQty: number;
   acceptedQty: number;
   rejectedQty: number;
+  /** Held / reworked units. Never added to checkedQty — see SourceKind. */
+  reworkQty: number;
   defects: { code: string; qty: number }[];
   /** Source cell refs that folded into this entry (for provenance). */
   cells: string[];
@@ -170,6 +184,7 @@ export function consolidateEntries(rows: SourceRow[]): SourceEntryRow[] {
         checkedQty: 0,
         acceptedQty: 0,
         rejectedQty: 0,
+        reworkQty: 0,
         defects: [],
         cells: [],
         rowCount: 0,
@@ -180,6 +195,7 @@ export function consolidateEntries(rows: SourceRow[]): SourceEntryRow[] {
     if (r.kind === "checked") e.checkedQty += q;
     else if (r.kind === "accepted") e.acceptedQty += q;
     else if (r.kind === "rejected") e.rejectedQty += q;
+    else if (r.kind === "rework") e.reworkQty += q;
     else if (r.kind === "defect") {
       const code = r.defectCode || "DEFECT";
       const d = e.defects.find((x) => x.code === code);
@@ -215,10 +231,16 @@ export function inferSourceKind(input: {
     if (disp === "accepted" || disp === "good" || type.includes("accepted") || type.includes("good")) {
       return "accepted";
     }
+    // Held / reworked units. This used to fall through to "checked" below,
+    // which is what inflated the drill-down's denominator.
+    if (disp === "rework" || disp === "hold" || type.includes("rework") || type.includes("hold")) {
+      return "rework";
+    }
     return "checked";
   }
   if (type.includes("·rejected") || type.includes("inspection·rejected")) return "rejected";
   if (type.includes("·accepted") || type.includes("·good")) return "accepted";
+  if (type.includes("·rework") || type.includes("·hold")) return "rework";
   if (type.startsWith("production")) return "checked";
   return "other";
 }
@@ -231,6 +253,8 @@ export function kindLabel(kind: SourceKind, defectCode?: string | null): string 
       return "Accepted";
     case "rejected":
       return "Rejected";
+    case "rework":
+      return "Rework / hold";
     case "defect":
       return defectCode ? `Defect · ${defectCode}` : "Defect";
     default:
@@ -455,6 +479,7 @@ function rollup(rows: SourceRow[]) {
   let checkedQty = 0;
   let acceptedQty = 0;
   let rejectedQty = 0;
+  let reworkQty = 0;
   let defectQty = 0;
   const files = new Set<string>();
   let excel = 0;
@@ -464,6 +489,7 @@ function rollup(rows: SourceRow[]) {
     if (r.kind === "checked") checkedQty += q;
     else if (r.kind === "accepted") acceptedQty += q;
     else if (r.kind === "rejected") rejectedQty += q;
+    else if (r.kind === "rework") reworkQty += q;
     else if (r.kind === "defect") defectQty += q;
     files.add(fileBasename(r.file).toLowerCase());
     if (r.isDirect) manual++;
@@ -471,7 +497,7 @@ function rollup(rows: SourceRow[]) {
   }
   const source: "manual" | "excel" | "mixed" =
     excel > 0 && manual > 0 ? "mixed" : manual > 0 ? "manual" : "excel";
-  return { checkedQty, acceptedQty, rejectedQty, defectQty, fileCount: files.size, source, excel, manual };
+  return { checkedQty, acceptedQty, rejectedQty, reworkQty, defectQty, fileCount: files.size, source, excel, manual };
 }
 
 /** Primary quantity for ranking groups given metric kind. */
@@ -626,6 +652,7 @@ export function summarizeSource(
     checkedQty: r.checkedQty,
     acceptedQty: r.acceptedQty,
     rejectedQty: r.rejectedQty,
+    reworkQty: r.reworkQty,
     defectQty: r.defectQty,
     topDriver: top,
     stageBreakdown,

@@ -686,6 +686,9 @@ export default function FloatingDetailModal({
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                   <MiniStat label="Checked" value={fmtQty(summary.checkedQty)} />
                   <MiniStat label="Rejected" value={fmtQty(summary.rejectedQty + summary.defectQty)} />
+                  {summary.reworkQty > 0 && (
+                    <MiniStat label="Held / rework" value={fmtQty(summary.reworkQty)} />
+                  )}
                   <MiniStat label="Files" value={String(summary.fileCount)} />
                   <MiniStat
                     label="Span"
@@ -815,6 +818,7 @@ export default function FloatingDetailModal({
                       { value: "checked", label: "Checked" },
                       { value: "accepted", label: "Accepted" },
                       { value: "rejected", label: "Rejected" },
+                      { value: "rework", label: "Rework / hold" },
                       { value: "defect", label: "Defect" },
                       { value: "other", label: "Other" },
                     ]}
