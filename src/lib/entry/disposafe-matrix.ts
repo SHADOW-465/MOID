@@ -187,11 +187,19 @@ export const MATRIX_STAGES: Record<MacroId, MacroStage> = {
     name: "Assembly (P15-P27)",
     shortLabel: "Assembly (P15-P27)",
     hideDefects: false,
+    // Labels and P-codes are the plant's own, per FBC_PROCESS in
+    // app/process-flow/fbc-process-data.ts. The chip used to read "Valve
+    // Fixing" while writing stageId "valve-integrity" — two different steps:
+    // P19 Valve Fixing is a flow-through operation, P20 Valve Integrity is the
+    // inspection gate that actually gets recorded here.
+    //
+    // The `id` values are opaque local keys (they persist in the shift list and
+    // the entry draft); they are NOT P-codes and never lined up with them.
     processes: [
       { id: "p15-visual", name: "Visual (P17)", stageId: "visual", interactive: true },
-      { id: "p16-balloon", name: "Balloon Inspection", stageId: "balloon", interactive: true },
-      { id: "p17-valve", name: "Valve Fixing", stageId: "valve-integrity", interactive: true },
-      { id: "p18-final", name: "Final Inspection", stageId: "final", interactive: true },
+      { id: "p16-balloon", name: "Balloon Inspection (P18)", stageId: "balloon", interactive: true },
+      { id: "p17-valve", name: "Valve Integrity (P20)", stageId: "valve-integrity", interactive: true },
+      { id: "p18-final", name: "Final Inspection (P24)", stageId: "final", interactive: true },
     ],
     defects: {
       "p15-visual": VISUAL_DEFECTS,

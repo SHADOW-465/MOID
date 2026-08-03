@@ -36,7 +36,7 @@ type StatusScope = "all" | "open" | "complete";
 const STAGE_LABEL: Record<string, string> = {
   visual: "Visual",
   balloon: "Balloon",
-  "valve-integrity": "Valve integrity",
+  "valve-integrity": "Valve Integrity",
   final: "Final",
   production: "Primary production",
   secondary: "Secondary production",

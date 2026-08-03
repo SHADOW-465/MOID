@@ -131,7 +131,7 @@ function stageLabel(id: string): string {
     visual: "Visual",
     "eye-punching": "Eye punching",
     balloon: "Balloon",
-    "valve-integrity": "Valve integrity",
+    "valve-integrity": "Valve Integrity",
     final: "Final",
     "(unknown stage)": "Unknown",
   };

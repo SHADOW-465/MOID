@@ -1,7 +1,7 @@
 // Batch (lot) completion tracking — derived, never stored.
 //
 // A lot moves through the Assembly quality gates over several days:
-//   Visual → Balloon → Valve Fixing → Final
+//   Visual (P17) → Balloon (P18) → Valve Integrity (P20) → Final (P24)
 // Each gate is entered on the day that station ran it, so a lot is "in progress"
 // until every gate has a ledger entry. Nothing new is written for this: the
 // progress IS the ledger, read back. No status column to drift, no state machine
