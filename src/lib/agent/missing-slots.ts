@@ -133,6 +133,6 @@ export function chipSuggestions(missing: string[]): { label: string; text: strin
   return chips.slice(0, 6);
 }
 
-export function sizeIsValid(size: string): boolean {
+function sizeIsValid(size: string): boolean {
   return !!toCanonicalSize(size);
 }

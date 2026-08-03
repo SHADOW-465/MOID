@@ -18,7 +18,7 @@ import { parseDatePhrase } from "@/lib/analytics/date-phrase";
 import {
   APP_FEATURES,
   matchFeature,
-  matchWorkflow,
+  matchGuideWorkflow,
   type AppFeature,
   type AppWorkflow,
 } from "./app-catalog";
@@ -195,7 +195,7 @@ export function resolveGuide(text: string, ctx: GuideCtx): GuideResult {
   const isNav = NAV_RE.test(q);
   const isAnalyze = ANALYZE_RE.test(q);
   const feat = matchFeature(q);
-  const flow = matchWorkflow(q);
+  const flow = matchGuideWorkflow(q);
 
   // 1) Explicit how-to + feature
   if (isHowTo && feat && featureAllowed(feat.feature, ctx.persona)) {

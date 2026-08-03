@@ -2,7 +2,7 @@
 // Pure over events + static destinations — no AI.
 
 import type { Event } from "@/lib/store/types";
-import type { NavKey } from "@/lib/nav-keys";
+import { NAV_ROUTES, ROUTED_NAV_KEYS, type NavKey } from "@/lib/nav-keys";
 import {
   listInvestigationRecents,
   type InvestigationRecent,
@@ -30,23 +30,13 @@ export interface SearchHit {
   score: number;
 }
 
-const DESTINATIONS: { navKey: NavKey; label: string; href: string; keywords: string }[] = [
-  { navKey: "dashboard", label: "Dashboard", href: "/", keywords: "home status factory overview" },
-  { navKey: "data-entry", label: "Data Entry", href: "/data-entry", keywords: "batch matrix log capture" },
-  { navKey: "staging", label: "Staging & Review", href: "/staging", keywords: "excel upload import" },
-  { navKey: "stage", label: "Stage Analysis", href: "/stage-analysis", keywords: "gate visual balloon valve" },
-  { navKey: "size", label: "Size Analysis", href: "/size-analysis", keywords: "fr french size" },
-  { navKey: "defect", label: "Defect Analysis", href: "/defect-analysis", keywords: "pareto reason" },
-  { navKey: "spc", label: "SPC & Control Charts", href: "/spc", keywords: "control chart xbar" },
-  { navKey: "process-flow", label: "Process Flow", href: "/process-flow", keywords: "fpy flow" },
-  { navKey: "copq", label: "COPQ & Savings", href: "/copq", keywords: "cost rupee money" },
-  { navKey: "reports", label: "Reports", href: "/reports", keywords: "print monthly pack" },
-  { navKey: "capa", label: "CAPA & Actions", href: "/capa", keywords: "action owner" },
-  { navKey: "audit", label: "Audit Trail", href: "/audit", keywords: "provenance trust" },
-  { navKey: "schema", label: "Data Schema", href: "/schema", keywords: "registry stages defects" },
-  { navKey: "settings", label: "Settings", href: "/settings", keywords: "target cost theme" },
-  { navKey: "workbooks", label: "Workbooks", href: "/workbooks", keywords: "mod ontology" },
-];
+/** Derived from the one route table — Jump can only go where a route exists. */
+const DESTINATIONS = ROUTED_NAV_KEYS.map((navKey) => ({
+  navKey,
+  label: NAV_ROUTES[navKey].label,
+  href: NAV_ROUTES[navKey].href as string,
+  keywords: NAV_ROUTES[navKey].keywords,
+}));
 
 const STAGE_LABELS: Record<string, string> = {
   visual: "Visual Inspection",

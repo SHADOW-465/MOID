@@ -45,7 +45,7 @@ function localToday(todayIso: string): string {
 }
 
 /** Parse entry date phrases using wall-clock today (not dataMax). */
-export function parseEntryDate(text: string, todayIso: string): string | undefined {
+function parseEntryDate(text: string, todayIso: string): string | undefined {
   const t = text.toLowerCase();
   if (/\btoday\b/.test(t)) return localToday(todayIso);
   if (/\byesterday\b/.test(t)) {

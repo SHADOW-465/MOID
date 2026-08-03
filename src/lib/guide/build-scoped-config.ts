@@ -18,7 +18,7 @@ import {
 } from "@/lib/analytics";
 import { DERIVED_REGISTRY, type Registry } from "@/lib/analytics/rejection";
 
-export function scopeFromInvestigation(state: InvestigationState): Scope {
+function scopeFromInvestigation(state: InvestigationState): Scope {
   return {
     grain: state.grain ?? "month",
     dateFrom: state.from,

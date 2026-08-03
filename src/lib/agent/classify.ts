@@ -42,7 +42,7 @@ export function hasExecuteLanguage(text: string): boolean {
   return EXECUTE_RE.test(text);
 }
 
-export function hasEntrySignals(text: string): boolean {
+function hasEntrySignals(text: string): boolean {
   return (
     ENTRY_SIGNAL_RE.test(text) ||
     QTY_RE.test(text) ||

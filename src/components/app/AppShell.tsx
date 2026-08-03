@@ -23,7 +23,7 @@ import type { DashboardConfig } from "@/types/dashboard";
 import { resolveScope } from "@/lib/analytics/scope";
 import { trustScore as computeTrustScore } from "@/lib/analytics/trust";
 
-import type { NavKey } from "@/lib/nav-keys";
+import { NAV_ROUTES, type NavKey } from "@/lib/nav-keys";
 export type { NavKey };
 import {
   PERSONAS,
@@ -88,46 +88,48 @@ interface NavSection {
 
 // Operator path first: Dashboard → daily entry → one-time Excel import.
 // Analysis pages are pure views of the same event ledger.
+/** Icons and grouping are chrome and live here; labels and hrefs come from the
+ *  one route table so the sidebar cannot drift from Jump and the guide. */
+const nav = (key: NavKey, icon: NavItem["icon"], extra: Partial<NavItem> = {}): NavItem => ({
+  key,
+  label: NAV_ROUTES[key].label,
+  href: NAV_ROUTES[key].href ?? undefined,
+  icon,
+  ...extra,
+});
+
 const NAV_SECTIONS: NavSection[] = [
-  {
-    title: "Overview",
-    items: [
-      { key: "dashboard", label: "Dashboard", icon: "table", href: "/" },
-    ],
-  },
+  { title: "Overview", items: [nav("dashboard", "table")] },
   {
     title: "Your data",
     items: [
-      { key: "data-entry", label: "Data Entry", icon: "file", href: "/data-entry" },
-      // One destination, two tabs (Import · Files) — the two used to be
-      // separate sidebar entries that linked to each other in their own body
-      // copy, which is the tell that they were always one screen.
-      { key: "workbooks", label: "Excel Data", icon: "folder", href: "/workbooks" },
+      nav("data-entry", "file"),
+      // One destination, two tabs (Import - Files). They used to be two sidebar
+      // entries that linked to each other in their own body copy.
+      nav("workbooks", "folder"),
     ],
   },
   {
     title: "Analysis",
     items: [
-      { key: "stage", label: "By Stage", icon: "trend-up", href: "/stage-analysis" },
-      { key: "size", label: "By Size", icon: "tally", href: "/size-analysis" },
-      { key: "defect", label: "By Defect", icon: "spark", href: "/defect-analysis" },
-      { key: "spc", label: "SPC & Control Charts", icon: "trend-down", href: "/spc" },
-      { key: "process-flow", label: "Process Flow", icon: "split", href: "/process-flow" },
-      { key: "copq", label: "Cost of Rejection", icon: "lightning", href: "/copq" },
+      nav("stage", "trend-up"),
+      nav("size", "tally"),
+      nav("defect", "spark"),
+      nav("spc", "trend-down"),
+      nav("process-flow", "split"),
+      nav("copq", "lightning"),
     ],
   },
   {
     title: "Management",
     items: [
-      { key: "reports", label: "Reports", icon: "print", href: "/reports" },
-      { key: "capa", label: "CAPA & Actions", icon: "check", href: "/capa" },
-      // No href: Ask MOID is the side panel, not a route. A copilot that
-      // navigates the dashboard for you must not cover the dashboard, and the
-      // full-page /chat was a second, tool-less chat implementation besides.
-      { key: "ask", label: "Ask MOID", icon: "comment", aiBadge: true },
-      { key: "audit", label: "Audit Trail", icon: "search", href: "/audit" },
-      { key: "schema", label: "Plant Schema", icon: "split", href: "/schema" },
-      { key: "settings", label: "Settings", icon: "external", href: "/settings" },
+      nav("reports", "print"),
+      nav("capa", "check"),
+      // No href: Ask MOID is the side panel, not a route.
+      nav("ask", "comment", { aiBadge: true }),
+      nav("audit", "search"),
+      nav("schema", "split"),
+      nav("settings", "external"),
     ],
   },
 ];

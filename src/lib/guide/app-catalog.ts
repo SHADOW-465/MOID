@@ -2,7 +2,7 @@
 // Pure data — every screen, how-to, and common workflow the plant actually uses.
 // Numbers never live here; only navigation and procedure.
 
-import type { NavKey } from "@/lib/nav-keys";
+import { NAV_ROUTES, type NavKey } from "@/lib/nav-keys";
 
 export interface AppFeature {
   id: string;
@@ -26,12 +26,12 @@ export interface AppWorkflow {
   steps: { text: string; href?: string; navKey?: NavKey }[];
 }
 
-export const APP_FEATURES: AppFeature[] = [
+/** Prose only. label + href come from NAV_ROUTES so a moved or deleted route
+ *  cannot leave a stale link buried in the how-to copy. */
+const FEATURE_PROSE: Omit<AppFeature, "label" | "href">[] = [
   {
     id: "dashboard",
     navKey: "dashboard",
-    label: "Dashboard",
-    href: "/",
     keywords: ["dashboard", "home", "overview", "factory", "kpis", "cockpit", "status"],
     summary: "Factory KPIs, rejection trend, and View Source over the live ledger.",
     howTo: [
@@ -49,8 +49,6 @@ export const APP_FEATURES: AppFeature[] = [
   {
     id: "data-entry",
     navKey: "data-entry",
-    label: "Data Entry",
-    href: "/data-entry",
     keywords: [
       "data entry", "enter data", "batch matrix", "log", "capture", "manual entry",
       "today's production", "record production", "shop floor", "daily entry",
@@ -72,8 +70,6 @@ export const APP_FEATURES: AppFeature[] = [
   {
     id: "workbooks",
     navKey: "workbooks",
-    label: "Excel Data",
-    href: "/workbooks",
     keywords: [
       "excel", "upload", "import", "workbook", "spreadsheet", "bulk", "history load",
       "mod", "mapping", "staging",
@@ -95,8 +91,6 @@ export const APP_FEATURES: AppFeature[] = [
   {
     id: "staging",
     navKey: "staging",
-    label: "Staging & Review",
-    href: "/staging",
     keywords: ["staging", "review records", "extract", "verify mapping", "pending commit"],
     summary: "Review extracted day-records before they hit the ledger.",
     howTo: [
@@ -109,8 +103,6 @@ export const APP_FEATURES: AppFeature[] = [
   {
     id: "stage",
     navKey: "stage",
-    label: "By Stage",
-    href: "/stage-analysis",
     keywords: ["stage analysis", "by stage", "gate", "visual", "balloon", "valve", "final", "inspection point"],
     summary: "Rejection and yield broken down by inspection gate.",
     howTo: [
@@ -123,8 +115,6 @@ export const APP_FEATURES: AppFeature[] = [
   {
     id: "size",
     navKey: "size",
-    label: "By Size",
-    href: "/size-analysis",
     keywords: ["size analysis", "by size", "french", "fr", "size concentration", "24fr"],
     summary: "Size / French-size concentration of rejection and volume.",
     howTo: [
@@ -137,8 +127,6 @@ export const APP_FEATURES: AppFeature[] = [
   {
     id: "defect",
     navKey: "defect",
-    label: "By Defect",
-    href: "/defect-analysis",
     keywords: ["defect analysis", "pareto", "defect", "scrap reason", "nonconformance", "top defects"],
     summary: "Pareto of defect reasons — what is driving scrap.",
     howTo: [
@@ -151,8 +139,6 @@ export const APP_FEATURES: AppFeature[] = [
   {
     id: "spc",
     navKey: "spc",
-    label: "SPC & Control Charts",
-    href: "/spc",
     keywords: ["spc", "control chart", "xbar", "process control", "out of control", "rules"],
     summary: "Control charts and rule violations over the ledger series.",
     howTo: [
@@ -165,8 +151,6 @@ export const APP_FEATURES: AppFeature[] = [
   {
     id: "process-flow",
     navKey: "process-flow",
-    label: "Process Flow",
-    href: "/process-flow",
     keywords: ["process flow", "fpy", "funnel", "yield flow", "line flow"],
     summary: "Stage-to-stage flow and first-pass yield narrative.",
     howTo: [
@@ -178,8 +162,6 @@ export const APP_FEATURES: AppFeature[] = [
   {
     id: "copq",
     navKey: "copq",
-    label: "Cost of Rejection",
-    href: "/copq",
     keywords: ["copq", "cost", "savings", "rupee", "money", "cost of poor quality", "scrap cost"],
     summary: "Cost of poor quality and savings opportunity from rejection volume.",
     howTo: [
@@ -192,8 +174,6 @@ export const APP_FEATURES: AppFeature[] = [
   {
     id: "reports",
     navKey: "reports",
-    label: "Reports",
-    href: "/reports",
     keywords: [
       "report", "reports", "print", "pdf", "monthly pack", "weekly report",
       "forensic", "gm report", "summary pack",
@@ -213,8 +193,6 @@ export const APP_FEATURES: AppFeature[] = [
   {
     id: "capa",
     navKey: "capa",
-    label: "CAPA & Actions",
-    href: "/capa",
     keywords: ["capa", "corrective action", "action", "owner", "ncr", "close capa"],
     summary: "Recommended and open corrective / preventive actions.",
     howTo: [
@@ -227,8 +205,6 @@ export const APP_FEATURES: AppFeature[] = [
   {
     id: "audit",
     navKey: "audit",
-    label: "Audit Trail",
-    href: "/audit",
     keywords: ["audit", "provenance", "trail", "who changed", "trust", "history of events"],
     summary: "Append-only history of ledger events and corrections for trust / audit.",
     howTo: [
@@ -241,8 +217,6 @@ export const APP_FEATURES: AppFeature[] = [
   {
     id: "schema",
     navKey: "schema",
-    label: "Plant Schema",
-    href: "/schema",
     keywords: [
       "schema", "plant schema", "catalog", "stages", "defects list", "rename defect",
       "master data", "data schema",
@@ -258,8 +232,6 @@ export const APP_FEATURES: AppFeature[] = [
   {
     id: "settings",
     navKey: "settings",
-    label: "Settings",
-    href: "/settings",
     keywords: ["settings", "preferences", "theme", "target", "unit cost", "persona"],
     summary: "Targets, cost assumptions, and UI preferences.",
     howTo: [
@@ -272,9 +244,6 @@ export const APP_FEATURES: AppFeature[] = [
   {
     id: "ask",
     navKey: "ask",
-    label: "Ask MOID",
-    // Panel, not a page — it stays open over whatever screen it navigates to.
-    href: "",
     keywords: ["ask moid", "assistant", "copilot", "chat"],
     summary: "The assistant panel: answers grounded on the ledger, navigates, scopes, and drafts entries.",
     howTo: [
@@ -286,6 +255,12 @@ export const APP_FEATURES: AppFeature[] = [
     ],
   },
 ];
+
+export const APP_FEATURES: AppFeature[] = FEATURE_PROSE.map((f) => ({
+  ...f,
+  label: NAV_ROUTES[f.navKey].label,
+  href: NAV_ROUTES[f.navKey].href ?? "",
+}));
 
 export const APP_WORKFLOWS: AppWorkflow[] = [
   {
@@ -393,7 +368,9 @@ export function matchFeature(query: string): { feature: AppFeature; score: numbe
   return best && best.score >= 0.65 ? best : null;
 }
 
-export function matchWorkflow(query: string): { workflow: AppWorkflow; score: number } | null {
+/** Renamed from matchWorkflow: agent/workflows.ts exports a different function
+ *  of the same name and both barrels use `export *`. */
+export function matchGuideWorkflow(query: string): { workflow: AppWorkflow; score: number } | null {
   const q = norm(query);
   if (!q) return null;
   let best: { workflow: AppWorkflow; score: number } | null = null;

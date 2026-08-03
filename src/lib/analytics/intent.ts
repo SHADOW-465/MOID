@@ -1,7 +1,7 @@
 // Deterministic-first intent resolver. Pure. Turns a request into a scoped
 // navigation target. The LLM fallback is added in Task 4 (resolveIntent).
 import type { Event } from "@/lib/store/types";
-import type { NavKey } from "@/lib/nav-keys";
+import { navHref, type NavKey } from "@/lib/nav-keys";
 import { type PersonaId, personaAllowsNav } from "@/lib/persona";
 import type { InvestigationState } from "./investigation-state";
 import { type SearchHit, searchJumpTargets } from "./search-index";
@@ -31,14 +31,6 @@ export interface IntentResult {
   alternatives: SearchHit[];
 }
 
-/** "ask" is absent on purpose: Ask MOID is a panel, not a route. */
-const NAV_HREF: Partial<Record<NavKey, string>> = {
-  dashboard: "/", workbooks: "/workbooks", "data-entry": "/data-entry",
-  staging: "/staging", stage: "/stage-analysis", size: "/size-analysis",
-  defect: "/defect-analysis", spc: "/spc", "process-flow": "/process-flow",
-  copq: "/copq", reports: "/reports", capa: "/capa",
-  audit: "/audit", schema: "/schema", settings: "/settings",
-};
 
 /** Best fuzzy match of the query against a live entity set (>= 0.7 to count). */
 function bestEntity(text: string, set: Set<string>): { value: string; score: number } | null {
@@ -162,5 +154,5 @@ export async function resolveIntent(
 
 /** Href for a resolved result (scope carried as query params — see Task 5). */
 export function hrefForNav(navKey: NavKey): string {
-  return NAV_HREF[navKey] ?? "/";
+  return navHref(navKey);
 }
