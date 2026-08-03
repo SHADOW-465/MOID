@@ -11,7 +11,7 @@
 //
 // Empty batch / file lists = full plant / all uploads. Filters apply immediately.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTweaks } from "@/components/editorial/TweaksContext";
 import {
   countBySourceChannel,
@@ -29,7 +29,10 @@ import {
 } from "@/core/ontology/plant-catalog";
 import type { Event } from "@/lib/store/types";
 
-const ASSEMBLY_STAGES = STAGES.filter((s) => s.category === "assembly");
+const EXCLUDED_ASSEMBLY_STAGES = new Set(["valve-fixing", "primary-pack-inspection"]);
+const ASSEMBLY_STAGES = STAGES.filter(
+  (s) => s.category === "assembly" && !EXCLUDED_ASSEMBLY_STAGES.has(s.stageId),
+);
 
 type NarrowTab = "batches" | "files";
 
@@ -216,41 +219,47 @@ export default function SourcesScopePanel({
         <header
           style={{
             display: "flex",
-            alignItems: "flex-start",
-            justifyContent: "space-between",
-            gap: 16,
+            flexDirection: "column",
+            gap: 10,
             padding: "16px 20px 14px",
             borderBottom: "1px solid var(--border)",
             flexShrink: 0,
             background: "linear-gradient(180deg, var(--surface) 0%, color-mix(in srgb, var(--accent-weak) 55%, var(--surface)) 100%)",
           }}
         >
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <h2
-              id="sources-scope-title"
-              style={{
-                margin: 0,
-                fontWeight: 700,
-                fontSize: 17,
-                letterSpacing: "-0.02em",
-                fontFamily: "var(--font-display)",
-                color: "var(--text)",
-                lineHeight: 1.2,
-              }}
-            >
-              Sources &amp; batches
-            </h2>
-            <p
-              className="muted"
-              style={{ fontSize: 13, margin: "6px 0 0", lineHeight: 1.45, maxWidth: 52 * 8 }}
-            >
-              Channels → sections → narrow. Changes hit every analytics screen immediately.
-            </p>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <h2
+                id="sources-scope-title"
+                style={{
+                  margin: 0,
+                  fontWeight: 700,
+                  fontSize: 17,
+                  letterSpacing: "-0.02em",
+                  fontFamily: "var(--font-display)",
+                  color: "var(--text)",
+                  lineHeight: 1.2,
+                }}
+              >
+                Sources &amp; batches
+              </h2>
+              <p
+                className="muted"
+                style={{ fontSize: 13, margin: "4px 0 0", lineHeight: 1.45, maxWidth: 52 * 8 }}
+              >
+                Channels → sections → narrow. Changes hit every analytics screen immediately.
+              </p>
+            </div>
+            <button type="button" onClick={onClose} aria-label="Close" className="sources-icon-btn" style={iconClose}>
+              ×
+            </button>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, width: "100%" }}>
             <div
               key={summary}
               className="sources-active-pill"
               style={{
-                marginTop: 12,
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 8,
@@ -287,10 +296,11 @@ export default function SourcesScopePanel({
                 {summary}
               </span>
             </div>
+
+            <div style={{ marginLeft: "auto", flexShrink: 0 }}>
+              <CustomRangePill />
+            </div>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close" className="sources-icon-btn" style={iconClose}>
-            ×
-          </button>
         </header>
 
         {/* Body: 3 columns */}
@@ -1148,3 +1158,176 @@ const scopePanelCss = `
   }
 }
 `;
+
+function CustomRangePill() {
+  const { t, setTweak } = useTweaks();
+  const [open, setOpen] = useState(false);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  const hasRange = !!(t.dateFrom || t.dateTo || (t.datePreset && t.datePreset !== "all"));
+
+  const label = useMemo(() => {
+    if (t.dateFrom && t.dateTo) {
+      const fmt = (iso: string) => {
+        const d = new Date(iso + "T00:00:00");
+        if (Number.isNaN(d.getTime())) return iso;
+        return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      };
+      return `${fmt(t.dateFrom)} – ${fmt(t.dateTo)}`;
+    }
+    if (t.dateFrom) return `From ${t.dateFrom}`;
+    if (t.dateTo) return `Until ${t.dateTo}`;
+    if (t.datePreset === "last-90-days") return "Last 90d";
+    if (t.datePreset === "last-12-months") return "Last 12m";
+    if (t.datePreset === "this-fy") return "This FY";
+    return "Custom range";
+  }, [t.dateFrom, t.dateTo, t.datePreset]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClickOutside = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    window.addEventListener("click", onClickOutside);
+    return () => window.removeEventListener("click", onClickOutside);
+  }, [open]);
+
+  return (
+    <div ref={popoverRef} style={{ position: "relative", display: "inline-block" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "4px 11px",
+          borderRadius: 999,
+          border: `1px solid ${hasRange ? "color-mix(in srgb, var(--accent) 45%, var(--border))" : "var(--border-strong)"}`,
+          background: hasRange ? "var(--accent-weak)" : "var(--surface-2)",
+          color: hasRange ? "var(--accent-text, var(--accent))" : "var(--text)",
+          fontSize: 12,
+          fontWeight: 600,
+          cursor: "pointer",
+          transition: "all 0.15s ease",
+          boxShadow: "var(--shadow-xs)",
+        }}
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+          <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+          <line x1="16" y1="2" x2="16" y2="6" />
+          <line x1="8" y1="2" x2="8" y2="6" />
+          <line x1="3" y1="10" x2="21" y2="10" />
+        </svg>
+        <span>{label}</span>
+        <span style={{ fontSize: 9, opacity: 0.7, transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s ease" }}>▾</span>
+      </button>
+
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 6px)",
+            left: 0,
+            zIndex: 350,
+            width: 250,
+            padding: 12,
+            background: "var(--surface)",
+            border: "1px solid var(--border-strong)",
+            borderRadius: 12,
+            boxShadow: "var(--shadow-lg)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-3)" }}>
+              Custom Range
+            </span>
+            {hasRange && (
+              <button
+                type="button"
+                onClick={() => {
+                  setTweak("datePreset", "all");
+                  setTweak("dateFrom", "");
+                  setTweak("dateTo", "");
+                }}
+                style={{ background: "none", border: "none", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer", padding: 0 }}
+              >
+                Reset
+              </button>
+            )}
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", width: 34 }}>From</span>
+              <input
+                type="date"
+                value={t.dateFrom || ""}
+                onChange={(e) => {
+                  setTweak("dateFrom", e.target.value);
+                  setTweak("datePreset", "custom");
+                }}
+                style={{
+                  flex: 1,
+                  padding: "4px 6px",
+                  fontSize: 11.5,
+                  borderRadius: 6,
+                  border: "1px solid var(--border-strong)",
+                  background: "var(--surface)",
+                  color: "var(--text)",
+                  fontFamily: "inherit",
+                }}
+              />
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", width: 34 }}>To</span>
+              <input
+                type="date"
+                value={t.dateTo || ""}
+                onChange={(e) => {
+                  setTweak("dateTo", e.target.value);
+                  setTweak("datePreset", "custom");
+                }}
+                style={{
+                  flex: 1,
+                  padding: "4px 6px",
+                  fontSize: 11.5,
+                  borderRadius: 6,
+                  border: "1px solid var(--border-strong)",
+                  background: "var(--surface)",
+                  color: "var(--text)",
+                  fontFamily: "inherit",
+                }}
+              />
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            style={{
+              marginTop: 2,
+              padding: "5px 12px",
+              borderRadius: 6,
+              background: "var(--accent)",
+              color: "var(--text-invert, #fff)",
+              fontSize: 11.5,
+              fontWeight: 600,
+              border: "none",
+              cursor: "pointer",
+              textAlign: "center",
+            }}
+          >
+            Done
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

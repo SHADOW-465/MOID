@@ -144,7 +144,8 @@ export default function AuditPage() {
   const { canEraseLedger } = usePersona();
 
   const [viewMode, setViewMode] = useState<ViewMode>("batch");
-  const [datePreset, setDatePreset] = useState<AuditDatePreset>("30d");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [stageFilter, setStageFilter] = useState("all");
@@ -174,7 +175,8 @@ export default function AuditPage() {
 
     setFocusIssue(focus);
     setViewMode("batch");
-    setDatePreset("all"); // don't hide the issue behind 30d
+    setDateFrom("");
+    setDateTo("");
     if (focus.stageId) setStageFilter(focus.stageId);
     // Prefer batch for search; fall back to date so the list narrows
     if (focus.batch) setSearchQuery(focus.batch);
@@ -183,7 +185,7 @@ export default function AuditPage() {
 
   useEffect(() => {
     setPage(0);
-  }, [searchQuery, typeFilter, stageFilter, sourceFilter, sizeFilter, statusFilter, datePreset, viewMode]);
+  }, [searchQuery, typeFilter, stageFilter, sourceFilter, sizeFilter, statusFilter, dateFrom, dateTo, viewMode]);
 
   const commentsMap = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -228,10 +230,18 @@ export default function AuditPage() {
     });
   }, [events]);
 
-  const datedEvents = useMemo(
-    () => filterEventsByDatePreset(events, datePreset),
-    [events, datePreset]
-  );
+  const datedEvents = useMemo(() => {
+    if (!dateFrom && !dateTo) return events;
+    return events.filter((e) => {
+      const biz = e.occurredOn?.start ?? "";
+      const rec = e.recordedAt ? e.recordedAt.slice(0, 10) : "";
+      const d = biz || rec;
+      if (!d) return true;
+      if (dateFrom && d < dateFrom) return false;
+      if (dateTo && d > dateTo) return false;
+      return true;
+    });
+  }, [events, dateFrom, dateTo]);
 
   const allRows = useMemo(
     () => buildEntryRows(datedEvents, commentsMap),
@@ -512,16 +522,11 @@ export default function AuditPage() {
               ]}
             />
             <div style={{ flex: 1 }} />
-            <SegControl
-              value={datePreset}
-              onChange={setDatePreset}
-              options={[
-                { id: "7d", label: "7d" },
-                { id: "30d", label: "30d" },
-                { id: "90d", label: "90d" },
-                { id: "all", label: "All" },
-              ]}
-              size="sm"
+            <AuditCustomRangePill
+              dateFrom={dateFrom}
+              setDateFrom={setDateFrom}
+              dateTo={dateTo}
+              setDateTo={setDateTo}
             />
           </div>
 
@@ -1795,3 +1800,175 @@ const cellMono: React.CSSProperties = {
   color: "var(--text)",
   whiteSpace: "nowrap",
 };
+
+function AuditCustomRangePill({
+  dateFrom,
+  setDateFrom,
+  dateTo,
+  setDateTo,
+}: {
+  dateFrom: string;
+  setDateFrom: (v: string) => void;
+  dateTo: string;
+  setDateTo: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  const hasRange = !!(dateFrom || dateTo);
+
+  const label = useMemo(() => {
+    if (dateFrom && dateTo) {
+      const fmt = (iso: string) => {
+        const d = new Date(iso + "T00:00:00");
+        if (Number.isNaN(d.getTime())) return iso;
+        return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      };
+      return `${fmt(dateFrom)} – ${fmt(dateTo)}`;
+    }
+    if (dateFrom) return `From ${dateFrom}`;
+    if (dateTo) return `Until ${dateTo}`;
+    return "Custom range";
+  }, [dateFrom, dateTo]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClickOutside = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    window.addEventListener("click", onClickOutside);
+    return () => window.removeEventListener("click", onClickOutside);
+  }, [open]);
+
+  return (
+    <div ref={popoverRef} style={{ position: "relative", display: "inline-block" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "4px 11px",
+          borderRadius: 999,
+          border: `1px solid ${hasRange ? "color-mix(in srgb, var(--accent) 45%, var(--border))" : "var(--border-strong)"}`,
+          background: hasRange ? "var(--accent-weak)" : "var(--surface-2)",
+          color: hasRange ? "var(--accent-text, var(--accent))" : "var(--text)",
+          fontSize: 12,
+          fontWeight: 600,
+          cursor: "pointer",
+          transition: "all 0.15s ease",
+          boxShadow: "var(--shadow-xs)",
+        }}
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+          <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+          <line x1="16" y1="2" x2="16" y2="6" />
+          <line x1="8" y1="2" x2="8" y2="6" />
+          <line x1="3" y1="10" x2="21" y2="10" />
+        </svg>
+        <span>{label}</span>
+        <span style={{ fontSize: 9, opacity: 0.7, transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s ease" }}>▾</span>
+      </button>
+
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 6px)",
+            right: 0,
+            zIndex: 350,
+            width: 250,
+            padding: 12,
+            background: "var(--surface)",
+            border: "1px solid var(--border-strong)",
+            borderRadius: 12,
+            boxShadow: "var(--shadow-lg)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-3)" }}>
+              Custom Range
+            </span>
+            {hasRange && (
+              <button
+                type="button"
+                onClick={() => {
+                  setDateFrom("");
+                  setDateTo("");
+                }}
+                style={{ background: "none", border: "none", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer", padding: 0 }}
+              >
+                Reset
+              </button>
+            )}
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", width: 34 }}>From</span>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                style={{
+                  flex: 1,
+                  padding: "4px 6px",
+                  fontSize: 11.5,
+                  borderRadius: 6,
+                  border: "1px solid var(--border-strong)",
+                  background: "var(--surface)",
+                  color: "var(--text)",
+                  fontFamily: "inherit",
+                }}
+              />
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", width: 34 }}>To</span>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                style={{
+                  flex: 1,
+                  padding: "4px 6px",
+                  fontSize: 11.5,
+                  borderRadius: 6,
+                  border: "1px solid var(--border-strong)",
+                  background: "var(--surface)",
+                  color: "var(--text)",
+                  fontFamily: "inherit",
+                }}
+              />
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            style={{
+              marginTop: 2,
+              padding: "5px 12px",
+              borderRadius: 6,
+              background: "var(--accent)",
+              color: "var(--text-invert, #fff)",
+              fontSize: 11.5,
+              fontWeight: 600,
+              border: "none",
+              cursor: "pointer",
+              textAlign: "center",
+            }}
+          >
+            Done
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

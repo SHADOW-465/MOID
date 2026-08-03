@@ -15,8 +15,8 @@ test("the lot code is a function of lot date + size, and nothing else", () => {
   for (const recordedOn of ["2026-06-27", "2026-06-28", "2026-07-04", "2027-01-09"]) {
     expect(buildBatchId(lotDate, "14Fr")).toBe(code);
     // and the recorded day is not derivable from the code
-    expect(parseBatchId(code)!.date).toBe(lotDate);
-    expect(parseBatchId(code)!.date).not.toBe(recordedOn === lotDate ? "" : recordedOn);
+    expect(parseBatchId(code!)?.date).toBe(lotDate);
+    expect(parseBatchId(code!)?.date).not.toBe(recordedOn === lotDate ? "" : recordedOn);
   }
 });
 
@@ -25,7 +25,7 @@ test("size is the only other input — changing it keeps the lot's date part", (
   const b = buildBatchId("2026-06-27", "20Fr")!;
   expect(a).toBe("26F27-14");
   expect(b).toBe("26F27-20");
-  expect(parseBatchId(a)!.date).toBe(parseBatchId(b)!.date);
+  expect(parseBatchId(a)?.date).toBe(parseBatchId(b)?.date);
 });
 
 test("typing a code round-trips to the lot date the popover shows", () => {
