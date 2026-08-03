@@ -15,6 +15,9 @@ import {
   copq,
   savingsOpportunity,
   trustScore,
+  goInvestigation,
+  investigationToTweaksPatch,
+  type InvestigationState,
 } from "@/lib/analytics";
 import type { DashboardConfig } from "@/types/dashboard";
 import { resolveScope } from "@/lib/analytics/scope";
@@ -32,9 +35,40 @@ import CommandPalette, { useCommandPaletteHotkey } from "@/components/app/Comman
 import ReportPanel from "@/components/report/ReportPanel";
 import SourcesScopePanel from "@/components/app/SourcesScopePanel";
 import { canReport } from "@/lib/report/blocks";
-import { subscribeNavBanner, type NavBanner } from "@/lib/analytics/nav-banner";
+import { subscribeNavBanner, emitNavBanner, type NavBanner } from "@/lib/analytics/nav-banner";
 import { usePersona } from "@/components/app/PersonaContext";
 import NotificationsPanel from "@/components/app/NotificationsPanel";
+import {
+  buildScopedDashboardConfig,
+  formatScopedSummaryText,
+} from "@/lib/guide";
+import {
+  runTurn,
+  turnAfterIngestSuccess,
+  turnAfterIngestFailure,
+  loadSession,
+  saveSession,
+  draftToShiftRecord,
+  roleStarterChips,
+  writePrefill,
+  prefillFromDraft,
+  type AgentSession,
+  type AgentAction,
+  type AgentDraft,
+  type ToolIntent,
+  type EntryDraft,
+} from "@/lib/agent";
+import { toStageDayRecord } from "@/lib/entry/to-stage-day-record";
+
+interface WidgetMessage {
+  id: string;
+  sender: "user" | "moid";
+  text: string;
+  timestamp: string;
+  steps?: string[];
+  actions?: AgentAction[];
+  draft?: AgentDraft;
+}
 
 interface NavItem {
   key: NavKey;
@@ -87,7 +121,10 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { key: "reports", label: "Reports", icon: "print", href: "/reports" },
       { key: "capa", label: "CAPA & Actions", icon: "check", href: "/capa" },
-      { key: "ask", label: "Ask MOID", icon: "comment", href: "/chat", aiBadge: true },
+      // No href: Ask MOID is the side panel, not a route. A copilot that
+      // navigates the dashboard for you must not cover the dashboard, and the
+      // full-page /chat was a second, tool-less chat implementation besides.
+      { key: "ask", label: "Ask MOID", icon: "comment", aiBadge: true },
       { key: "audit", label: "Audit Trail", icon: "search", href: "/audit" },
       { key: "schema", label: "Plant Schema", icon: "split", href: "/schema" },
       { key: "settings", label: "Settings", icon: "external", href: "/settings" },
@@ -140,9 +177,9 @@ export default function AppShell({
   presetId?: string | null;
 }) {
   const router = useRouter();
-  const { events } = useEvents();
+  const { events, refreshEvents } = useEvents();
   const { t, setTweak } = useTweaks();
-  const { persona, setPersona, canConfigure } = usePersona();
+  const { persona, setPersona, canConfigure, canWrite } = usePersona();
   const [mounted, setMounted] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [showPersonaMenu, setShowPersonaMenu] = useState(false);
@@ -293,21 +330,199 @@ export default function AppShell({
     return false;
   });
 
-  // Floating Ask MOID Chat Widget States
+  // Floating Ask MOID — multi-turn task agent (enter / report / guide)
   const [showChatWidget, setShowChatWidget] = useState(false);
   const [widgetInput, setWidgetInput] = useState("");
-  const [widgetMessages, setWidgetMessages] = useState<any[]>([
+  const [widgetMessages, setWidgetMessages] = useState<WidgetMessage[]>([
     {
       id: "welcome",
       sender: "moid",
-      text: "Hello! I am MOID, your Manufacturing Operational Intelligence assistant. How can I help you analyze rejection trends or diagnostic metrics today?",
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    }
+      text:
+        "I'm MOID — I can **do the work**, not just point at menus.\n" +
+        "• Enter data: “assembly checked 400 accepted 390 coag 5 sd 3 bl 2”\n" +
+        "• Reports: “summarize july first week report”\n" +
+        "• How-to: “how do I import Excel?”\n" +
+        "If something’s missing I’ll ask here, then confirm before saving.",
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    },
   ]);
   const [widgetLoading, setWidgetLoading] = useState(false);
   const [activeConfig, setActiveConfig] = useState<DashboardConfig | null>(null);
+  const [agentSession, setAgentSession] = useState<AgentSession | null>(null);
+  const agentSessionRef = useRef<AgentSession | null>(null);
+  const widgetScrollRef = useRef<HTMLDivElement>(null);
+  const [spotlightNav, setSpotlightNav] = useState<string | null>(null);
 
+  const pulseSpotlight = useCallback((navKey: string) => {
+    setSpotlightNav(navKey);
+    window.setTimeout(() => setSpotlightNav(null), 4500);
+  }, []);
 
+  useEffect(() => {
+    agentSessionRef.current = agentSession;
+    saveSession(agentSession);
+  }, [agentSession]);
+
+  useEffect(() => {
+    const s = loadSession();
+    if (s && (s.status === "collecting" || s.status === "confirming")) {
+      setAgentSession(s);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!showChatWidget) return;
+    const el = widgetScrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [widgetMessages, widgetLoading, showChatWidget]);
+
+  const applyScopeState = useCallback(
+    (state: InvestigationState) => {
+      const patch = investigationToTweaksPatch(state);
+      if (patch.grain) setTweak("grain", patch.grain);
+      if (patch.datePreset) setTweak("datePreset", patch.datePreset);
+      if (patch.dateFrom != null) setTweak("dateFrom", patch.dateFrom);
+      if (patch.dateTo != null) setTweak("dateTo", patch.dateTo);
+      if (patch.stageView) setTweak("stageView", patch.stageView);
+    },
+    [setTweak],
+  );
+
+  const navigateWithState = useCallback(
+    (href: string, state?: InvestigationState, label?: string, reason?: string) => {
+      const fromHref =
+        typeof window !== "undefined"
+          ? window.location.pathname + window.location.search
+          : "/";
+      emitNavBanner({
+        label: label || "Ask MOID",
+        reason: reason || "Ask MOID",
+        fromHref,
+      });
+      if (state) {
+        applyScopeState(state);
+        goInvestigation((h) => router.push(h), href, state);
+      } else {
+        router.push(href);
+      }
+    },
+    [router, applyScopeState],
+  );
+
+  const pushMoid = useCallback((partial: Omit<WidgetMessage, "id" | "sender" | "timestamp">) => {
+    const msg: WidgetMessage = {
+      id: `moid-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      sender: "moid",
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      ...partial,
+    };
+    setWidgetMessages((prev) => [...prev, msg]);
+    return msg;
+  }, []);
+
+  const runSummarizeTool = useCallback(
+    async (state: InvestigationState, periodLabel: string, question: string) => {
+      const evs = events ?? [];
+      const scoped = buildScopedDashboardConfig(evs, state, undefined, periodLabel);
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            question,
+            currentConfig: scoped,
+            mode: "summary",
+          }),
+        });
+        if (res.ok) {
+          const result = await res.json();
+          if (result.type === "slide" && result.slide) {
+            const bullets = (result.slide.bullets as string[] | undefined)?.length
+              ? "\n" + (result.slide.bullets as string[]).map((b: string) => `• ${b}`).join("\n")
+              : "";
+            return `**${result.slide.headline}**${bullets}`;
+          }
+          if (result.text) return result.text as string;
+        }
+      } catch {
+        /* fall through */
+      }
+      return formatScopedSummaryText(scoped);
+    },
+    [events],
+  );
+
+  const executeIngest = useCallback(
+    async (draft: EntryDraft) => {
+      const rec = draftToShiftRecord(draft);
+      const ingestionId = `moid-agent-${Date.now()}`;
+      const payload = [toStageDayRecord(rec, ingestionId)];
+      const res = await fetch("/api/ingest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ingestionId,
+          fileName: "Ask MOID Entry",
+          records: payload,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error || `Ingest failed (${res.status})`);
+      }
+      await refreshEvents();
+    },
+    [refreshEvents],
+  );
+
+  const executeTools = useCallback(
+    async (tools: ToolIntent[], question: string) => {
+      let summaryText: string | null = null;
+      for (const tool of tools) {
+        if (tool.type === "apply_scope") {
+          applyScopeState(tool.state);
+        } else if (tool.type === "navigate") {
+          window.setTimeout(
+            () => navigateWithState(tool.href, tool.state, tool.label, question),
+            400,
+          );
+        } else if (tool.type === "open_reports") {
+          applyScopeState(tool.state);
+          window.setTimeout(
+            () => navigateWithState("/reports", tool.state, "Reports", question),
+            400,
+          );
+        } else if (tool.type === "summarize") {
+          summaryText = await runSummarizeTool(tool.state, tool.periodLabel, tool.question);
+        } else if (tool.type === "spotlight") {
+          pulseSpotlight(tool.navKey);
+        } else if (tool.type === "prefill_entry") {
+          writePrefill(prefillFromDraft(tool.draft));
+          window.setTimeout(
+            () => navigateWithState(tool.href, undefined, "Data Entry", "Ask MOID prefill"),
+            200,
+          );
+        } else if (tool.type === "copy_link") {
+          try {
+            await navigator.clipboard.writeText(tool.url);
+          } catch {
+            /* ignore */
+          }
+        } else if (tool.type === "ingest") {
+          await executeIngest(tool.draft);
+          const done = turnAfterIngestSuccess(tool.draft);
+          setAgentSession(null);
+          pushMoid({
+            text: done.reply.text,
+            actions: done.reply.actions,
+          });
+          return { ingested: true as const };
+        }
+      }
+      return { ingested: false as const, summaryText };
+    },
+    [applyScopeState, navigateWithState, runSummarizeTool, executeIngest, pushMoid, pulseSpotlight],
+  );
 
   useEffect(() => {
     const evs = events ?? [];
@@ -348,74 +563,180 @@ export default function AppShell({
     }
   }, [events]);
 
-  const submitWidgetQuery = async () => {
-    const question = widgetInput.trim();
+  const submitWidgetQuery = async (preset?: string) => {
+    const question = (preset ?? widgetInput).trim();
     if (!question || widgetLoading) return;
 
     setWidgetLoading(true);
-    setWidgetInput("");
+    if (!preset) setWidgetInput("");
 
-    // Add user message
-    const userMsg = {
-      id: `usr-${Date.now()}`,
-      sender: "user",
-      text: question,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    };
-    setWidgetMessages((prev) => [...prev, userMsg]);
+    // Confirm button reuses submit with special token
+    const isConfirmClick = question === "__confirm__";
+    const userVisible = isConfirmClick ? "Confirm & save" : question;
 
-    try {
-      const currentConfig = activeConfig || {
-        dashboardTitle: "Live Staging Ledger",
-        executiveSummary: "Operational analytics loaded.",
-        kpis: [
-          { label: "Rejection Rate", value: "0.00%", unit: "", trend: 0, context: "No active data" }
-        ],
-        charts: [],
-        insights: [],
-        recommendations: [],
-        alerts: [],
-        sections: [],
-      };
-
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question,
-          dataSummary: JSON.stringify(currentConfig.insights),
-          currentConfig,
-        }),
-      });
-
-      if (!res.ok) {
-        throw new Error("Chat request failed");
-      }
-
-      const result = await res.json();
-      const text = result.type === "slide" && result.slide ? result.slide.headline : (result.text || "I was unable to construct a response.");
-
-      const moidMsg = {
-        id: `moid-${Date.now()}`,
-        sender: "moid",
-        text,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      };
-      setWidgetMessages((prev) => [...prev, moidMsg]);
-    } catch (err: any) {
+    if (!isConfirmClick) {
       setWidgetMessages((prev) => [
         ...prev,
         {
-          id: `err-${Date.now()}`,
-          sender: "moid",
-          text: `Error: ${err.message ?? "Operational AI returned a timeout error."}`,
+          id: `usr-${Date.now()}`,
+          sender: "user",
+          text: userVisible,
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         },
       ]);
+    } else {
+      setWidgetMessages((prev) => [
+        ...prev,
+        {
+          id: `usr-${Date.now()}`,
+          sender: "user",
+          text: "Confirm & save",
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        },
+      ]);
+    }
+
+    try {
+      const evs = events ?? [];
+      const dates = evs
+        .map((e) => e.occurredOn?.start)
+        .filter((d): d is string => !!d)
+        .sort();
+      const dataMaxIso = dates[dates.length - 1] ?? new Date().toISOString().slice(0, 10);
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const path =
+        typeof window !== "undefined" ? window.location.pathname : undefined;
+
+      const turnMsg = isConfirmClick ? "confirm" : question;
+      const turn = runTurn(
+        agentSessionRef.current,
+        turnMsg,
+        {
+          dataMaxIso,
+          todayIso,
+          persona,
+          canWrite,
+          currentPath: path,
+          eventCount: evs.length,
+        },
+        evs,
+        persona,
+      );
+
+      setAgentSession(turn.session);
+
+      // Execute tools (scope / navigate / summarize / ingest)
+      let finalText = turn.reply.text;
+      if (turn.reply.autoTools.length) {
+        try {
+          const result = await executeTools(turn.reply.autoTools, question);
+          if (result.ingested) {
+            return; // success message already pushed
+          }
+          if (result.summaryText) {
+            finalText = turn.reply.text.replace(
+              /_Summary loading from verified ledger figures…_/,
+              result.summaryText,
+            );
+            if (!finalText.includes(result.summaryText)) {
+              finalText = `${turn.reply.text}\n\n${result.summaryText}`;
+            }
+          }
+        } catch (err: unknown) {
+          if (turn.reply.autoTools.some((t) => t.type === "ingest")) {
+            const msg = err instanceof Error ? err.message : "Ingest failed";
+            const fail = turnAfterIngestFailure(msg, turn.session);
+            setAgentSession(fail.session);
+            pushMoid({
+              text: fail.reply.text,
+              actions: fail.reply.actions,
+              draft: fail.reply.draft,
+            });
+            return;
+          }
+          throw err;
+        }
+      }
+
+      pushMoid({
+        text: finalText,
+        steps: turn.reply.steps,
+        actions: turn.reply.actions,
+        draft: turn.reply.draft,
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Something went wrong.";
+      pushMoid({
+        text: `Error: ${message}. You can still use Data Entry, Excel Data, or Reports from the sidebar.`,
+      });
     } finally {
       setWidgetLoading(false);
     }
   };
+
+  const onAgentAction = useCallback(
+    (action: AgentAction) => {
+      if (action.kind === "confirm_ingest") {
+        void submitWidgetQuery("__confirm__");
+        return;
+      }
+      if (action.kind === "workflow_next") {
+        void submitWidgetQuery(action.chipText || "next");
+        return;
+      }
+      if (action.kind === "cancel" || (action.kind === "chip" && action.chipText === "cancel")) {
+        void submitWidgetQuery("cancel");
+        return;
+      }
+      if (action.kind === "chip" && action.chipText) {
+        void submitWidgetQuery(action.chipText);
+        return;
+      }
+      if (action.kind === "copy_link" && action.copyText) {
+        void navigator.clipboard.writeText(action.copyText).then(
+          () => pushMoid({ text: "Share link copied to clipboard." }),
+          () => pushMoid({ text: `Copy this link:\n${action.copyText}` }),
+        );
+        return;
+      }
+      if (action.kind === "prefill_entry" && action.href) {
+        const draft = agentSessionRef.current?.draft;
+        if (draft && draft.kind === "enter_data") {
+          writePrefill(prefillFromDraft(draft));
+        }
+        if (action.spotlightNav) pulseSpotlight(action.spotlightNav);
+        navigateWithState(action.href, action.state, action.label, "Ask MOID prefill");
+        return;
+      }
+      if (action.kind === "navigate" && action.href) {
+        if (action.spotlightNav) pulseSpotlight(action.spotlightNav);
+        navigateWithState(action.href, action.state, action.label);
+        return;
+      }
+      if (action.kind === "open_reports") {
+        navigateWithState(action.href || "/reports", action.state, "Reports");
+      }
+      if (action.kind === "spotlight" && action.spotlightNav) {
+        pulseSpotlight(action.spotlightNav);
+      }
+    },
+    // submitWidgetQuery recreated each render — intentional for latest session
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [navigateWithState, agentSession, canWrite, persona, events, pulseSpotlight, pushMoid],
+  );
+
+  // Command palette / external: open Ask MOID with a seed query
+  useEffect(() => {
+    const onSeed = (ev: CustomEvent<{ q?: string }>) => {
+      const q = ev.detail?.q;
+      if (!q) return;
+      setShowChatWidget(true);
+      window.setTimeout(() => void submitWidgetQuery(q), 50);
+    };
+    window.addEventListener("moid-ask", onSeed as EventListener);
+    return () => window.removeEventListener("moid-ask", onSeed as EventListener);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const toggleSidebar = () => {
     setSidebarCollapsed((prev) => {
@@ -937,11 +1258,17 @@ export default function AppShell({
                 {(!isCollapsed || sidebarCollapsed) && section.items.map((n) => {
                   const isActive = n.key === active;
                   const isAnalyticsChild = n.indent;
+                  const isSpotlight = spotlightNav === n.key;
  
                   return (
                     <button key={n.key} disabled={n.soon}
                       data-nav-active={isActive}
+                      data-nav-spotlight={isSpotlight || undefined}
                       onClick={() => {
+                        if (n.key === "ask") {
+                          setShowChatWidget(true);
+                          return;
+                        }
                         if (n.href) {
                           // Save current active tab coordinate to window before navigating
                           if (typeof window !== "undefined" && navRef.current) {
@@ -967,15 +1294,16 @@ export default function AppShell({
                         gap: sidebarCollapsed ? 0 : 8,
                         padding: sidebarCollapsed ? "8px 0" : (isAnalyticsChild ? "6px 12px 6px 20px" : "8px 12px"),
                         marginBottom: 1,
-                        background: "transparent",
+                        background: isSpotlight ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "transparent",
                         borderRadius: "30px",
                         color: navTextColor(isActive, n.soon),
-                        border: "none",
+                        border: isSpotlight ? "1px solid var(--accent)" : "none",
+                        boxShadow: isSpotlight ? "0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent)" : undefined,
                         cursor: n.soon ? "default" : "pointer",
                         fontSize: isAnalyticsChild ? 11.5 : 12.5,
-                        fontWeight: isActive ? 700 : 500,
+                        fontWeight: isActive || isSpotlight ? 700 : 500,
                         textAlign: "left",
-                        transition: "padding 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), gap 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), color 0.15s ease",
+                        transition: "padding 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), gap 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), color 0.15s ease, box-shadow 0.2s ease",
                         position: "relative",
                         zIndex: 1
                       }}>
@@ -1786,7 +2114,7 @@ export default function AppShell({
           }}>
             <div style={{ display: "flex", flexDirection: "column" }}>
               <span style={{ fontFamily: "var(--font-display)", fontSize: 16, fontWeight: 800 }}>Ask MOID</span>
-              <span style={{ fontSize: 9.5, opacity: 0.8, textTransform: "uppercase", letterSpacing: "0.05em" }}>Operational Intelligence</span>
+              <span style={{ fontSize: 9.5, opacity: 0.8, textTransform: "uppercase", letterSpacing: "0.05em" }}>Guide · Navigate · Summarize</span>
             </div>
             <button 
               onClick={() => setShowChatWidget(false)}
@@ -1805,7 +2133,9 @@ export default function AppShell({
           </div>
 
           {/* Messages */}
-          <div style={{
+          <div
+            ref={widgetScrollRef}
+            style={{
             flex: 1,
             overflowY: "auto",
             padding: 16,
@@ -1819,7 +2149,7 @@ export default function AppShell({
                 key={m.id}
                 style={{
                   alignSelf: m.sender === "user" ? "flex-end" : "flex-start",
-                  maxWidth: "85%",
+                  maxWidth: m.sender === "moid" ? "92%" : "85%",
                   display: "flex",
                   flexDirection: "column",
                   gap: 3
@@ -1829,13 +2159,67 @@ export default function AppShell({
                   padding: "10px 14px",
                   borderRadius: "12px",
                   fontSize: 12.5,
-                  lineHeight: 1.4,
+                  lineHeight: 1.45,
+                  whiteSpace: "pre-wrap",
                   background: m.sender === "user" ? "var(--surface-2)" : "var(--surface)",
                   color: "var(--text)",
                   border: m.sender === "user" ? "1px solid var(--border)" : "1px solid var(--border-strong)",
                   boxShadow: "2px 2px 0 rgba(0,0,0,0.05)"
                 }}>
-                  {m.text}
+                  {m.text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+                    part.startsWith("**") && part.endsWith("**") ? (
+                      <strong key={i}>{part.slice(2, -2)}</strong>
+                    ) : (
+                      <span key={i}>{part}</span>
+                    ),
+                  )}
+                  {m.steps && m.steps.length > 0 && (
+                    <ol style={{ margin: "10px 0 0", paddingLeft: 18 }}>
+                      {m.steps.map((s, i) => (
+                        <li key={i} style={{ marginBottom: 4 }}>{s}</li>
+                      ))}
+                    </ol>
+                  )}
+                  {m.draft && m.draft.kind === "enter_data" && (
+                    <div style={{
+                      marginTop: 10,
+                      padding: 8,
+                      borderRadius: 8,
+                      background: "var(--bg)",
+                      border: "1px solid var(--border)",
+                      fontSize: 11,
+                    }}>
+                      {m.draft.summaryRows.map((r) => (
+                        <div key={r.label} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "2px 0" }}>
+                          <span style={{ color: "var(--text-3)" }}>{r.label}</span>
+                          <span style={{ fontWeight: 600, fontFamily: "var(--font-mono)" }}>{r.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {m.actions && m.actions.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+                      {m.actions.map((a, i) => (
+                        <button
+                          key={`${a.id}-${i}`}
+                          type="button"
+                          onClick={() => onAgentAction(a)}
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 600,
+                            padding: "5px 10px",
+                            borderRadius: 999,
+                            border: "1px solid var(--border-strong)",
+                            background: a.kind === "confirm_ingest" || i === 0 ? "var(--accent)" : "var(--bg)",
+                            color: a.kind === "confirm_ingest" || i === 0 ? "#FFFFFF" : "var(--text)",
+                            cursor: "pointer",
+                          }}
+                        >
+                          {a.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <span style={{
                   fontSize: 9,
@@ -1849,7 +2233,30 @@ export default function AppShell({
             ))}
             {widgetLoading && (
               <div style={{ alignSelf: "flex-start", fontSize: 11, color: "var(--text-3)", fontStyle: "italic", padding: "4px 8px" }}>
-                MOID is thinking...
+                MOID is working...
+              </div>
+            )}
+            {widgetMessages.length <= 1 && !widgetLoading && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
+                {roleStarterChips(persona).map((s) => (
+                  <button
+                    key={s.text}
+                    type="button"
+                    onClick={() => void submitWidgetQuery(s.text)}
+                    style={{
+                      fontSize: 10.5,
+                      padding: "5px 9px",
+                      borderRadius: 999,
+                      border: "1px solid var(--border)",
+                      background: "var(--surface)",
+                      color: "var(--text-2)",
+                      cursor: "pointer",
+                      textAlign: "left",
+                    }}
+                  >
+                    {s.label}
+                  </button>
+                ))}
               </div>
             )}
           </div>
@@ -1865,11 +2272,11 @@ export default function AppShell({
           }}>
             <input 
               type="text"
-              placeholder="Ask anything about ledger..."
+              placeholder="Enter data… / Summarize report… / How do I…"
               value={widgetInput}
               onChange={(e) => setWidgetInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") submitWidgetQuery();
+                if (e.key === "Enter") void submitWidgetQuery();
               }}
               style={{
                 flex: 1,
@@ -1883,7 +2290,7 @@ export default function AppShell({
               }}
             />
             <button
-              onClick={submitWidgetQuery}
+              onClick={() => void submitWidgetQuery()}
               disabled={widgetLoading || !widgetInput.trim()}
               style={{
                 width: 32,
@@ -1908,7 +2315,7 @@ export default function AppShell({
       {/* Floating M Toggle Button */}
       <button 
         onClick={() => setShowChatWidget(!showChatWidget)}
-        title="Ask MOID AI Assistant"
+        title="Ask MOID — guide, navigate, summarize"
         style={{
           position: "fixed",
           bottom: 24,

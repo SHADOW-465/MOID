@@ -272,15 +272,17 @@ export const APP_FEATURES: AppFeature[] = [
   {
     id: "ask",
     navKey: "ask",
-    label: "Ask MOID (full page)",
-    href: "/chat",
-    keywords: ["full chat", "insight slides", "ask moid page"],
-    summary: "Full-page chat with insight slides grounded on verified dashboard figures.",
+    label: "Ask MOID",
+    // Panel, not a page — it stays open over whatever screen it navigates to.
+    href: "",
+    keywords: ["ask moid", "assistant", "copilot", "chat"],
+    summary: "The assistant panel: answers grounded on the ledger, navigates, scopes, and drafts entries.",
     howTo: [
-      "Open Management → Ask MOID, or expand this floating guide.",
+      "Open Management → Ask MOID in the sidebar, or the round button bottom-right.",
       "Ask a metric question (“what is rejection rate this month?”) for a grounded answer.",
       "Ask a how-to (“how do I import Excel?”) for exact steps and a Take me there button.",
-      "Ask an action (“summarize July first week report”) — MOID scopes data, summarizes, and can open the page.",
+      "Ask it to act (“summarize July first week”) — it scopes the screen and opens the page for you.",
+      "State quantities (“visual checked 400 rejected 12”) and it drafts the entry for you to confirm.",
     ],
   },
 ];

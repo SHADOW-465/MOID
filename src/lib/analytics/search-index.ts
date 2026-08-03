@@ -42,7 +42,6 @@ const DESTINATIONS: { navKey: NavKey; label: string; href: string; keywords: str
   { navKey: "copq", label: "COPQ & Savings", href: "/copq", keywords: "cost rupee money" },
   { navKey: "reports", label: "Reports", href: "/reports", keywords: "print monthly pack" },
   { navKey: "capa", label: "CAPA & Actions", href: "/capa", keywords: "action owner" },
-  { navKey: "ask", label: "Ask MOID", href: "/chat", keywords: "ai chat" },
   { navKey: "audit", label: "Audit Trail", href: "/audit", keywords: "provenance trust" },
   { navKey: "schema", label: "Data Schema", href: "/schema", keywords: "registry stages defects" },
   { navKey: "settings", label: "Settings", href: "/settings", keywords: "target cost theme" },

@@ -31,11 +31,12 @@ export interface IntentResult {
   alternatives: SearchHit[];
 }
 
-const NAV_HREF: Record<NavKey, string> = {
+/** "ask" is absent on purpose: Ask MOID is a panel, not a route. */
+const NAV_HREF: Partial<Record<NavKey, string>> = {
   dashboard: "/", workbooks: "/workbooks", "data-entry": "/data-entry",
   staging: "/staging", stage: "/stage-analysis", size: "/size-analysis",
   defect: "/defect-analysis", spc: "/spc", "process-flow": "/process-flow",
-  copq: "/copq", reports: "/reports", capa: "/capa", ask: "/chat",
+  copq: "/copq", reports: "/reports", capa: "/capa",
   audit: "/audit", schema: "/schema", settings: "/settings",
 };
 
@@ -89,6 +90,10 @@ export function resolveIntentDeterministic(text: string, ctx: IntentCtx): Intent
   else if (size) { matched.size = size.value; state.size = size.value; navKey = "size"; score = Math.max(score, size.score); }
   else if (batch) { matched.batch = batch.value; state.batch = batch.value; navKey = "data-entry"; score = Math.max(score, batch.score); }
   else if (metric) { navKey = screenForMetric(metric); }
+  else if (/\breports?\b|\bprint\b|\bpdf\b/.test(text.toLowerCase())) {
+    navKey = "reports";
+    score = Math.max(score, period ? 0.65 : 0.55);
+  }
   else if (period) { navKey = "dashboard"; }
 
   // Persona gate: if the natural target is denied, drop confidence and fall to
@@ -157,5 +162,5 @@ export async function resolveIntent(
 
 /** Href for a resolved result (scope carried as query params — see Task 5). */
 export function hrefForNav(navKey: NavKey): string {
-  return NAV_HREF[navKey];
+  return NAV_HREF[navKey] ?? "/";
 }

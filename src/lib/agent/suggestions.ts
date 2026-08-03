@@ -103,6 +103,5 @@ export function spotlightNavFromHref(href: string): string | null {
   if (href.startsWith("/audit")) return "audit";
   if (href.startsWith("/schema")) return "schema";
   if (href.startsWith("/settings")) return "settings";
-  if (href.startsWith("/chat")) return "ask";
   return null;
 }

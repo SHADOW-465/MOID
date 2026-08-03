@@ -14,6 +14,7 @@ import { useRegistry } from "@/components/app/RegistryContext";
 import { useTweaks } from "@/components/editorial/TweaksContext";
 import ReportPanel from "@/components/report/ReportPanel";
 import { resolveScope } from "@/lib/analytics/scope";
+import { useApplyInvestigationFromUrl } from "@/lib/analytics/use-investigation-scope";
 import type { Scope } from "@/lib/analytics";
 import PageLoader from "@/components/app/PageLoader";
 
@@ -21,6 +22,8 @@ export default function ReportsPage() {
   const { events, isLoading } = useEvents();
   const { registry } = useRegistry();
   const { t } = useTweaks();
+  // Ask MOID / command palette can deep-link with ?from=&to=&grain=
+  useApplyInvestigationFromUrl();
 
   const scope: Scope = useMemo(
     () => resolveScope(events ?? [], t),

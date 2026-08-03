@@ -55,4 +55,28 @@ describe("parseDatePhrase", () => {
       from: "2025-08-01", to: "2025-08-31", grain: "month", matchedText: "this month",
     });
   });
+
+  it("resolves 'july first week' as calendar week 1 of July", () => {
+    expect(parseDatePhrase("summarize july first week report", MAX)).toEqual({
+      from: "2025-07-01", to: "2025-07-07", grain: "week", matchedText: "july first week",
+    });
+  });
+
+  it("resolves 'first week of july'", () => {
+    expect(parseDatePhrase("first week of july", MAX)).toMatchObject({
+      from: "2025-07-01", to: "2025-07-07", grain: "week",
+    });
+  });
+
+  it("resolves 'july week 2'", () => {
+    expect(parseDatePhrase("july week 2", MAX)).toEqual({
+      from: "2025-07-08", to: "2025-07-14", grain: "week", matchedText: "july week 2",
+    });
+  });
+
+  it("resolves 'last week of july' as final 7 days", () => {
+    expect(parseDatePhrase("last week of july", MAX)).toEqual({
+      from: "2025-07-25", to: "2025-07-31", grain: "week", matchedText: "last week of july",
+    });
+  });
 });

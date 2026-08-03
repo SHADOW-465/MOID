@@ -1,17 +1,25 @@
 // src/app/api/chat/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { generateObject, generateText, NoObjectGeneratedError } from "ai";
+import { generateObject, generateText } from "ai";
 import { tryModels } from "@/lib/ai";
 import { InsightSlideAnswerSchema } from "@/lib/schemas";
 import type { DashboardConfig, KPI, Chart } from "@/types/dashboard";
+import { catalogForPrompt } from "@/lib/guide/app-catalog";
 
 const SYSTEM_PROMPT =
-  "You are a quality-analytics assistant answering follow-up questions about a " +
-  "dashboard. You reply with a focused insight slide as a JSON object. CRITICAL: every " +
-  "number you state in a chart or bullet MUST be one of the VERIFIED FIGURES provided " +
-  "below — these were computed deterministically from the source data. Never invent, " +
-  "estimate, or recompute a value. If the answer is not derivable from the verified " +
-  "figures, say so plainly in a bullet instead of guessing.";
+  "You are MOID, the Manufacturing Operational Intelligence guide for this plant app. " +
+  "You answer analytics questions AND help users use the product. " +
+  "When verified figures are provided, every number you state MUST come from them — " +
+  "never invent, estimate, or recompute. If a figure is missing, say so plainly. " +
+  "For how-to questions, give exact click-by-click steps using real screen names " +
+  "(Dashboard, Data Entry, Excel Data, By Stage, By Size, By Defect, SPC, Reports, " +
+  "CAPA, Plant Schema, Settings). Prefer short scannable steps.";
+
+const GUIDE_SYSTEM =
+  "You are MOID, in-app product guide for a medical-device plant quality OS. " +
+  "Direct the user to the correct screen and describe exact steps. " +
+  "Never invent KPI numbers. If they ask for metrics without verified figures, " +
+  "tell them which page to open (Dashboard / Reports / analysis screens) and how to set the date range.";
 
 const fmtKpi = (k: KPI) =>
   `- ${k.label}: ${k.value}${k.unit ? " " + k.unit : ""}` +
@@ -77,13 +85,57 @@ function buildPrompt(question: string, currentConfig: DashboardConfig): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const { question, currentConfig } = await req.json();
+    const body = await req.json();
+    const { question, currentConfig, mode } = body as {
+      question?: string;
+      currentConfig?: DashboardConfig;
+      /** "guide" = product help without requiring KPI context */
+      mode?: "analytics" | "guide" | "summary";
+    };
 
     if (!question || typeof question !== "string") {
       return NextResponse.json({ error: "question is required" }, { status: 400 });
     }
 
     const cfg = (currentConfig ?? {}) as DashboardConfig;
+    const isGuide = mode === "guide" || !cfg.kpis?.length;
+
+    // Product-guide path: no inventing numbers; catalog is the source of truth for screens.
+    if (isGuide && mode === "guide") {
+      try {
+        const { text } = await tryModels((model) =>
+          generateText({
+            model,
+            system: GUIDE_SYSTEM,
+            prompt: [
+              catalogForPrompt(),
+              "",
+              `USER QUESTION: ${question}`,
+              "",
+              "Answer with:",
+              "1. One bold line stating the destination screen.",
+              "2. Numbered steps (max 6) with exact UI labels.",
+              "3. Optional tip line.",
+              "No JSON. No invented metrics.",
+            ].join("\n"),
+            temperature: 0.2,
+            maxRetries: 1,
+          }),
+        );
+        return NextResponse.json({
+          type: "text",
+          text: text.trim() || "Open the left sidebar and pick the screen that matches your task — or ask “how do I enter today’s data?”.",
+        });
+      } catch (guideErr) {
+        console.warn("[chat] guide mode failed:", guideErr);
+        return NextResponse.json({
+          type: "text",
+          text:
+            "I can guide you offline: try “how do I enter today’s data?”, “how do I import Excel?”, or “open defect analysis”.",
+        });
+      }
+    }
+
     if (!cfg.kpis?.length) {
       return NextResponse.json(
         { error: "No analysis context available to answer against." },
@@ -92,6 +144,10 @@ export async function POST(req: NextRequest) {
     }
 
     const prompt = buildPrompt(question, cfg);
+    const summaryHint =
+      mode === "summary"
+        ? "\n\nThe user wants a concise executive summary of this scoped period. Lead with the headline rates, then top stage and defect drivers from the verified figures."
+        : "";
 
     try {
       const { object } = await tryModels((model) =>
@@ -99,7 +155,7 @@ export async function POST(req: NextRequest) {
           model,
           schema: InsightSlideAnswerSchema,
           system: SYSTEM_PROMPT,
-          prompt,
+          prompt: prompt + summaryHint,
           temperature: 0.2,
           maxRetries: 1, // fail fast so the backend chain cascades quickly
         }),
@@ -124,6 +180,7 @@ export async function POST(req: NextRequest) {
             system: SYSTEM_PROMPT,
             prompt:
               prompt +
+              summaryHint +
               "\n\nFormat your answer as clear, scannable Markdown so it reads at a glance. Use this structure:\n" +
               "1. A one-line **bold summary** answering the question directly.\n" +
               "2. A short bulleted list (`- `) of the supporting verified figures — wrap every number in **bold**.\n" +

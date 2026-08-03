@@ -46,7 +46,8 @@ import {
   readShiftWindowConfig,
 } from "@/lib/entry/shift-window";
 import { entryKey, hasValidGrant } from "@/lib/entry/edit-grants";
-import type { StageDayRecord } from "@/lib/ingest/emit";
+import { toStageDayRecord, qtyHeaderFor } from "@/lib/entry/to-stage-day-record";
+import { readPrefill, clearPrefill } from "@/lib/agent/prefill";
 import { useEvents } from "@/components/app/EventsContext";
 import { usePersona } from "@/components/app/PersonaContext";
 import QtyInput from "@/components/entry/QtyInput";
@@ -94,77 +95,6 @@ function loadShift(): ShiftBatchRecord[] {
 
 function persistShift(rows: ShiftBatchRecord[]) {
   localStorage.setItem(SHIFT_STORAGE_KEY, JSON.stringify(rows));
-}
-
-function sv(value: number, cell: string, header: string) {
-  return { value, cell, header };
-}
-
-function qtyHeaderFor(macro: MacroId): string {
-  if (macro === "primary") return "Quantity Produced";
-  if (macro === "secondary") return "Quantity";
-  return "Checked Qty";
-}
-
-function toStageDayRecord(rec: ShiftBatchRecord, ingestionId: string): StageDayRecord {
-  const isSecondary = rec.macro === "secondary";
-  const isPrimary = rec.macro === "primary";
-
-  // Secondary has no accept/hold/reject/defects — qty only + bin metadata.
-  const defects = isSecondary
-    ? []
-    : Object.entries(rec.defects)
-        .filter(([, v]) => v > 0)
-        .map(([raw, value]) => ({
-          raw,
-          value,
-          cell: `ENTRY!defect!${raw}`,
-        }));
-
-  return {
-    occurredOn: { kind: "day", start: rec.date, end: rec.date },
-    stageId: rec.stageId,
-    size: rec.sizeCanonical,
-    source: {
-      file: "Manual Entry",
-      fileHash: `manual-${rec.date}-${rec.batchId}-${rec.stageId}`,
-      sheet: rec.shift || "Day Shift",
-      tableId: "batch-matrix",
-    },
-    checked: rec.checked > 0 ? sv(rec.checked, "ENTRY!checked", qtyHeaderFor(rec.macro)) : null,
-    acceptedGood:
-      !isSecondary && rec.accept > 0 ? sv(rec.accept, "ENTRY!accept", "Good Qty") : null,
-    // Hold is Visual only — never balloon / valve / final / primary / secondary.
-    rework:
-      rec.stageId === "visual" && rec.hold > 0
-        ? sv(rec.hold, "ENTRY!hold", "Rework Qty")
-        : null,
-    rejected:
-      !isSecondary && rec.reject > 0 ? sv(rec.reject, "ENTRY!reject", "Rejected Qty") : null,
-    defects,
-    statedPct: null,
-    extractedBy: "direct-entry",
-    ingestionId,
-    comment: rec.remarks || null,
-    customFields: {
-      operator: rec.operator,
-      batch: rec.batchId,
-      size: rec.size,
-      shift: rec.shift,
-      notes: rec.remarks,
-      product: "FBC",
-      productType: rec.productType || "2 way",
-      macro: rec.macro,
-      process: rec.processName,
-      matrixId: rec.id,
-      ...(isPrimary && rec.trolleys != null && rec.trolleys > 0
-        ? { trolleysProduced: rec.trolleys, "No. of Trolleys Produced": rec.trolleys }
-        : {}),
-      ...(isSecondary && rec.bin
-        ? { bin: rec.bin, Bin: rec.bin }
-        : {}),
-    },
-  };
 }
 
 export default function BatchMatrixEntry({
@@ -288,6 +218,31 @@ export default function BatchMatrixEntry({
       // Treat a restored draft as operator-touched so upstream prefill and a
       // late entry-template response can't overwrite what they already typed.
       userTouchedQty.current = true;
+    } else {
+      // Ask MOID agent prefill (Confirm → Open Data Entry)
+      const agent = readPrefill();
+      if (agent) {
+        const m = agent.macro as MacroId;
+        if (m === "primary" || m === "secondary" || m === "assembly") setMacro(m);
+        if (agent.micro) setMicro(agent.micro);
+        if (agent.date) setDate(agent.date);
+        if (agent.size) setSize(agent.size);
+        if (agent.productType) applyProductType(agent.productType);
+        if (agent.shift) setShift(agent.shift);
+        if (agent.batchId) {
+          setBatchId(agent.batchId);
+          setBatchDate(parseBatchId(agent.batchId)?.date || agent.date || today());
+        }
+        setChecked(agent.checked);
+        setAccept(agent.accept);
+        setHold(agent.hold);
+        setReject(agent.reject);
+        setDefects(agent.defects ?? {});
+        if (agent.remarks) setRemarks(agent.remarks);
+        userTouchedQty.current = true;
+        clearPrefill();
+        setMsg("Prefill from Ask MOID — review and save when ready.");
+      }
     }
     draftReady.current = true;
   }, []);

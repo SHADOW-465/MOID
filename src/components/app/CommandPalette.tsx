@@ -10,6 +10,7 @@ import { listInvestigationRecents, goInvestigation } from "@/lib/analytics/inves
 import { resolveIntent, hrefForNav, CONFIDENT } from "@/lib/analytics/intent";
 import { llmSlotExtractor } from "@/lib/analytics/intent-llm";
 import { emitNavBanner } from "@/lib/analytics/nav-banner";
+import { classifyTaskKind } from "@/lib/agent/classify";
 import type { Event } from "@/lib/store/types";
 import type { PersonaId } from "@/lib/persona";
 import { PERSONAS } from "@/lib/persona";
@@ -63,6 +64,21 @@ export default function CommandPalette({
   const submitIntent = useCallback(async () => {
     const q = query.trim();
     if (!q) return;
+
+    // Task agent parity: entry / report / workflow / execute → Ask MOID widget
+    const kind = classifyTaskKind(q);
+    if (
+      kind === "enter_data" ||
+      kind === "report" ||
+      kind === "workflow" ||
+      kind === "analyze" ||
+      /\b(do it|for me|summarize|how do i)\b/i.test(q)
+    ) {
+      onClose();
+      window.dispatchEvent(new CustomEvent("moid-ask", { detail: { q } }));
+      return;
+    }
+
     const evs = events ?? [];
     const dates = evs.map((e) => e.occurredOn?.start).filter(Boolean).sort();
     const dataMaxIso = dates[dates.length - 1] ?? new Date().toISOString().slice(0, 10);
