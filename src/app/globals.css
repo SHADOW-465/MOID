@@ -198,18 +198,6 @@
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 
-/* Layout isolation for shell regions (cheaper scroll/repaint on dense pages). */
-.app-shell-main {
-  contain: layout style;
-}
-/* Long tables / audit lists — skip offscreen paint until scrolled near. */
-.dense-table-body,
-.audit-session-list,
-.entry-history-list {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 480px;
-}
-
 html {
   background: var(--bg);
   color-scheme: light dark;

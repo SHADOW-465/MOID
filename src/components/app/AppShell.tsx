@@ -2012,17 +2012,16 @@ export default function AppShell({
         />
       )}
 
-      {/* Main Content Area — contain isolates layout work from chrome chrome */}
-      <main
-        className="app-shell-main"
-        style={{ 
-        gridArea: "main", 
-        overflowY: "auto", 
+      {/* Main Content Area.
+          No `content-visibility` / `contain` here: <main> IS the scroll
+          container, so skipping its subtree leaves nothing to scroll and the
+          dashboard paints blank until something forces a re-render. */}
+      <main style={{
+        gridArea: "main",
+        overflowY: "auto",
         padding: "var(--space-4)",
         background: "var(--bg)",
         position: "relative",
-        contain: "layout style",
-        contentVisibility: "auto",
       }}>
         <div style={{
           width: "100%",
