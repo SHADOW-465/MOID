@@ -15,11 +15,20 @@
 // canonical event ledger. Pages should pass `registry` from useRegistry() into
 // every selector call instead of relying on the hardcoded default.
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 
 interface RegistryContextType {
   registry: any | null;
   isLoading: boolean;
+  isValidating: boolean;
   refreshRegistry: () => Promise<void>;
 }
 
@@ -28,29 +37,47 @@ const RegistryContext = createContext<RegistryContextType | undefined>(undefined
 export function RegistryProvider({ children }: { children: React.ReactNode }) {
   const [registry, setRegistry] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isValidating, setIsValidating] = useState(false);
+  const inflight = useRef<Promise<void> | null>(null);
+  const hasData = useRef(false);
 
   const refreshRegistry = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const res = await fetch("/api/schema");
-      const data = await res.json();
-      setRegistry(data.registry ?? null);
-    } catch (err) {
-      console.error("Failed to fetch active registry:", err);
-      setRegistry(null);
-    } finally {
-      setIsLoading(false);
-    }
+    if (inflight.current) return inflight.current;
+
+    const run = (async () => {
+      if (hasData.current) setIsValidating(true);
+      else setIsLoading(true);
+      try {
+        const res = await fetch("/api/schema");
+        if (!res.ok) throw new Error(`schema ${res.status}`);
+        const data = await res.json();
+        setRegistry(data.registry ?? null);
+        hasData.current = true;
+      } catch (err) {
+        console.error("Failed to fetch active registry:", err);
+        setRegistry((prev: any | null) => (prev != null ? prev : null));
+      } finally {
+        setIsLoading(false);
+        setIsValidating(false);
+        inflight.current = null;
+      }
+    })();
+
+    inflight.current = run;
+    return run;
   }, []);
 
   useEffect(() => {
-    refreshRegistry();
+    void refreshRegistry();
   }, [refreshRegistry]);
 
+  const value = useMemo(
+    () => ({ registry, isLoading, isValidating, refreshRegistry }),
+    [registry, isLoading, isValidating, refreshRegistry],
+  );
+
   return (
-    <RegistryContext.Provider value={{ registry, isLoading, refreshRegistry }}>
-      {children}
-    </RegistryContext.Provider>
+    <RegistryContext.Provider value={value}>{children}</RegistryContext.Provider>
   );
 }
 

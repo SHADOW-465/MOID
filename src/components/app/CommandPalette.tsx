@@ -310,16 +310,4 @@ export default function CommandPalette({
   );
 }
 
-/** Global ⌘K / Ctrl+K listener. */
-export function useCommandPaletteHotkey(onOpen: () => void) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        onOpen();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onOpen]);
-}
+// Hotkey lives in CommandPaletteHotkey.ts so AppShell doesn't eagerly load this module.

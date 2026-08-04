@@ -8,6 +8,7 @@ import {
   type InvestigationRecent,
 } from "./investigation-state";
 import { buildEntitySets, scoreMatch } from "./intent-vocab";
+import { STAGE_LABELS } from "./source-trace";
 
 export type SearchHitKind =
   | "destination"
@@ -37,14 +38,6 @@ const DESTINATIONS = ROUTED_NAV_KEYS.map((navKey) => ({
   href: NAV_ROUTES[navKey].href as string,
   keywords: NAV_ROUTES[navKey].keywords,
 }));
-
-const STAGE_LABELS: Record<string, string> = {
-  visual: "Visual Inspection",
-  balloon: "Balloon",
-  "valve-integrity": "Valve Integrity",
-  final: "Final Inspection",
-  "eye-punching": "Eye Punching",
-};
 
 export interface SearchIndexInput {
   events: Event[];

@@ -12,6 +12,8 @@
  * 4.82% every other screen showed. lib/analytics/rejection.ts has always kept
  * rework in its own StageAgg bucket; this mirrors that.
  */
+import { STAGES } from "@/core/ontology/plant-catalog";
+
 export type SourceKind = "checked" | "accepted" | "rejected" | "rework" | "defect" | "other";
 
 export type SourceGroupMode =
@@ -103,15 +105,22 @@ export interface SourceGroup {
   fileCount: number;
 }
 
-const STAGE_ORDER = ["visual", "eye-punching", "balloon", "valve-integrity", "final"];
+// Process order and labels come from the authored catalog — the same list
+// rejection.ts measures against. This file used to keep its own five-stage
+// table that omitted production/secondary/valve-fixing and sorted eye-punching
+// between visual and balloon, so View Source ordered and grouped stages
+// differently from every other screen.
+const STAGE_ORDER: string[] = STAGES.map((s) => s.stageId);
 
-export const STAGE_LABELS: Record<string, string> = {
-  visual: "Visual Inspection",
-  "eye-punching": "Eye Punching",
-  balloon: "Balloon Testing",
-  "valve-integrity": "Valve Integrity",
-  final: "Final Inspection",
-};
+/** Display name: the catalog label minus its SOP suffix ("Visual Inspection
+ *  (P17)" → "Visual Inspection"). */
+export const STAGE_LABELS: Record<string, string> = Object.fromEntries(
+  STAGES.map((s) => [s.stageId, s.label.replace(/\s*\(.*\)$/, "")]),
+);
+
+const STAGE_ID_BY_LABEL = new Map(
+  Object.entries(STAGE_LABELS).map(([id, label]) => [label.toLowerCase(), id]),
+);
 
 const KIND_ORDER: SourceKind[] = ["checked", "accepted", "rejected", "rework", "defect", "other"];
 
@@ -133,11 +142,9 @@ export function stageSortKey(stageId: string | undefined, stageLabel: string): n
   const id = (stageId || stageLabel || "").toLowerCase();
   const idx = STAGE_ORDER.indexOf(id);
   if (idx >= 0) return idx;
-  // label may be pretty; try matching STAGE_LABELS values
-  for (let i = 0; i < STAGE_ORDER.length; i++) {
-    if (STAGE_LABELS[STAGE_ORDER[i]]?.toLowerCase() === stageLabel.toLowerCase()) return i;
-  }
-  return 99;
+  // label may be pretty ("Visual Inspection") rather than an id
+  const byLabel = STAGE_ID_BY_LABEL.get((stageLabel || "").toLowerCase());
+  return byLabel ? STAGE_ORDER.indexOf(byLabel) : 99;
 }
 
 /** One consolidated ledger entry — the checked / accepted / rejected / rework /
@@ -267,7 +274,7 @@ export function normalizeSourceRows(rows: SourceRow[]): SourceRow[] {
   return rows.map((r) => {
     const stageId =
       r.stageId ||
-      Object.entries(STAGE_LABELS).find(([, lab]) => lab === r.stage)?.[0] ||
+      STAGE_ID_BY_LABEL.get((r.stage || "").toLowerCase()) ||
       (STAGE_ORDER.includes((r.stage || "").toLowerCase()) ? r.stage.toLowerCase() : undefined);
     const defectFromType =
       r.defectCode ||
@@ -475,8 +482,41 @@ function groupKeyFor(row: SourceRow, mode: SourceGroupMode, grain: SourcePeriodG
   }
 }
 
+/**
+ * Units that ENTERED, measured once at the most upstream stage present — the
+ * same rule as rejection.ts `totalChecked`, which is what the KPI on the card
+ * shows. Primary → Secondary → Assembly are sequential departments handling the
+ * SAME physical catheters, and within Assembly, Visual → Balloon → Valve →
+ * Final are sequential gates: Visual's accepted units are Balloon's input.
+ * Summing them counted one catheter up to four times (572,920 against the
+ * dashboard's 176,838).
+ *
+ * Rejected is the opposite case and IS summed — a unit scrapped at Visual and
+ * another scrapped at Final are two different units.
+ */
+function entryStageChecked(rows: SourceRow[]): number {
+  let bestKey = Infinity;
+  let bestStage: string | null = null;
+  const byStage = new Map<string, number>();
+  for (const r of rows) {
+    if (r.kind !== "checked") continue;
+    const q = qtyNumber(r.qty);
+    if (q <= 0) continue;
+    const stage = r.stageId || r.stage || "(unknown stage)";
+    byStage.set(stage, (byStage.get(stage) ?? 0) + q);
+    const key = stageSortKey(r.stageId, r.stage);
+    // Ties (two stages the catalog doesn't know) break on id so the answer is
+    // stable rather than dependent on row order.
+    if (key < bestKey || (key === bestKey && bestStage !== null && stage < bestStage)) {
+      bestKey = key;
+      bestStage = stage;
+    }
+  }
+  return bestStage === null ? 0 : (byStage.get(bestStage) ?? 0);
+}
+
 function rollup(rows: SourceRow[]) {
-  let checkedQty = 0;
+  const checkedQty = entryStageChecked(rows);
   let acceptedQty = 0;
   let rejectedQty = 0;
   let reworkQty = 0;
@@ -486,8 +526,7 @@ function rollup(rows: SourceRow[]) {
   let manual = 0;
   for (const r of rows) {
     const q = qtyNumber(r.qty);
-    if (r.kind === "checked") checkedQty += q;
-    else if (r.kind === "accepted") acceptedQty += q;
+    if (r.kind === "accepted") acceptedQty += q;
     else if (r.kind === "rejected") rejectedQty += q;
     else if (r.kind === "rework") reworkQty += q;
     else if (r.kind === "defect") defectQty += q;

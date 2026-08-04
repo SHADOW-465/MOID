@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import Icon, { type IconName } from "@/components/editorial/Icon";
 import { useTweaks } from "@/components/editorial/TweaksContext";
@@ -31,14 +32,29 @@ import {
   personaAllowsNav,
   type PersonaId,
 } from "@/lib/persona";
-import CommandPalette, { useCommandPaletteHotkey } from "@/components/app/CommandPalette";
-import ReportPanel from "@/components/report/ReportPanel";
-import SourcesScopePanel from "@/components/app/SourcesScopePanel";
+import { useCommandPaletteHotkey } from "@/components/app/CommandPaletteHotkey";
 import { canReport } from "@/lib/report/blocks";
 import { subscribeNavBanner, emitNavBanner, type NavBanner } from "@/lib/analytics/nav-banner";
 import { usePersona } from "@/components/app/PersonaContext";
 import { useActiveMetric } from "@/components/app/ActiveMetricContext";
-import NotificationsPanel from "@/components/app/NotificationsPanel";
+
+// Heavy chrome — code-split; only fetched when the operator opens the surface.
+const CommandPalette = dynamic(() => import("@/components/app/CommandPalette"), {
+  ssr: false,
+  loading: () => null,
+});
+const ReportPanel = dynamic(() => import("@/components/report/ReportPanel"), {
+  ssr: false,
+  loading: () => null,
+});
+const SourcesScopePanel = dynamic(() => import("@/components/app/SourcesScopePanel"), {
+  ssr: false,
+  loading: () => null,
+});
+const NotificationsPanel = dynamic(() => import("@/components/app/NotificationsPanel"), {
+  ssr: false,
+  loading: () => null,
+});
 import {
   buildScopedDashboardConfig,
   formatScopedSummaryText,
@@ -1987,20 +2003,26 @@ export default function AppShell({
         />
       )}
 
-      <CommandPalette
-        open={paletteOpen}
-        onClose={() => setPaletteOpen(false)}
-        events={events}
-        persona={persona}
-      />
+      {paletteOpen && (
+        <CommandPalette
+          open={paletteOpen}
+          onClose={() => setPaletteOpen(false)}
+          events={events}
+          persona={persona}
+        />
+      )}
 
-      {/* Main Content Area */}
-      <main style={{ 
+      {/* Main Content Area — contain isolates layout work from chrome chrome */}
+      <main
+        className="app-shell-main"
+        style={{ 
         gridArea: "main", 
         overflowY: "auto", 
         padding: "var(--space-4)",
         background: "var(--bg)",
-        position: "relative"
+        position: "relative",
+        contain: "layout style",
+        contentVisibility: "auto",
       }}>
         <div style={{
           width: "100%",

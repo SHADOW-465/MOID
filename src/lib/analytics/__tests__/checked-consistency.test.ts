@@ -69,6 +69,48 @@ test("the stage rate matches the dashboard's 4.82%, not the inflated 4.68%", () 
   expect((rate * 100).toFixed(2)).toBe("4.82");
 });
 
+// View Source summed `checked` over every stage in the slice: Visual + Balloon
+// + Valve + Final counted one catheter four times (572,920 against the
+// dashboard's 176,838). Assembly's gates are sequential — Visual's accepted
+// units are what Balloon checks — so entry is Visual's checked, once.
+const gate = (stageId: string, stage: string, checked: number, rejected: number): SourceRow[] => [
+  { ...asRow({ eventType: "production", quantity: checked }, 0), stageId, stage, qty: checked },
+  {
+    ...asRow({ eventType: "inspection", disposition: "rejected", quantity: rejected }, 1),
+    stageId,
+    stage,
+    qty: rejected,
+  },
+];
+
+const ASSEMBLY = [
+  ...gate("visual", "Visual Inspection", 5930, 286),
+  ...gate("balloon", "Balloon Inspection", 5459, 40),
+  ...gate("valve-integrity", "Valve Integrity", 5376, 12),
+  ...gate("final", "Final Inspection", 5300, 8),
+];
+
+test("checked is the entry gate's, not the sum of every gate in the slice", () => {
+  const s = summarizeSource(ASSEMBLY, "rejection_rate");
+  expect(s.checkedQty).toBe(5930);
+  expect(s.checkedQty).not.toBe(5930 + 5459 + 5376 + 5300);
+  // Rejected IS summed — four different scrapped units.
+  expect(s.rejectedQty).toBe(286 + 40 + 12 + 8);
+});
+
+test("adding an upstream section moves the measuring point, never adds one", () => {
+  const withPrimary = [...gate("production", "Production", 6400, 0), ...ASSEMBLY];
+  expect(summarizeSource(withPrimary, "rejection_rate").checkedQty).toBe(6400);
+
+  const withSecondary = [...gate("secondary", "Secondary Production", 6100, 0), ...ASSEMBLY];
+  expect(summarizeSource(withSecondary, "rejection_rate").checkedQty).toBe(6100);
+});
+
+test("entry is catalog order, not ledger order", () => {
+  const shuffled = [...ASSEMBLY.slice(4), ...ASSEMBLY.slice(0, 4)];
+  expect(summarizeSource(shuffled, "rejection_rate").checkedQty).toBe(5930);
+});
+
 test("a consolidated entry row keeps held units out of its checked column", () => {
   const [entry] = consolidateEntries(VISUAL.map(asRow));
   expect(entry.checkedQty).toBe(5930);

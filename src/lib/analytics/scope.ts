@@ -302,6 +302,25 @@ export function fyContaining(dateIso: string): { startYear: number; label: strin
   };
 }
 
+/** Per-events-array cache of scope → canonicalized result.
+ *  Dashboard runs rejectionRate/fpy/byStage/… each calling scopeEvents with the
+ *  same scope; without this we re-filter + re-canonicalize N times per render. */
+const scopeEventsCache = new WeakMap<Event[], Map<string, Event[]>>();
+
+function scopeCacheKey(scope: Scope): string {
+  return [
+    scope.grain ?? "",
+    scope.dateFrom ?? "",
+    scope.dateTo ?? "",
+    (scope.stageIds ?? []).join(","),
+    (scope.sizes ?? []).join(","),
+    (scope.sourceChannels ?? []).join(","),
+    (scope.sourceFiles ?? []).join("\u001f"),
+    (scope.batchIds ?? []).join(","),
+    scope.shift ?? "",
+  ].join("|");
+}
+
 /**
  * Apply date / stage / size / **source** filters, then canonicalize so the
  * remaining set never double-counts. Source filter runs first so channel
@@ -309,6 +328,16 @@ export function fyContaining(dateIso: string): { startYear: number; label: strin
  * direct entry would win under an unscoped full ledger).
  */
 export function scopeEvents(events: Event[], scope: Scope): Event[] {
+  const key = scopeCacheKey(scope);
+  let byScope = scopeEventsCache.get(events);
+  if (!byScope) {
+    byScope = new Map();
+    scopeEventsCache.set(events, byScope);
+  } else {
+    const hit = byScope.get(key);
+    if (hit) return hit;
+  }
+
   const channels = scope.sourceChannels?.length
     ? new Set(scope.sourceChannels)
     : null;
@@ -348,7 +377,14 @@ export function scopeEvents(events: Event[], scope: Scope): Event[] {
     return true;
   });
 
-  return canonicalizeEvents(filtered);
+  const result = canonicalizeEvents(filtered);
+  byScope.set(key, result);
+  // Cap map size so long sessions with many scope tweaks don't grow unbounded.
+  if (byScope.size > 24) {
+    const first = byScope.keys().next().value;
+    if (first != null) byScope.delete(first);
+  }
+  return result;
 }
 
 /** Bucket key for a date under a grain. FY runs Apr(4)–Mar(3). */

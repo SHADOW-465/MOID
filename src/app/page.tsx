@@ -2,16 +2,15 @@
 "use client";
 
 import { useEffect, useMemo, useState, useRef } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/app/AppShell";
 import { useEvents } from "@/components/app/EventsContext";
 import { useRegistry } from "@/components/app/RegistryContext";
 import Icon from "@/components/editorial/Icon";
-import FloatingDetailModal, { type SourceRow, type SourceMetricKind } from "@/components/FloatingDetailModal";
-import ChartBuilder from "@/components/ChartBuilder";
+import type { SourceRow, SourceMetricKind } from "@/components/FloatingDetailModal";
 import OpenWipStrip from "@/components/app/OpenWipStrip";
 import type { AuditEventLike } from "@/lib/analytics/audit-sessions";
-import CapaComposerModal from "@/components/CapaComposerModal";
 import { draftFromRecommendation, blankDraft, titleFromText, type CapaRecord } from "@/lib/capa-store";
 import { useTweaks } from "@/components/editorial/TweaksContext";
 import { 
@@ -33,9 +32,28 @@ import {
 import type { Event } from "@/lib/store/types";
 import { EMPTY_REGISTRY } from "@/core/ontology/empty-registry";
 import PageLoader from "@/components/app/PageLoader";
-import ParetoChart from "@/components/ParetoChart";
 import { safeBolden } from "@/components/app/widgets";
 import { calculatePareto } from "@/lib/analytics/pareto";
+
+// Modal/chart builders only load when the operator opens them.
+const FloatingDetailModal = dynamic(() => import("@/components/FloatingDetailModal"), {
+  ssr: false,
+  loading: () => null,
+});
+const ChartBuilder = dynamic(() => import("@/components/ChartBuilder"), {
+  ssr: false,
+  loading: () => null,
+});
+const CapaComposerModal = dynamic(() => import("@/components/CapaComposerModal"), {
+  ssr: false,
+  loading: () => null,
+});
+const ParetoChart = dynamic(() => import("@/components/ParetoChart"), {
+  ssr: false,
+  loading: () => (
+    <div className="muted" style={{ padding: 16, fontSize: 12 }}>Loading chart…</div>
+  ),
+});
 import {
   rejectionRate,
   totalRejected,
@@ -1138,32 +1156,36 @@ export default function Dashboard() {
         </div>
       )}
 
-      <FloatingDetailModal
-        isOpen={modalOpen}
-        onClose={() => {
-          setModalOpen(false);
-          lastClickRect.current = null;
-        }}
-        title={modalTitle}
-        insight={modalInsight}
-        primaryValue={modalPrimaryValue}
-        sourceRows={modalSourceRows}
-        metricKind={modalMetricKind}
-        periodGrain={t.grain === "week" ? "week" : t.grain === "day" ? "day" : "month"}
-        rawSheets={rawSheets}
-        originRect={modalOriginRect}
-      >
-        {modalContent}
-      </FloatingDetailModal>
+      {modalOpen && (
+        <FloatingDetailModal
+          isOpen={modalOpen}
+          onClose={() => {
+            setModalOpen(false);
+            lastClickRect.current = null;
+          }}
+          title={modalTitle}
+          insight={modalInsight}
+          primaryValue={modalPrimaryValue}
+          sourceRows={modalSourceRows}
+          metricKind={modalMetricKind}
+          periodGrain={t.grain === "week" ? "week" : t.grain === "day" ? "day" : "month"}
+          rawSheets={rawSheets}
+          originRect={modalOriginRect}
+        >
+          {modalContent}
+        </FloatingDetailModal>
+      )}
 
-      <CapaComposerModal
-        isOpen={capaOpen}
-        onClose={() => setCapaOpen(false)}
-        draft={capaDraft}
-        recommendationText={capaRecText}
-        context={capaContext}
-        evidence={capaEvidence}
-      />
+      {capaOpen && (
+        <CapaComposerModal
+          isOpen={capaOpen}
+          onClose={() => setCapaOpen(false)}
+          draft={capaDraft}
+          recommendationText={capaRecText}
+          context={capaContext}
+          evidence={capaEvidence}
+        />
+      )}
     </AppShell>
   );
 }
