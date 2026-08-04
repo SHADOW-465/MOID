@@ -98,7 +98,7 @@ export default function Dashboard() {
   const router = useRouter();
   const { t } = useTweaks();
   const { events, isLoading } = useEvents();
-  const { registry } = useRegistry();
+  const { registry, policy } = useRegistry();
   const activeRegistry = registry || EMPTY_REGISTRY;
   const [selectedSize, setSelectedSize] = useState("Fr16");
   const [targetRej, setTargetRej] = useState<number>(0.03);
@@ -164,8 +164,8 @@ export default function Dashboard() {
   }, []);
 
   const scope: Scope = useMemo(
-    () => resolveScope(events ?? [], t),
-    [events, t],
+    () => resolveScope(events ?? [], t, policy),
+    [events, t, policy],
   );
 
   const m = useMemo(() => {

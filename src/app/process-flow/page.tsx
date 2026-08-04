@@ -27,7 +27,7 @@ import type { StageRow } from "@/lib/analytics";
 export default function ProcessFlowPage() {
   const { t } = useTweaks();
   const { events: contextEvents, isLoading } = useEvents();
-  const { registry } = useRegistry();
+  const { registry, policy } = useRegistry();
   const activeRegistry = registry || EMPTY_REGISTRY;
   const events = contextEvents ? (contextEvents as any[]) : null;
   const [modalOpen, setModalOpen] = useState(false);
@@ -43,8 +43,8 @@ export default function ProcessFlowPage() {
   };
 
   const scope: Scope = useMemo(
-    () => resolveScope(events ?? [], t),
-    [events, t],
+    () => resolveScope(events ?? [], t, policy),
+    [events, t, policy],
   );
 
   const m = useMemo(() => {

@@ -119,7 +119,7 @@ const MAPPING_KIND_LABEL: Record<MappingKind, string> = {
 
 export default function SchemaPage() {
   const { events } = useEvents();
-  const { refreshRegistry } = useRegistry();
+  const { refreshRegistry, policy } = useRegistry();
   const { t } = useTweaks();
 
   const [catalog, setCatalog] = useState<CatalogMeta | null>(null);
@@ -180,7 +180,7 @@ export default function SchemaPage() {
     if (!events || events.length === 0) {
       return { state: "ok" as const, reason: "", integrityIssues: [] as IntegrityIssue[] };
     }
-    const scope = resolveScope(events, t);
+    const scope = resolveScope(events, t, policy);
     return qualityStatus(events, scope);
   }, [events, t]);
 

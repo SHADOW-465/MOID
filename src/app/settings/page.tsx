@@ -46,16 +46,6 @@ export default function SettingsPage() {
     const id = window.location.hash.replace("#", "") as SectionId;
     if (SECTIONS.some((s) => s.id === id)) setSection(id);
   }, []);
-  const [targetRej, setTargetRej] = useState("10.00");
-  const [watchRej, setWatchRej] = useState("5.00");
-  const [unitCost, setUnitCost] = useState("20.00");
-  const [stageWeights, setStageWeights] = useState<Record<string, string>>({
-    visual: "0.60",
-    "eye-punching": "0.70",
-    balloon: "0.80",
-    "valve-integrity": "0.90",
-    final: "1.00",
-  });
   const [shiftCfg, setShiftCfg] = useState<ShiftWindowConfig>(DEFAULT_SHIFT_WINDOWS);
 
   const [saved, setSaved] = useState(false);
@@ -121,12 +111,8 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const tr = localStorage.getItem("rais_settings_target_rejection");
-      const wr = localStorage.getItem("rais_settings_watch_rejection");
-      const uc = localStorage.getItem("rais_settings_finished_cost");
-      if (tr) setTargetRej(tr);
-      if (wr) setWatchRej(wr);
-      if (uc) setUnitCost(uc);
+      // Target / watch / unit cost / stage weights moved to versioned plant
+      // policy (/settings/rules). Nothing reads these keys any more.
       try {
         const cd = localStorage.getItem("rais_custom_defects");
         if (cd) setCustomDefects(JSON.parse(cd));
@@ -134,43 +120,12 @@ export default function SettingsPage() {
         /* ignore malformed */
       }
 
-      const weights: Record<string, string> = {};
-      activeRegistry.stages.forEach((s: any) => {
-        const stored = localStorage.getItem(`rais_settings_weight_${s.stageId}`);
-        weights[s.stageId] =
-          stored ||
-          (s.stageId === "visual"
-            ? "0.60"
-            : s.stageId === "eye-punching"
-              ? "0.70"
-              : s.stageId === "balloon"
-                ? "0.80"
-                : s.stageId === "valve-integrity"
-                  ? "0.90"
-                  : "1.00");
-      });
-      setStageWeights(weights);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRegistry.stages.length]);
 
-  const handleWeightChange = (stageId: string, val: string) => {
-    setStageWeights((prev) => ({
-      ...prev,
-      [stageId]: val,
-    }));
-  };
-
   const handleSave = () => {
     if (typeof window !== "undefined") {
-      localStorage.setItem("rais_settings_target_rejection", targetRej);
-      localStorage.setItem("rais_settings_watch_rejection", watchRej);
-      localStorage.setItem("rais_settings_finished_cost", unitCost);
-
-      Object.entries(stageWeights).forEach(([id, val]) => {
-        localStorage.setItem(`rais_settings_weight_${id}`, val);
-      });
-
       localStorage.setItem("rais_custom_defects", JSON.stringify(customDefects));
 
       setSaved(true);
@@ -190,17 +145,9 @@ export default function SettingsPage() {
   const removeCustomDefect = (code: string) =>
     setCustomDefects((prev) => prev.filter((d) => d.code !== code));
 
+  // Thresholds and cost weights reset from /settings/rules now (Restore on any
+  // history entry). This only clears what this page still owns.
   const handleReset = () => {
-    setTargetRej("10.00");
-    setWatchRej("5.00");
-    setUnitCost("20.00");
-    setStageWeights({
-      visual: "0.60",
-      "eye-punching": "0.70",
-      balloon: "0.80",
-      "valve-integrity": "0.90",
-      final: "1.00",
-    });
     setResetSaved(true);
     setTimeout(() => setResetSaved(false), 1500);
   };
@@ -294,111 +241,23 @@ export default function SettingsPage() {
             </div>
 
             <div className="settings-panel-body">
-              {section === "quality" && (
-                <div className="settings-field-grid">
-                  <label className="settings-field">
-                    <span className="settings-field-label">Target rejection limit</span>
-                    <div className="settings-input-wrap">
-                      <input
-                        type="number"
-                        value={targetRej}
-                        onChange={(e) => setTargetRej(e.target.value)}
-                        style={inpStyle}
-                        step="0.01"
-                        className="settings-input"
-                      />
-                      <span className="settings-affix settings-affix--r">%</span>
-                    </div>
-                    <span className="settings-field-help">
-                      Shopfloor rates above this mark an &quot;At Risk&quot; badge.
-                    </span>
-                  </label>
-
-                  <label className="settings-field">
-                    <span className="settings-field-label">Watch warning limit</span>
-                    <div className="settings-input-wrap">
-                      <input
-                        type="number"
-                        value={watchRej}
-                        onChange={(e) => setWatchRej(e.target.value)}
-                        style={inpStyle}
-                        step="0.01"
-                        className="settings-input"
-                      />
-                      <span className="settings-affix settings-affix--r">%</span>
-                    </div>
-                    <span className="settings-field-help">
-                      Rates between watch and target show a &quot;Watch&quot; status.
-                    </span>
-                  </label>
-
-                  <div className="settings-callout">
-                    <span className="settings-callout-lab">Status ladder</span>
-                    <div className="settings-ladder">
-                      <span>
-                        <i className="dot dot--good" /> Good · below watch
-                      </span>
-                      <span>
-                        <i className="dot dot--warn" /> Watch · {watchRej}%–{targetRej}%
-                      </span>
-                      <span>
-                        <i className="dot dot--bad" /> At risk · above {targetRej}%
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {section === "valuation" && (
+              {(section === "quality" || section === "valuation") && (
+                /* Moved to /settings/rules. These values used to live in
+                   localStorage, so every browser had its own target and unit
+                   cost and no server-rendered number agreed with the screen.
+                   They are versioned plant policy now — one editor, not two. */
                 <div className="settings-field-stack">
-                  <label className="settings-field settings-field--wide">
-                    <span className="settings-field-label">Finished catheter valuation</span>
-                    <div className="settings-input-wrap">
-                      <span className="settings-affix settings-affix--l">₹</span>
-                      <input
-                        type="number"
-                        value={unitCost}
-                        onChange={(e) => setUnitCost(e.target.value)}
-                        style={{ ...inpStyle, paddingLeft: 28 }}
-                        step="0.01"
-                        className="settings-input"
-                      />
-                      <span className="settings-affix settings-affix--r">INR</span>
-                    </div>
-                    <span className="settings-field-help">
-                      Base value-add per unit at Final stage. Drives COPQ and savings.
-                    </span>
-                  </label>
-
-                  <div className="settings-weights">
-                    <div className="settings-weights-head">
-                      <span className="settings-field-label">Stage-wise cost weights</span>
-                      <span className="settings-field-help" style={{ margin: 0 }}>
-                        Multiplier × finished valuation
-                      </span>
-                    </div>
-                    <ul className="settings-weight-list">
-                      {activeRegistry.stages.map((s: any) => (
-                        <li key={s.stageId} className="settings-weight-row">
-                          <span className="settings-weight-name">{s.label}</span>
-                          <span className="settings-weight-id">{s.stageId}</span>
-                          <div className="settings-input-wrap settings-input-wrap--sm">
-                            <input
-                              type="number"
-                              value={stageWeights[s.stageId] ?? ""}
-                              onChange={(e) => handleWeightChange(s.stageId, e.target.value)}
-                              style={{ ...inpStyle, width: "100%", textAlign: "right", paddingRight: 28 }}
-                              step="0.01"
-                              min="0"
-                              max="2"
-                              className="settings-input"
-                            />
-                            <span className="settings-affix settings-affix--r">×</span>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                  <p className="settings-field-help">
+                    {section === "quality"
+                      ? "Rejection targets and the watch line"
+                      : "Unit cost and stage-wise cost weights"}{" "}
+                    are now part of <strong>Calculation rules</strong>, alongside the
+                    conventions that decide how every number is computed — with a live
+                    preview of what a change does to today&apos;s figures before you save.
+                  </p>
+                  <a className="settings-btn primary" href="/settings/rules">
+                    Open Calculation rules →
+                  </a>
                 </div>
               )}
 

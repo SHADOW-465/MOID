@@ -39,7 +39,7 @@ export default function StageAnalysisPage() {
   // Mid-path: apply ?grain&from&to&stage from dashboard funnel / attention rail.
   useApplyInvestigationFromUrl();
   const { events: contextEvents, isLoading } = useEvents();
-  const { registry } = useRegistry();
+  const { registry, policy } = useRegistry();
   const activeRegistry = registry || EMPTY_REGISTRY;
   const events = contextEvents ? (contextEvents as any[]) : null;
   const [targetRej, setTargetRej] = useState(0.10);
@@ -90,8 +90,8 @@ export default function StageAnalysisPage() {
   }, []);
 
   const scope: Scope = useMemo(
-    () => resolveScope(events ?? [], t),
-    [events, t],
+    () => resolveScope(events ?? [], t, policy),
+    [events, t, policy],
   );
 
   const srcRows = (filter: Parameters<typeof toSourceRows>[1] = {}): SourceRow[] =>

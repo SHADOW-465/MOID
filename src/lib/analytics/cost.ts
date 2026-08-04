@@ -1,52 +1,29 @@
-import { type Scope, scopeEvents, periodsIn, periodKey, periodLabel } from "./scope";
+// Cost basis (unit cost, stage weights, target) used to live in localStorage,
+// which meant the GM's laptop and the QM's laptop computed different COPQ from
+// the same ledger, and any server-side render silently used the defaults
+// because `window` was undefined. It is plant policy now: one value, versioned,
+// shared, auditable. See core/policy/policy.ts.
+
+import { type Scope, scopeEvents, periodsIn, periodKey, periodLabel, policyOf } from "./scope";
 import { byStage } from "./rejection";
 import type { Event } from "@/lib/store/types";
+import { DEFAULT_POLICY } from "@/core/policy/policy";
 
 export interface COPQResult {
   value: number; // in INR
   byStage: Record<string, number>;
 }
 
-// Progressive weights for the stages (MOID-SPEC §5.A)
-const STAGE_WEIGHTS: Record<string, number> = {
-  "visual": 0.6,
-  "eye-punching": 0.7,
-  "balloon": 0.8,
-  "valve-integrity": 0.9,
-  "final": 1.0,
-};
+/** Fallback for a stage the policy has no weight for (a gate added by hand on
+ *  Data Schema). Same 0.6 the old table used for Visual. */
+const UNKNOWN_STAGE_WEIGHT = 0.6;
 
-export function getFinishedCost(): number {
-  if (typeof window !== "undefined") {
-    const val = localStorage.getItem("rais_settings_finished_cost");
-    if (val) {
-      const num = parseFloat(val);
-      if (!isNaN(num)) return num;
-    }
-  }
-  return 20.0;
+export function getFinishedCost(scope?: Scope): number {
+  return (scope ? policyOf(scope) : DEFAULT_POLICY).unitCostInr;
 }
 
-export function getTargetRejectionRate(): number {
-  if (typeof window !== "undefined") {
-    const val = localStorage.getItem("rais_settings_target_rejection");
-    if (val) {
-      const num = parseFloat(val);
-      if (!isNaN(num)) return num / 100;
-    }
-  }
-  return 0.10;
-}
-
-function getStageWeight(stageId: string, defaultWeight: number): number {
-  if (typeof window !== "undefined") {
-    const val = localStorage.getItem(`rais_settings_weight_${stageId}`);
-    if (val) {
-      const num = parseFloat(val);
-      if (!isNaN(num)) return num;
-    }
-  }
-  return defaultWeight;
+export function getTargetRejectionRate(scope?: Scope): number {
+  return (scope ? policyOf(scope) : DEFAULT_POLICY).targetRejectionPct / 100;
 }
 
 export function copq(events: Event[], scope: Scope): COPQResult | null {
@@ -57,11 +34,11 @@ export function copq(events: Event[], scope: Scope): COPQResult | null {
   const byStageCost: Record<string, number> = {};
   let totalCost = 0;
 
-  const cost = getFinishedCost();
+  const policy = policyOf(scope);
+  const cost = policy.unitCostInr;
 
   for (const s of stages) {
-    const defaultWeight = STAGE_WEIGHTS[s.stageId] ?? 0.6;
-    const weight = getStageWeight(s.stageId, defaultWeight);
+    const weight = policy.stageCostWeights[s.stageId] ?? UNKNOWN_STAGE_WEIGHT;
     const stageCost = s.rejected * (cost * weight);
     byStageCost[s.stageId] = stageCost;
     totalCost += stageCost;
@@ -100,10 +77,10 @@ export function savingsOpportunity(events: Event[], scope: Scope): number | null
   }
 
   const currentRate = totalChecked > 0 ? totalRejected / totalChecked : 0;
-  const targetLimit = getTargetRejectionRate();
+  const targetLimit = getTargetRejectionRate(scope);
 
   const targetGapSavings =
-    currentRate > targetLimit ? (currentRate - targetLimit) * totalChecked * getFinishedCost() : 0;
+    currentRate > targetLimit ? (currentRate - targetLimit) * totalChecked * getFinishedCost(scope) : 0;
 
   const copqValue = copq(events, scope)?.value ?? 0;
   const improvementSavings = copqValue * IMPROVEMENT_RECOVERY_FRACTION;
@@ -116,7 +93,7 @@ export function copqTrend(events: Event[], scope: Scope): { period: string; labe
   const periods = periodsIn(ev, scope.grain, { from: scope.dateFrom, to: scope.dateTo });
   return periods.map((p) => {
     const bucket = ev.filter((e) => periodKey(e.occurredOn.start, scope.grain) === p);
-    const costResult = copq(bucket, { grain: scope.grain });
+    const costResult = copq(bucket, { grain: scope.grain, policy: scope.policy });
     return {
       period: p,
       label: periodLabel(p),

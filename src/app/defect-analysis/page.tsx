@@ -35,7 +35,7 @@ export default function DefectAnalysisPage() {
   const { t } = useTweaks();
   useApplyInvestigationFromUrl();
   const { events: contextEvents, isLoading } = useEvents();
-  const { registry } = useRegistry();
+  const { registry, policy } = useRegistry();
   const activeRegistry = registry || EMPTY_REGISTRY;
   const events = contextEvents ? (contextEvents as any[]) : null;
 
@@ -85,8 +85,8 @@ export default function DefectAnalysisPage() {
 
   // Stage scope comes solely from the topbar View switcher (t.stageView).
   const scope: Scope = useMemo(
-    () => resolveScope(events ?? [], t),
-    [events, t],
+    () => resolveScope(events ?? [], t, policy),
+    [events, t, policy],
   );
 
   const srcRows = (filter: Parameters<typeof toSourceRows>[1] = {}): SourceRow[] =>

@@ -2,7 +2,8 @@
 // numbers are computed. Screens import these — never recompute inline.
 
 import type { Event } from "@/lib/store/types";
-import { type Scope, scopeEvents, periodKey, periodLabel, periodsIn } from "./scope";
+import { type Scope, scopeEvents, periodKey, periodLabel, periodsIn, policyOf } from "./scope";
+import { DEFAULT_POLICY, type CalculationPolicyT } from "@/core/policy/policy";
 
 /** Structural catalog type — the caller's MOD catalog (or a test fixture). */
 export type Registry = { stages: any[]; defects: any[]; sizes: any[]; fiscalYearStartMonth: number };
@@ -55,8 +56,12 @@ export interface StageAgg {
 }
 
 /** Sum the four disposition quantities over an event set. `rejected` falls back
- *  to per-defect rejection events when no stated inspection(rejected) exists. */
-export function aggregate(events: Event[]): StageAgg {
+ *  to per-defect rejection events when no stated inspection(rejected) exists.
+ *
+ *  A3 (`reworkCountsAs`): held/reworked units are pulled OUT of the flow at a
+ *  gate, so by default they are not units that entered it. A plant that
+ *  re-inspects and returns them to the same gate can count them as checked. */
+export function aggregate(events: Event[], policy: CalculationPolicyT = DEFAULT_POLICY): StageAgg {
   let checked = 0, good = 0, rework = 0, rejected = 0, defectRej = 0;
   for (const e of events) {
     if (isProd(e)) checked += qty(e);
@@ -66,6 +71,7 @@ export function aggregate(events: Event[]): StageAgg {
     else if (e.eventType === "rejection") defectRej += qty(e);
   }
   if (rejected === 0 && defectRej > 0) rejected = defectRej;
+  if (policy.reworkCountsAs === "checked") checked += rework;
   return { checked, good, rework, rejected };
 }
 
@@ -86,7 +92,11 @@ const stageOf = (e: Event) => ("stageId" in e ? ((e as any).stageId as string) :
  * but Stage 1 only passed forward 120 units, Stage 2's input denominator is dynamically
  * evaluated as 120 for accurate stage rejection rates.
  */
-function batchCascadedAgg(events: Event[], registry: Registry = DERIVED_REGISTRY): Map<string, StageAgg> {
+function batchCascadedAgg(
+  events: Event[],
+  registry: Registry = DERIVED_REGISTRY,
+  policy: CalculationPolicyT = DEFAULT_POLICY,
+): Map<string, StageAgg> {
   const stageList = stagesFor(events, registry).map((s) => s.stageId);
   const byStageResult = new Map<string, StageAgg>();
   for (const s of stageList) {
@@ -108,7 +118,7 @@ function batchCascadedAgg(events: Event[], registry: Registry = DERIVED_REGISTRY
 
   // Handle unbatched events normally
   for (const s of stageList) {
-    const a = aggregate(unbatched.filter((e) => stageOf(e) === s));
+    const a = aggregate(unbatched.filter((e) => stageOf(e) === s), policy);
     const cur = byStageResult.get(s)!;
     cur.checked += a.checked;
     cur.good += a.good;
@@ -124,7 +134,7 @@ function batchCascadedAgg(events: Event[], registry: Registry = DERIVED_REGISTRY
 
     for (let i = 0; i < presentStages.length; i++) {
       const sid = presentStages[i];
-      const a = aggregate(bevents.filter((e) => stageOf(e) === sid));
+      const a = aggregate(bevents.filter((e) => stageOf(e) === sid), policy);
       if (i === 0) {
         initialBatchChecked = a.checked;
       }
@@ -161,9 +171,10 @@ function batchCascadedAgg(events: Event[], registry: Registry = DERIVED_REGISTRY
  *  here; headline metrics are composed from these per-stage numbers. */
 function perStageAgg(
   events: Event[],
-  registry: Registry
+  registry: Registry,
+  policy: CalculationPolicyT = DEFAULT_POLICY,
 ): { stageId: string; checked: number; rejected: number; rate: number }[] {
-  const aggregatedMap = batchCascadedAgg(events, registry);
+  const aggregatedMap = batchCascadedAgg(events, registry, policy);
   return stagesFor(events, registry).map((s) => {
     const a = aggregatedMap.get(s.stageId) ?? { checked: 0, good: 0, rework: 0, rejected: 0 };
     return { stageId: s.stageId, checked: a.checked, rejected: a.rejected, rate: a.checked > 0 ? a.rejected / a.checked : 0 };
@@ -176,15 +187,25 @@ function perStageAgg(
  *  figure, NOT overall rejected÷checked. */
 export function rejectionRate(events: Event[], scope: Scope, registry: Registry = DERIVED_REGISTRY): MetricValue {
   const ev = scopeEvents(events, scope);
-  const stages = perStageAgg(ev, registry);
-  const value = stages.reduce((sum, s) => sum + s.rate, 0);
+  const policy = policyOf(scope);
+  const stages = perStageAgg(ev, registry, policy);
+  // A1 — "sum-of-stage-rates" is funnel loss (each gate against its own
+  // denominator); "pooled" is every rejected unit over the units that entered.
+  // They legitimately differ: 9.73% vs 8.46% on this plant's July–August data.
+  const value =
+    policy.headlineRejection === "pooled"
+      ? (() => {
+          const entered = totalChecked(events, scope, registry).value;
+          return entered > 0 ? aggregate(ev, policy).rejected / entered : 0;
+        })()
+      : stages.reduce((sum, s) => sum + s.rate, 0);
   return { value, sourceEventIds: ids(ev, (e) => isProd(e) || isRej(e)) };
 }
 
 /** Total rejected units across every stage (a raw count, not a rate). */
 export function totalRejected(events: Event[], scope: Scope): MetricValue {
   const ev = scopeEvents(events, scope);
-  return { value: aggregate(ev).rejected, sourceEventIds: ids(ev, (e) => isRej(e) || e.eventType === "rejection") };
+  return { value: aggregate(ev, policyOf(scope)).rejected, sourceEventIds: ids(ev, (e) => isRej(e) || e.eventType === "rejection") };
 }
 
 /**
@@ -213,7 +234,16 @@ export function totalRejected(events: Event[], scope: Scope): MetricValue {
  */
 export function totalChecked(events: Event[], scope: Scope, registry: Registry = DERIVED_REGISTRY): MetricValue {
   const ev = scopeEvents(events, scope);
-  const stages = perStageAgg(ev, registry);
+  const policy = policyOf(scope);
+  const stages = perStageAgg(ev, registry, policy);
+  // A2 — "sum-of-gates" is only correct when gates inspect DIFFERENT units.
+  // At this plant they are sequential, so it counts one catheter once per gate.
+  if (policy.checkedMeasuredAt === "sum-of-gates") {
+    return {
+      value: stages.reduce((sum, s) => sum + s.checked, 0),
+      sourceEventIds: ids(ev, isProd),
+    };
+  }
   const entry = stages.find((s) => s.checked > 0);
   return {
     value: entry?.checked ?? 0,
@@ -225,7 +255,7 @@ export function totalChecked(events: Event[], scope: Scope, registry: Registry =
  *  the fraction of entering units that pass every stage without rejection. */
 export function fpy(events: Event[], scope: Scope, registry: Registry = DERIVED_REGISTRY): MetricValue {
   const ev = scopeEvents(events, scope);
-  const stages = perStageAgg(ev, registry).filter((s) => s.checked > 0);
+  const stages = perStageAgg(ev, registry, policyOf(scope)).filter((s) => s.checked > 0);
   if (stages.length === 0) return { value: 1, sourceEventIds: [] };
   const value = stages.reduce((y, s) => y * (1 - s.rate), 1);
   return { value, sourceEventIds: ids(ev, (e) => isProd(e) || isRej(e)) };
@@ -242,8 +272,9 @@ export interface StageRow extends StageAgg {
 /** Per-stage breakdown, ordered by registry stage order. */
 export function byStage(events: Event[], scope: Scope, registry: Registry = DERIVED_REGISTRY): StageRow[] {
   const ev = scopeEvents(events, scope);
-  const total = aggregate(ev).rejected;
-  const aggregatedMap = batchCascadedAgg(ev, registry);
+  const policy = policyOf(scope);
+  const total = aggregate(ev, policy).rejected;
+  const aggregatedMap = batchCascadedAgg(ev, registry, policy);
   return stagesFor(ev, registry)
     .map((s: any) => {
       const a = aggregatedMap.get(s.stageId) ?? { checked: 0, good: 0, rework: 0, rejected: 0 };
@@ -273,8 +304,10 @@ export function trend(events: Event[], scope: Scope, metric: keyof typeof METRIC
   const periods = periodsIn(ev, scope.grain, { from: scope.dateFrom, to: scope.dateTo });
   return periods.map((p) => {
     const bucket = ev.filter((e) => periodKey(e.occurredOn.start, scope.grain) === p);
-    // run the metric on the bucket with an unfiltered scope (already scoped)
-    const sub = { grain: scope.grain };
+    // run the metric on the bucket with an unfiltered scope (already scoped).
+    // Policy must survive — without it every trend point silently reverts to
+    // the shipped defaults while the KPI above it uses the plant's policy.
+    const sub = { grain: scope.grain, policy: scope.policy };
     return {
       period: p,
       label: periodLabel(p),
@@ -296,7 +329,7 @@ export function stageTrend(events: Event[], scope: Scope, registry: Registry = D
     const perStage: Record<string, number> = {};
     const counts: Record<string, { rejected: number; checked: number }> = {};
     for (const s of registry.stages) {
-      const a = aggregate(bucket.filter((e) => "stageId" in e && (e as any).stageId === s.stageId));
+      const a = aggregate(bucket.filter((e) => "stageId" in e && (e as any).stageId === s.stageId), policyOf(scope));
       perStage[s.stageId] = a.checked > 0 ? a.rejected / a.checked : 0;
       counts[s.stageId] = { rejected: a.rejected, checked: a.checked };
     }

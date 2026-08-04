@@ -8,6 +8,7 @@
 import type { Event } from "@/lib/store/types";
 import { canonicalBatchId } from "@/lib/entry/batch-id";
 import { canonicalizeEvents } from "./canonical";
+import { DEFAULT_POLICY, type CalculationPolicyT } from "@/core/policy/policy";
 import {
   STAGE_CATEGORY,
   STAGE_CATEGORIES,
@@ -46,6 +47,13 @@ export interface Scope {
    * Non-empty = only matching batches; events without a batch are dropped.
    */
   batchIds?: string[];
+  /**
+   * The plant's calculation conventions. Rides on Scope because Scope already
+   * reaches every selector — no new parameter on 20+ call sites, and no global
+   * mutable state to leak between server requests. Omitted = shipped defaults,
+   * so every existing caller and test keeps its current behaviour.
+   */
+  policy?: CalculationPolicyT;
   // V2 dimensions — ignored by selectors until events carry them.
   shift?: string;
   productIds?: string[];
@@ -54,6 +62,12 @@ export interface Scope {
 }
 
 export const DEFAULT_SCOPE: Scope = { grain: "month" };
+
+/** The policy in force for a scope. One accessor so no selector has to remember
+ *  the fallback. */
+export function policyOf(scope: Scope): CalculationPolicyT {
+  return scope.policy ?? DEFAULT_POLICY;
+}
 
 function stageOf(e: Event): string | null {
   return "stageId" in e ? (e.stageId as string) : null;
@@ -496,7 +510,11 @@ export function stagesInCategories(cats: StageCategory[], known: Record<string, 
  * "Last 90 days" actually lands on real data. `stageView !== "cumulative"` scopes
  * the WHOLE screen to one stage — the universal per-stage separation.
  */
-export function resolveScope(events: Event[], t: ScopeTweaks): Scope {
+export function resolveScope(
+  events: Event[],
+  t: ScopeTweaks,
+  policy: CalculationPolicyT = DEFAULT_POLICY,
+): Scope {
   const iso = (d: Date) => d.toISOString().slice(0, 10);
   const dates = events.length ? events.map((e) => e.occurredOn.start).sort() : [];
   const dataMin = dates[0];
@@ -529,8 +547,9 @@ export function resolveScope(events: Event[], t: ScopeTweaks): Scope {
 
   // A station view pins one stage; otherwise the section filter decides. Both
   // land in `stageIds`, so scopeEvents needs no new filter.
+  // B1 — the user's explicit pick wins; policy only supplies the default.
   const cats = t.stageCategories === undefined || t.stageCategories === null
-    ? DEFAULT_STAGE_CATEGORIES
+    ? policy.defaultSections
     : t.stageCategories;
   const categoryStages =
     cats.length === STAGE_CATEGORIES.length
@@ -564,6 +583,7 @@ export function resolveScope(events: Event[], t: ScopeTweaks): Scope {
     sourceChannels: channelsProp,
     sourceFiles,
     batchIds,
+    policy,
   };
 }
 

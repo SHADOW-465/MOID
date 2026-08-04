@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import Icon, { type IconName } from "@/components/editorial/Icon";
 import { useTweaks } from "@/components/editorial/TweaksContext";
+import { usePolicy } from "@/components/app/RegistryContext";
 import { useEvents } from "@/components/app/EventsContext";
 import {
   rejectionRate,
@@ -198,6 +199,7 @@ export default function AppShell({
   const router = useRouter();
   const { events, refreshEvents } = useEvents();
   const { t, setTweak } = useTweaks();
+  const policy = usePolicy();
   const { persona, setPersona, canConfigure, canWrite } = usePersona();
   const [mounted, setMounted] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
@@ -209,8 +211,8 @@ export default function AppShell({
   /** The window the report covers — resolved exactly as the screens resolve it,
    *  so a report always answers the same question the page is answering. */
   const reportScope = useMemo(
-    () => resolveScope(events ?? [], t),
-    [events, t],
+    () => resolveScope(events ?? [], t, policy),
+    [events, t, policy],
   );
 
   useCommandPaletteHotkey(useCallback(() => setPaletteOpen(true), []));
@@ -843,9 +845,9 @@ export default function AppShell({
       excelFiles: t.excelFiles,
       batchIds: t.batchIds,
       stageCategories: t.stageCategories,
-    });
+    }, policy);
     return computeTrustScore(events, scope).pct;
-  }, [events, suggestedGrain, t.datePreset, t.dateFrom, t.dateTo, t.includeExcel, t.includeDirectEntry, t.excelFiles, t.batchIds]);
+  }, [events, suggestedGrain, t.datePreset, t.dateFrom, t.dateTo, t.includeExcel, t.includeDirectEntry, t.excelFiles, t.batchIds, policy]);
   const trustScore = trustScoreProp !== undefined ? trustScoreProp : fallbackTrustScore;
 
   useEffect(() => {

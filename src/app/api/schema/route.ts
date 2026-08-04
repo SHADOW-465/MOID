@@ -14,6 +14,8 @@ import { z } from "zod";
 import { StageDef, DefectDef, SizeDef } from "@/lib/contract/d1";
 import { EMPTY_REGISTRY } from "@/core/ontology/empty-registry";
 import { getCatalogStore, type CompanyCatalog } from "@/core/ontology/store/catalog-store";
+import { getPolicyStore } from "@/core/policy/policy-store";
+import { DEFAULT_POLICY } from "@/core/policy/policy";
 import { mergePlantCatalog } from "@/core/ontology/plant-catalog";
 import { loadCatalog } from "@/core/ontology/load-catalog";
 import { getModStore } from "@/core/ontology/store/mod-store";
@@ -135,9 +137,12 @@ async function loadMappings(company: string): Promise<
 export async function GET() {
   try {
     const company = companyId();
-    const [catalog, mappings] = await Promise.all([
+    // Policy rides along so the client gets all plant config in one round trip
+    // (RegistryProvider already fetches this). Writes go to /api/policy.
+    const [catalog, mappings, policyVersion] = await Promise.all([
       loadCatalog(company),
       loadMappings(company),
+      getPolicyStore().current(company),
     ]);
 
     const configured =
@@ -151,6 +156,8 @@ export async function GET() {
       catalog,
       mappings,
       configured,
+      policy: policyVersion.policy,
+      policyVersion: policyVersion.version,
       brain: {
         stageCount: catalog.stages.length,
         defectCount: catalog.defects.length,
@@ -174,6 +181,10 @@ export async function GET() {
       },
       mappings: [],
       configured: false,
+      // Shipped defaults, never undefined — a failed schema load must not make
+      // every screen fall back to a *different* set of conventions.
+      policy: DEFAULT_POLICY,
+      policyVersion: 0,
       error: err instanceof Error ? err.message : "Failed to load catalog",
     });
   }

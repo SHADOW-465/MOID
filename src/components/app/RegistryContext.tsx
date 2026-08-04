@@ -15,6 +15,11 @@
 // canonical event ledger. Pages should pass `registry` from useRegistry() into
 // every selector call instead of relying on the hardcoded default.
 
+import {
+  DEFAULT_POLICY,
+  parsePolicy,
+  type CalculationPolicyT,
+} from "@/core/policy/policy";
 import React, {
   createContext,
   useContext,
@@ -27,6 +32,10 @@ import React, {
 
 interface RegistryContextType {
   registry: any | null;
+  /** Plant calculation policy — served by the same /api/schema call, so no
+   *  second fetch and no second provider. Never null: falls back to the
+   *  shipped defaults so screens never render under undefined conventions. */
+  policy: CalculationPolicyT;
   isLoading: boolean;
   isValidating: boolean;
   refreshRegistry: () => Promise<void>;
@@ -36,6 +45,7 @@ const RegistryContext = createContext<RegistryContextType | undefined>(undefined
 
 export function RegistryProvider({ children }: { children: React.ReactNode }) {
   const [registry, setRegistry] = useState<any | null>(null);
+  const [policy, setPolicy] = useState<CalculationPolicyT>(DEFAULT_POLICY);
   const [isLoading, setIsLoading] = useState(true);
   const [isValidating, setIsValidating] = useState(false);
   const inflight = useRef<Promise<void> | null>(null);
@@ -52,6 +62,7 @@ export function RegistryProvider({ children }: { children: React.ReactNode }) {
         if (!res.ok) throw new Error(`schema ${res.status}`);
         const data = await res.json();
         setRegistry(data.registry ?? null);
+        setPolicy(parsePolicy(data.policy));
         hasData.current = true;
       } catch (err) {
         console.error("Failed to fetch active registry:", err);
@@ -72,8 +83,8 @@ export function RegistryProvider({ children }: { children: React.ReactNode }) {
   }, [refreshRegistry]);
 
   const value = useMemo(
-    () => ({ registry, isLoading, isValidating, refreshRegistry }),
-    [registry, isLoading, isValidating, refreshRegistry],
+    () => ({ registry, policy, isLoading, isValidating, refreshRegistry }),
+    [registry, policy, isLoading, isValidating, refreshRegistry],
   );
 
   return (
@@ -87,4 +98,9 @@ export function useRegistry() {
     throw new Error("useRegistry must be used within a RegistryProvider");
   }
   return context;
+}
+
+/** The plant's calculation conventions. Same provider, no extra fetch. */
+export function usePolicy(): CalculationPolicyT {
+  return useRegistry().policy;
 }

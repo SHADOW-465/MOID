@@ -716,9 +716,99 @@ export default function FloatingDetailModal({
                   </div>
                 )}
 
+                {/* The headline rejection % is the SUM of each gate's own rate,
+                    each with its OWN denominator — not rejected ÷ checked.
+                    Without this the two stats below read as a fraction that
+                    doesn't reproduce the number above them. */}
+                {metricKind === "rejection_rate" && summary.stageBreakdown.length > 1 && (
+                  <div
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      padding: "10px 12px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 6,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.04em",
+                        color: "var(--text-3)",
+                      }}
+                    >
+                      How it adds up
+                    </div>
+                    {summary.stageBreakdown
+                      .filter((s) => s.checkedQty > 0)
+                      .map((s) => (
+                        <div
+                          key={s.key}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 10,
+                            fontSize: 11.5,
+                            fontFamily: "var(--font-mono)",
+                          }}
+                        >
+                          <span className="muted" style={{ flex: 1 }}>
+                            {s.label}
+                          </span>
+                          <span className="muted">
+                            {fmtQty(s.rejectedQty)}/{fmtQty(s.checkedQty)}
+                          </span>
+                          <span style={{ color: "var(--text)", fontWeight: 700, minWidth: 52, textAlign: "right" }}>
+                            {(s.rate * 100).toFixed(2)}%
+                          </span>
+                        </div>
+                      ))}
+                    {/* Stated, not left to be added: each row is rounded to 2dp,
+                        so adding the column can land a hundredth off the
+                        headline. The total is the sum of the UNROUNDED rates. */}
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 10,
+                        fontSize: 11.5,
+                        fontFamily: "var(--font-mono)",
+                        borderTop: "1px solid var(--border)",
+                        paddingTop: 6,
+                      }}
+                    >
+                      <span style={{ flex: 1, fontWeight: 700, color: "var(--text)" }}>Total</span>
+                      <span
+                        style={{
+                          color: "var(--accent)",
+                          fontWeight: 700,
+                          minWidth: 52,
+                          textAlign: "right",
+                        }}
+                      >
+                        {(
+                          summary.stageBreakdown.reduce((t, s) => t + s.rate, 0) * 100
+                        ).toFixed(2)}
+                        %
+                      </span>
+                    </div>
+                    <p className="muted" style={{ fontSize: 10.5, lineHeight: 1.45, margin: "2px 0 0" }}>
+                      Each gate has its own denominator, so the total is the sum of
+                      these rates — not {fmtQty(summary.rejectedQty + summary.defectQty)} ÷{" "}
+                      {fmtQty(summary.checkedQty)}.
+                    </p>
+                  </div>
+                )}
+
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  <MiniStat label="Checked" value={fmtQty(summary.checkedQty)} />
-                  <MiniStat label="Rejected" value={fmtQty(summary.rejectedQty + summary.defectQty)} />
+                  <MiniStat
+                    label={summary.entryStage ? `Entered · ${summary.entryStage}` : "Entered"}
+                    value={fmtQty(summary.checkedQty)}
+                  />
+                  <MiniStat label="Rejected · all gates" value={fmtQty(summary.rejectedQty + summary.defectQty)} />
                   {summary.reworkQty > 0 && (
                     <MiniStat label="Held / rework" value={fmtQty(summary.reworkQty)} />
                   )}

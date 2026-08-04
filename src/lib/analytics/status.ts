@@ -5,7 +5,7 @@
 // 2. Primary threshold — rejection rate vs client target / watch
 // 3. Secondary frame — prior period of the same grain (reason text only)
 
-import { type Scope, scopeEvents, periodKey, periodsIn } from "./scope";
+import { type Scope, scopeEvents, periodKey, periodsIn, policyOf } from "./scope";
 import { rejectionRate } from "./rejection";
 import {
   scopeIntegrityIssues,
@@ -37,26 +37,14 @@ export interface QualityStatusOptions extends IntegrityScanOptions {
   watchLimit?: number;
 }
 
-function getTargetLimit(): number {
-  if (typeof window !== "undefined") {
-    const val = localStorage.getItem("rais_settings_target_rejection");
-    if (val) {
-      const num = parseFloat(val);
-      if (!isNaN(num)) return num / 100;
-    }
-  }
-  return 0.10;
+// Target / watch lines are plant policy, not per-browser preference — see
+// core/policy/policy.ts. They ride on Scope like every other convention.
+function getTargetLimit(scope: Scope): number {
+  return policyOf(scope).targetRejectionPct / 100;
 }
 
-function getWatchLimit(): number {
-  if (typeof window !== "undefined") {
-    const val = localStorage.getItem("rais_settings_watch_rejection");
-    if (val) {
-      const num = parseFloat(val);
-      if (!isNaN(num)) return num / 100;
-    }
-  }
-  return 0.05;
+function getWatchLimit(scope: Scope): number {
+  return policyOf(scope).watchRejectionPct / 100;
 }
 
 /** Prior period of the same grain that immediately precedes the scoped window. */
@@ -102,8 +90,8 @@ export function qualityStatus(
   scope: Scope,
   opts: QualityStatusOptions = {}
 ): QualityStatusT {
-  const targetLimit = opts.targetLimit ?? getTargetLimit();
-  const watchLimit = opts.watchLimit ?? getWatchLimit();
+  const targetLimit = opts.targetLimit ?? getTargetLimit(scope);
+  const watchLimit = opts.watchLimit ?? getWatchLimit(scope);
   const rate = rejectionRate(events, scope).value;
   const pct = (rate * 100).toFixed(2);
 

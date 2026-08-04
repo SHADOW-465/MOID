@@ -6,6 +6,7 @@ import PageLoader from "@/components/app/PageLoader";
 import { useEvents } from "@/components/app/EventsContext";
 import FloatingDetailModal, { type SourceRow, type SourceMetricKind } from "@/components/FloatingDetailModal";
 import { useTweaks } from "@/components/editorial/TweaksContext";
+import { usePolicy } from "@/components/app/RegistryContext";
 import { 
   Card, 
   LineChart,
@@ -190,6 +191,7 @@ function XBarChart({ points, ucl, lcl, mean }: { points: any[]; ucl: number; lcl
 
 export default function SpcPage() {
   const { t } = useTweaks();
+  const policy = usePolicy();
   const { events: contextEvents, isLoading } = useEvents();
   const events = contextEvents ? (contextEvents as any[]) : null;
   const [modalOpen, setModalOpen] = useState(false);
@@ -237,8 +239,8 @@ export default function SpcPage() {
   }, []);
 
   const scope: Scope = useMemo(
-    () => resolveScope(events ?? [], t),
-    [events, t],
+    () => resolveScope(events ?? [], t, policy),
+    [events, t, policy],
   );
 
   const srcRows = (filter: Parameters<typeof toSourceRows>[1] = {}): SourceRow[] =>

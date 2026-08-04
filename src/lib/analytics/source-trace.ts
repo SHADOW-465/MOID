@@ -79,7 +79,11 @@ export interface SourceSummary {
   fileCount: number;
   dateFrom: string | null;
   dateTo: string | null;
+  /** Units that ENTERED, measured once at the most upstream stage present. */
   checkedQty: number;
+  /** Which stage checkedQty was measured at — so the UI never labels it as if
+   *  it were the denominator of a multi-gate rate. */
+  entryStage: string | null;
   acceptedQty: number;
   rejectedQty: number;
   /** Held / reworked units — never folded into checkedQty. */
@@ -87,7 +91,18 @@ export interface SourceSummary {
   defectQty: number;
   /** Top group label for the default mode (stage / defect / size). */
   topDriver: { label: string; sharePct: number; mode: SourceGroupMode } | null;
-  stageBreakdown: { key: string; label: string; count: number; rejectedQty: number }[];
+  /** Per-gate composition. `rate` is the gate's OWN rejected ÷ its OWN checked;
+   *  the headline rejection % is the SUM of these, not rejectedQty ÷ checkedQty
+   *  (see rejection.ts `rejectionRate`). Showing them is what stops the panel
+   *  reading as if two aggregates divided into the headline. */
+  stageBreakdown: {
+    key: string;
+    label: string;
+    count: number;
+    rejectedQty: number;
+    checkedQty: number;
+    rate: number;
+  }[];
 }
 
 export interface SourceGroup {
@@ -494,9 +509,10 @@ function groupKeyFor(row: SourceRow, mode: SourceGroupMode, grain: SourcePeriodG
  * Rejected is the opposite case and IS summed — a unit scrapped at Visual and
  * another scrapped at Final are two different units.
  */
-function entryStageChecked(rows: SourceRow[]): number {
+function entryStageChecked(rows: SourceRow[]): { qty: number; stageId: string | null; label: string | null } {
   let bestKey = Infinity;
   let bestStage: string | null = null;
+  let bestLabel: string | null = null;
   const byStage = new Map<string, number>();
   for (const r of rows) {
     if (r.kind !== "checked") continue;
@@ -510,13 +526,19 @@ function entryStageChecked(rows: SourceRow[]): number {
     if (key < bestKey || (key === bestKey && bestStage !== null && stage < bestStage)) {
       bestKey = key;
       bestStage = stage;
+      bestLabel = STAGE_LABELS[stage] ?? r.stage ?? stage;
     }
   }
-  return bestStage === null ? 0 : (byStage.get(bestStage) ?? 0);
+  return {
+    qty: bestStage === null ? 0 : (byStage.get(bestStage) ?? 0),
+    stageId: bestStage,
+    label: bestLabel,
+  };
 }
 
 function rollup(rows: SourceRow[]) {
-  const checkedQty = entryStageChecked(rows);
+  const entry = entryStageChecked(rows);
+  const checkedQty = entry.qty;
   let acceptedQty = 0;
   let rejectedQty = 0;
   let reworkQty = 0;
@@ -536,7 +558,7 @@ function rollup(rows: SourceRow[]) {
   }
   const source: "manual" | "excel" | "mixed" =
     excel > 0 && manual > 0 ? "mixed" : manual > 0 ? "manual" : "excel";
-  return { checkedQty, acceptedQty, rejectedQty, reworkQty, defectQty, fileCount: files.size, source, excel, manual };
+  return { checkedQty, entryStage: entry.label, acceptedQty, rejectedQty, reworkQty, defectQty, fileCount: files.size, source, excel, manual };
 }
 
 /** Primary quantity for ranking groups given metric kind. */
@@ -674,12 +696,20 @@ export function summarizeSource(
     : null;
 
   const stageGroups = groupSourceRows(normalized, "stage", { metricKind });
-  const stageBreakdown = stageGroups.map((g) => ({
-    key: g.key,
-    label: g.label,
-    count: g.recordCount,
-    rejectedQty: g.rejectedQty + g.defectQty,
-  }));
+  const stageBreakdown = stageGroups
+    .map((g) => {
+      const rejectedQty = g.rejectedQty + g.defectQty;
+      return {
+        key: g.key,
+        label: g.label,
+        count: g.recordCount,
+        rejectedQty,
+        // Single-stage group, so checkedQty is that gate's own denominator.
+        checkedQty: g.checkedQty,
+        rate: g.checkedQty > 0 ? rejectedQty / g.checkedQty : 0,
+      };
+    })
+    .sort((a, b) => stageSortKey(a.key, a.label) - stageSortKey(b.key, b.label));
 
   return {
     recordCount: normalized.length,
@@ -689,6 +719,7 @@ export function summarizeSource(
     dateFrom,
     dateTo,
     checkedQty: r.checkedQty,
+    entryStage: r.entryStage,
     acceptedQty: r.acceptedQty,
     rejectedQty: r.rejectedQty,
     reworkQty: r.reworkQty,

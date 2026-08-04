@@ -35,7 +35,7 @@ import {
 export default function SizeAnalysisPage() {
   const { t } = useTweaks();
   const { events: contextEvents, isLoading } = useEvents();
-  const { registry } = useRegistry();
+  const { registry, policy } = useRegistry();
   const activeRegistry = registry || EMPTY_REGISTRY;
   const events = contextEvents ? (contextEvents as any[]) : null;
   const [selectedSize, setSelectedSize] = useState("Fr16");
@@ -88,8 +88,8 @@ export default function SizeAnalysisPage() {
   }, []);
 
   const scope: Scope = useMemo(
-    () => resolveScope(events ?? [], t),
-    [events, t],
+    () => resolveScope(events ?? [], t, policy),
+    [events, t, policy],
   );
 
   const srcRows = (filter: Parameters<typeof toSourceRows>[1] = {}): SourceRow[] =>

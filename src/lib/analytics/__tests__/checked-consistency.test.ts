@@ -106,6 +106,42 @@ test("adding an upstream section moves the measuring point, never adds one", () 
   expect(summarizeSource(withSecondary, "rejection_rate").checkedQty).toBe(6100);
 });
 
+// The headline is Σ(per-gate rate), NOT rejectedQty ÷ checkedQty. With the real
+// ledger those differ by more than a point (9.73% vs 8.46%), which is what made
+// the panel look wrong when it showed only the two aggregates.
+test("stageBreakdown carries each gate's OWN denominator and rate", () => {
+  const s = summarizeSource(ASSEMBLY, "rejection_rate");
+  const byKey = Object.fromEntries(s.stageBreakdown.map((g) => [g.key, g]));
+
+  expect(byKey.visual.checkedQty).toBe(5930);
+  expect(byKey.balloon.checkedQty).toBe(5459);
+  expect(byKey["valve-integrity"].checkedQty).toBe(5376);
+  expect(byKey.final.checkedQty).toBe(5300);
+
+  const summed = s.stageBreakdown.reduce((t, g) => t + g.rate, 0);
+  const flat = s.rejectedQty / s.checkedQty;
+  // 4.82 + 0.73 + 0.22 + 0.15
+  expect((summed * 100).toFixed(2)).toBe("5.93");
+  expect((flat * 100).toFixed(2)).toBe("5.83");
+  expect(summed).not.toBeCloseTo(flat, 4);
+});
+
+test("the entry stage is named, so `checked` is never read as the denominator", () => {
+  expect(summarizeSource(ASSEMBLY, "rejection_rate").entryStage).toBe("Visual Inspection");
+  const withPrimary = [...gate("production", "Production", 6400, 0), ...ASSEMBLY];
+  expect(summarizeSource(withPrimary, "rejection_rate").entryStage).toBe("Production");
+});
+
+test("stageBreakdown is in process order, not by size", () => {
+  const s = summarizeSource(ASSEMBLY, "rejection_rate");
+  expect(s.stageBreakdown.map((g) => g.key)).toEqual([
+    "visual",
+    "balloon",
+    "valve-integrity",
+    "final",
+  ]);
+});
+
 test("entry is catalog order, not ledger order", () => {
   const shuffled = [...ASSEMBLY.slice(4), ...ASSEMBLY.slice(0, 4)];
   expect(summarizeSource(shuffled, "rejection_rate").checkedQty).toBe(5930);

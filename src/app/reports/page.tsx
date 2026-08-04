@@ -20,14 +20,14 @@ import PageLoader from "@/components/app/PageLoader";
 
 export default function ReportsPage() {
   const { events, isLoading } = useEvents();
-  const { registry } = useRegistry();
+  const { registry, policy } = useRegistry();
   const { t } = useTweaks();
   // Ask MOID / command palette can deep-link with ?from=&to=&grain=
   useApplyInvestigationFromUrl();
 
   const scope: Scope = useMemo(
-    () => resolveScope(events ?? [], t),
-    [events, t],
+    () => resolveScope(events ?? [], t, policy),
+    [events, t, policy],
   );
 
   const periodLabel = useMemo(() => {
