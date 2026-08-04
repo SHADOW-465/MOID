@@ -1230,7 +1230,7 @@ function CustomRangePill() {
           style={{
             position: "absolute",
             top: "calc(100% + 6px)",
-            left: 0,
+            right: 0,
             zIndex: 350,
             width: 250,
             padding: 12,
