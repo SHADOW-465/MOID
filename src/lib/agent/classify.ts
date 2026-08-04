@@ -24,6 +24,13 @@ const ANALYZE_RE =
 
 const NAV_RE = /\b(take me|go to|open|navigate|bring me|jump to|switch to)\b/i;
 
+/** "what is this graph/chart/kpi/widget", "explain this" — the currently open card. */
+const EXPLAIN_RE =
+  /\b(what('s| is) this (graph|chart|kpi|widget|card|metric|number)|explain this( (graph|chart|kpi|widget|metric))?|what does this (mean|show)|why is (this|it) (high|low|so))\b/i;
+
+const EXPORT_RE =
+  /\b((export|download|print)\s+(this\s+)?(page|report|pdf|package|audit|data)|export\s+(as\s+)?(pdf|csv|json)|download\s+(the\s+)?report)\b/i;
+
 const HOWTO_RE =
   /\b(how (do i|to|can i|do we|should i)|where (is|do i|can i|to)|show me how|guide me|help me (with|to|do)|explain|teach me|walk me)\b/i;
 
@@ -70,6 +77,12 @@ export function classifyTaskKind(text: string): TaskKind {
 
   // Report before bare analyze so "summarize … report" lands on report
   if (REPORT_RE.test(t)) return "report";
+
+  if (EXPORT_RE.test(t)) return "export";
+
+  // Before analyze/howto: "what is this" is a demonstrative about an open
+  // card, not a howto question or a general metric lookup.
+  if (EXPLAIN_RE.test(t)) return "explain";
 
   const hasQty = QTY_RE.test(t) || DEFECT_QTY_RE.test(t);
   const pureHowTo = HOWTO_RE.test(t) && !hasExecuteLanguage(t) && !hasQty;

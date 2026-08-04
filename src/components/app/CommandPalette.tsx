@@ -72,6 +72,8 @@ export default function CommandPalette({
       kind === "report" ||
       kind === "workflow" ||
       kind === "analyze" ||
+      kind === "explain" ||
+      kind === "export" ||
       /\b(do it|for me|summarize|how do i)\b/i.test(q)
     ) {
       onClose();

@@ -10,7 +10,9 @@ export type TaskKind =
   | "analyze"
   | "report"
   | "enter_data"
-  | "workflow";
+  | "workflow"
+  | "explain"
+  | "export";
 
 export type TaskStatus =
   | "collecting"
@@ -138,7 +140,34 @@ export type ToolIntent =
   | { type: "prefill_entry"; draft: EntryDraft; href: string }
   | { type: "copy_link"; url: string }
   | { type: "spotlight"; navKey: string }
+  /** Pulse the KPI/chart card the user is currently looking at (see ActiveMetricSnapshot). */
+  | { type: "spotlight_metric" }
+  /** Open the page's report builder, or download the audit package where the
+   *  page has no report builder — the same two paths the "Export report" /
+   *  "Export" button in the top bar already runs. */
+  | { type: "export_report" }
   | { type: "howto_reply" };
+
+/**
+ * The KPI or chart currently open in FloatingDetailModal, if any — plain data,
+ * no DOM references, so the pure reducer stays pure and testable. Verified
+ * numbers only (the same `summarizeSource()` the modal itself renders from);
+ * "explain" answers are built from this, never invented.
+ */
+export interface ActiveMetricSnapshot {
+  title: string;
+  insight: string;
+  primaryValue?: string;
+  checkedQty: number;
+  acceptedQty: number;
+  rejectedQty: number;
+  reworkQty: number;
+  defectQty: number;
+  recordCount: number;
+  dateFrom: string | null;
+  dateTo: string | null;
+  topDriver: { label: string; sharePct: number } | null;
+}
 
 export interface AgentReply {
   text: string;
@@ -164,4 +193,8 @@ export interface AgentCtx {
   currentPath?: string;
   /** Effective ledger size — for empty-state tips */
   eventCount?: number;
+  /** The KPI/chart open in FloatingDetailModal right now, if any. */
+  activeMetric?: ActiveMetricSnapshot | null;
+  /** True when the current screen has a report builder (top-bar "Export report"). */
+  canExportReport?: boolean;
 }

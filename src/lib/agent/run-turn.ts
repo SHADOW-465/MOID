@@ -445,6 +445,75 @@ function formatWorkflowStep(
   };
 }
 
+/** "what is this graph?" — answered from the currently open KPI/chart, never
+ *  invented. Nothing to collect or confirm, so this is a one-shot reply. */
+function formatExplainReply(ctx: AgentCtx): TurnResult {
+  const m = ctx.activeMetric;
+  if (!m) {
+    return {
+      session: null,
+      reply: {
+        text:
+          "Nothing is open right now. Click a KPI tile or a chart segment, " +
+          "then ask again — I'll read straight off what View Source shows for it.",
+        actions: [],
+        autoTools: [],
+      },
+    };
+  }
+
+  const lines: string[] = [`**${m.title}**`];
+  if (m.primaryValue) lines.push(`Computed value: **${m.primaryValue}**.`);
+
+  const span =
+    m.dateFrom && m.dateTo
+      ? m.dateFrom === m.dateTo
+        ? `on ${m.dateFrom}`
+        : `${m.dateFrom} → ${m.dateTo}`
+      : null;
+  const traced = [
+    m.checkedQty > 0 ? `${m.checkedQty.toLocaleString()} checked` : null,
+    m.acceptedQty > 0 ? `${m.acceptedQty.toLocaleString()} accepted` : null,
+    m.rejectedQty > 0 ? `${m.rejectedQty.toLocaleString()} rejected` : null,
+    m.reworkQty > 0 ? `${m.reworkQty.toLocaleString()} held/rework` : null,
+  ].filter((x): x is string => !!x);
+  if (traced.length) {
+    lines.push(
+      `Traced to **${m.recordCount}** ledger record${m.recordCount === 1 ? "" : "s"}` +
+        `${span ? ` ${span}` : ""}: ${traced.join(" · ")}.`,
+    );
+  }
+  if (m.topDriver) {
+    lines.push(`Main driver: **${m.topDriver.label}** (${m.topDriver.sharePct.toFixed(0)}% of it).`);
+  }
+  if (m.insight) lines.push(m.insight);
+
+  return {
+    session: null,
+    reply: {
+      text: lines.join("\n\n"),
+      actions: [{ id: "spotlight", label: "Highlight it", kind: "spotlight" }],
+      autoTools: [{ type: "spotlight_metric" }],
+    },
+  };
+}
+
+/** "export this page" / "download report" — the same two actions the top-bar
+ *  Export button already runs; this only chooses between them. */
+function formatExportReply(ctx: AgentCtx): TurnResult {
+  const text = ctx.canExportReport
+    ? "Opening the report builder for this screen — pick sections and Print/PDF from there."
+    : "This screen has no report builder — downloading the audit package (CSV extracts + manifest) instead.";
+  return {
+    session: null,
+    reply: {
+      text,
+      actions: [],
+      autoTools: [{ type: "export_report" }],
+    },
+  };
+}
+
 function startWorkflow(text: string, ctx: AgentCtx): TurnResult {
   const def = matchWorkflow(text) ?? AGENT_WORKFLOWS.find((w) => w.id === "monday-gm")!;
   const period = defaultWorkflowPeriod(text, ctx.dataMaxIso);
@@ -780,6 +849,9 @@ export function runTurn(
       },
     };
   }
+
+  if (kind === "explain") return formatExplainReply(ctx);
+  if (kind === "export") return formatExportReply(ctx);
 
   return handleHowto(text, ctx, events, persona);
 }

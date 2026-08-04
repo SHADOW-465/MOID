@@ -37,6 +37,7 @@ import SourcesScopePanel from "@/components/app/SourcesScopePanel";
 import { canReport } from "@/lib/report/blocks";
 import { subscribeNavBanner, emitNavBanner, type NavBanner } from "@/lib/analytics/nav-banner";
 import { usePersona } from "@/components/app/PersonaContext";
+import { useActiveMetric } from "@/components/app/ActiveMetricContext";
 import NotificationsPanel from "@/components/app/NotificationsPanel";
 import {
   buildScopedDashboardConfig,
@@ -354,6 +355,7 @@ export default function AppShell({
   const agentSessionRef = useRef<AgentSession | null>(null);
   const widgetScrollRef = useRef<HTMLDivElement>(null);
   const [spotlightNav, setSpotlightNav] = useState<string | null>(null);
+  const { metric: activeMetric, pulse: pulseMetric } = useActiveMetric();
 
   const pulseSpotlight = useCallback((navKey: string) => {
     setSpotlightNav(navKey);
@@ -498,6 +500,13 @@ export default function AppShell({
           summaryText = await runSummarizeTool(tool.state, tool.periodLabel, tool.question);
         } else if (tool.type === "spotlight") {
           pulseSpotlight(tool.navKey);
+        } else if (tool.type === "spotlight_metric") {
+          pulseMetric();
+        } else if (tool.type === "export_report") {
+          // Same two actions the top-bar Export button runs — this only picks
+          // between them the way that button already does.
+          if (canReport(active)) setReportOpen(true);
+          else await handleExport();
         } else if (tool.type === "prefill_entry") {
           writePrefill(prefillFromDraft(tool.draft));
           window.setTimeout(
@@ -523,7 +532,18 @@ export default function AppShell({
       }
       return { ingested: false as const, summaryText };
     },
-    [applyScopeState, navigateWithState, runSummarizeTool, executeIngest, pushMoid, pulseSpotlight],
+    [
+      applyScopeState,
+      navigateWithState,
+      runSummarizeTool,
+      executeIngest,
+      pushMoid,
+      pulseSpotlight,
+      pulseMetric,
+      active,
+      setReportOpen,
+      handleExport,
+    ],
   );
 
   useEffect(() => {
@@ -620,6 +640,8 @@ export default function AppShell({
           canWrite,
           currentPath: path,
           eventCount: evs.length,
+          activeMetric,
+          canExportReport: canReport(active),
         },
         evs,
         persona,
@@ -718,13 +740,16 @@ export default function AppShell({
       if (action.kind === "open_reports") {
         navigateWithState(action.href || "/reports", action.state, "Reports");
       }
-      if (action.kind === "spotlight" && action.spotlightNav) {
-        pulseSpotlight(action.spotlightNav);
+      if (action.kind === "spotlight") {
+        // With a navKey it's a sidebar item (e.g. from a how-to answer);
+        // without one it's the "Highlight it" button on an explain reply.
+        if (action.spotlightNav) pulseSpotlight(action.spotlightNav);
+        else pulseMetric();
       }
     },
     // submitWidgetQuery recreated each render — intentional for latest session
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [navigateWithState, agentSession, canWrite, persona, events, pulseSpotlight, pushMoid],
+    [navigateWithState, agentSession, canWrite, persona, events, pulseSpotlight, pulseMetric, pushMoid],
   );
 
   // Command palette / external: open Ask MOID with a seed query

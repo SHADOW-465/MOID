@@ -4,6 +4,7 @@ import React, { useState, useRef, useLayoutEffect, useCallback, useEffect, useMe
 import Select from "@/components/ui/Select";
 import Icon from "@/components/editorial/Icon";
 import { BRAND_NAME } from "@/lib/brand";
+import { useActiveMetric } from "@/components/app/ActiveMetricContext";
 import type { RawSheet } from "@/types/dashboard";
 import {
   type SourceRow,
@@ -210,6 +211,38 @@ export default function FloatingDetailModal({
 
   const stageOpts = useMemo(() => stageOptionsFromRows(normalizedAll), [normalizedAll]);
   const sizeOpts = useMemo(() => sizeOptionsFromRows(normalizedAll), [normalizedAll]);
+
+  // Publish this card's verified numbers for "what is this graph?" / "highlight
+  // it" in Ask MOID. One place to update instead of the 8 pages that open this
+  // modal. Cleared on close so an explain question about a closed card fails
+  // honestly instead of answering from stale data.
+  const { setMetric } = useActiveMetric();
+  useEffect(() => {
+    if (!isOpen) {
+      setMetric(null);
+      return;
+    }
+    const insightText = Array.isArray(insight) ? insight.join(" ") : insight;
+    setMetric(
+      {
+        title,
+        insight: insightText,
+        primaryValue,
+        checkedQty: summary.checkedQty,
+        acceptedQty: summary.acceptedQty,
+        rejectedQty: summary.rejectedQty,
+        reworkQty: summary.reworkQty,
+        defectQty: summary.defectQty,
+        recordCount: summary.recordCount,
+        dateFrom: summary.dateFrom,
+        dateTo: summary.dateTo,
+        topDriver: summary.topDriver ? { label: summary.topDriver.label, sharePct: summary.topDriver.sharePct } : null,
+      },
+      effectiveOrigin,
+    );
+    return () => setMetric(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, title, primaryValue, insight, summary, effectiveOrigin]);
 
   // Reset classification when modal opens for a new metric
   useEffect(() => {

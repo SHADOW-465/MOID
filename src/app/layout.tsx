@@ -7,6 +7,7 @@ import { TweaksProvider } from "@/components/editorial/TweaksContext";
 import { EventsProvider } from "@/components/app/EventsContext";
 import { RegistryProvider } from "@/components/app/RegistryContext";
 import { PersonaProvider } from "@/components/app/PersonaContext";
+import { ActiveMetricProvider } from "@/components/app/ActiveMetricContext";
 import { BRAND_NAME, BRAND_TAGLINE } from "@/lib/brand";
 
 export const metadata: Metadata = {
@@ -40,7 +41,7 @@ export default function RootLayout({
           <PersonaProvider>
             <EventsProvider>
               <RegistryProvider>
-                {children}
+                <ActiveMetricProvider>{children}</ActiveMetricProvider>
               </RegistryProvider>
             </EventsProvider>
           </PersonaProvider>

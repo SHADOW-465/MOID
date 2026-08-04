@@ -186,3 +186,65 @@ describe("workflows + suggestions", () => {
     expect(t.reply.actions.some((a) => a.kind === "copy_link")).toBe(true);
   });
 });
+
+describe("explain — reads the currently open KPI/chart, never invents", () => {
+  it("classifies 'what is this graph?' as explain, not howto", () => {
+    expect(classifyTaskKind("what is this graph?")).toBe("explain");
+    expect(classifyTaskKind("explain this chart")).toBe("explain");
+    expect(classifyTaskKind("why is this so high")).toBe("explain");
+  });
+
+  it("with nothing open, says so and issues no tools", () => {
+    const t = runTurn(null, "what is this graph?", ctx);
+    expect(t.reply.text).toMatch(/nothing is open/i);
+    expect(t.reply.autoTools).toEqual([]);
+  });
+
+  it("with a metric open, answers from its verified numbers and offers to highlight it", () => {
+    const withMetric: AgentCtx = {
+      ...ctx,
+      activeMetric: {
+        title: "Visual Inspection — Rejection Rate",
+        insight: "Rejection rate is 4.82% for the selected range.",
+        primaryValue: "4.82%",
+        checkedQty: 5930,
+        acceptedQty: 5459,
+        rejectedQty: 286,
+        reworkQty: 185,
+        defectQty: 286,
+        recordCount: 4,
+        dateFrom: "2026-07-04",
+        dateTo: "2026-07-04",
+        topDriver: { label: "BM", sharePct: 19.6 },
+      },
+    };
+    const t = runTurn(null, "what is this graph?", withMetric);
+    expect(t.reply.text).toContain("Visual Inspection — Rejection Rate");
+    expect(t.reply.text).toContain("4.82%");
+    expect(t.reply.text).toContain("5,930");
+    expect(t.reply.text).toContain("185 held/rework");
+    expect(t.reply.text).toContain("BM");
+    expect(t.reply.autoTools).toEqual([{ type: "spotlight_metric" }]);
+    expect(t.reply.actions.some((a) => a.kind === "spotlight")).toBe(true);
+  });
+});
+
+describe("export — reuses the top bar's own two actions, invents nothing new", () => {
+  it("classifies export/download phrasing", () => {
+    expect(classifyTaskKind("export this page")).toBe("export");
+    expect(classifyTaskKind("download the report")).toBe("export");
+    expect(classifyTaskKind("export as pdf")).toBe("export");
+  });
+
+  it("opens the report builder when the screen has one", () => {
+    const t = runTurn(null, "export this page", { ...ctx, canExportReport: true });
+    expect(t.reply.text).toMatch(/report builder/i);
+    expect(t.reply.autoTools).toEqual([{ type: "export_report" }]);
+  });
+
+  it("falls back to the audit package when it does not", () => {
+    const t = runTurn(null, "download report", { ...ctx, canExportReport: false });
+    expect(t.reply.text).toMatch(/audit package/i);
+    expect(t.reply.autoTools).toEqual([{ type: "export_report" }]);
+  });
+});
