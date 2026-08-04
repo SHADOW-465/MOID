@@ -80,6 +80,45 @@ export function formatBatchIdInput(raw: string): string {
 }
 
 /**
+ * The one spelling of a lot code.
+ *
+ * The ledger held `26G0816` AND `26G08-16`, and `26G01-6` AND `26G01-06` — the
+ * same two physical lots, split in two. The consequences were silent: a lot
+ * showed "3/4 Stalled" because its Final gate sat under the twin, and a gate's
+ * checked quantity was short by whatever the twin held, so its rejection rate
+ * was wrong.
+ *
+ * Canonical form matches what `buildBatchId` produces, because that is what the
+ * form writes on the happy path: YY + month letter + 2-digit day + "-" + FR
+ * size with no leading zero. `26G0816` and `26G01-06` both fold onto it.
+ *
+ * Returns the input trimmed+uppercased when it cannot be parsed — never null,
+ * so a hand-typed oddity still groups with itself instead of vanishing.
+ */
+export function canonicalBatchId(raw: string | null | undefined): string | null {
+  if (typeof raw !== "string") return null;
+  const s = raw.trim().toUpperCase().replace(/\s+/g, "");
+  if (!s) return null;
+
+  // YY + month letter + day(1-2) + optional separator + size(1-2).
+  const m = s.match(/^(\d{2})([A-L])(\d{1,2})[-_/ ]?(\d{1,2})?$/);
+  if (!m) return s;
+
+  const [, yy, code, day, size] = m;
+  const dd = day.padStart(2, "0");
+  if (!size) return `${yy}${code}${dd}`;
+  // "06" and "6" are the same French size; buildBatchId never pads it.
+  const fr = String(Number(size));
+  return `${yy}${code}${dd}-${fr}`;
+}
+
+/** True when the code is already the one spelling the ledger will store. */
+export function isCanonicalBatchId(raw: string): boolean {
+  const c = canonicalBatchId(raw);
+  return !!c && c === raw.trim().toUpperCase();
+}
+
+/**
  * Batch ID → form fields.
  * Accepts with or without size suffix: `26F27-14` or `26F27` (size optional).
  */

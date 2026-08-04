@@ -2,6 +2,7 @@
 // One session ≈ one save / upload / ingest batch (ingestionId), not one atom row.
 
 export type AuditDatePreset = "7d" | "30d" | "90d" | "all";
+import { canonicalBatchId } from "@/lib/entry/batch-id";
 
 export interface AuditEventLike {
   eventId?: string;
@@ -62,7 +63,8 @@ export function batchOf(e: AuditEventLike): string | null {
     (e.customFields?.batch as string | undefined) ??
     (e.customFields?.batchId as string | undefined) ??
     null;
-  return typeof b === "string" && b.trim() ? b.trim() : null;
+  // Same fold as analytics/scope.eventBatchId — one lot, one spelling.
+  return canonicalBatchId(typeof b === "string" ? b : null);
 }
 
 export function isDirectEntry(e: AuditEventLike): boolean {

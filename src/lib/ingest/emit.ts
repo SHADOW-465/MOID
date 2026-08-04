@@ -24,6 +24,7 @@ import {
 import { hashEvent } from "@/lib/contract/hash";
 import { resolveDefect } from "@/core/ontology/resolve-entity";
 import type { Event } from "@/lib/store/types";
+import { canonicalBatchId } from "@/lib/entry/batch-id";
 
 /** A single value read from one source cell (Excel) or typed in a form (direct entry). */
 export interface SourcedValue {
@@ -107,8 +108,9 @@ function envelope(rec: StageDayRecord, cells: string[], header: string, formulaT
 /** Prefer explicit customFields.batch / batchId for lot identity (Grain A1). */
 function batchFrom(customFields: Record<string, unknown>): string | null {
   const b = customFields.batch ?? customFields.batchId ?? customFields.batchNo;
-  if (typeof b === "string" && b.trim()) return b.trim();
-  return null;
+  // Canonicalise on the way IN so the ledger can never again hold two
+  // spellings of one lot. Reads fold too, for rows written before this.
+  return canonicalBatchId(typeof b === "string" ? b : null);
 }
 
 /** Emit all canonical events for one stage-day record. Pure (modulo recordedAt). */

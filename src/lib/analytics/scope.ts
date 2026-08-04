@@ -6,6 +6,7 @@
 // would otherwise lose to a same-day direct entry under full-scope rules.
 
 import type { Event } from "@/lib/store/types";
+import { canonicalBatchId } from "@/lib/entry/batch-id";
 import { canonicalizeEvents } from "./canonical";
 import {
   STAGE_CATEGORY,
@@ -15,7 +16,7 @@ import {
 } from "@/core/ontology/plant-catalog";
 
 export type { StageCategory };
-export { STAGE_CATEGORIES, DEFAULT_STAGE_CATEGORIES };
+export { STAGE_CATEGORIES, DEFAULT_STAGE_CATEGORIES, STAGE_CATEGORY };
 
 export type Grain = "day" | "week" | "month" | "fy";
 
@@ -105,9 +106,10 @@ export function eventBatchId(e: Event): string | null {
     (typeof any.customFields?.batch === "string" ? any.customFields.batch : null) ??
     (typeof any.customFields?.batchId === "string" ? any.customFields.batchId : null) ??
     null;
-  if (typeof raw !== "string") return null;
-  const t = raw.trim();
-  return t ? t.toUpperCase() : null;
+  // Canonical, not just uppercase: the ledger holds `26G0816` and `26G08-16`
+  // as separate rows for one physical lot. Folding them here merges the split
+  // in every view without mutating the append-only ledger.
+  return canonicalBatchId(raw);
 }
 
 /**

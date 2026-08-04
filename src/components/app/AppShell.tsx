@@ -20,7 +20,7 @@ import {
   type InvestigationState,
 } from "@/lib/analytics";
 import type { DashboardConfig } from "@/types/dashboard";
-import { resolveScope } from "@/lib/analytics/scope";
+import { resolveScope, DEFAULT_STAGE_CATEGORIES, STAGE_CATEGORY } from "@/lib/analytics/scope";
 import { trustScore as computeTrustScore } from "@/lib/analytics/trust";
 
 import { NAV_ROUTES, type NavKey } from "@/lib/nav-keys";
@@ -1072,6 +1072,19 @@ export default function AppShell({
     };
   }, [showViewMenu]);
 
+  // If Sources turns off the section that owns the pinned station, drop the pin
+  // so the View chip doesn't show a station outside the active sections.
+  useEffect(() => {
+    if (!t.stageView || t.stageView === "cumulative") return;
+    const cat = STAGE_CATEGORY[t.stageView];
+    const enabled = t.stageCategories?.length
+      ? t.stageCategories
+      : DEFAULT_STAGE_CATEGORIES;
+    if (cat && !enabled.includes(cat)) {
+      setTweak("stageView", "cumulative");
+    }
+  }, [t.stageCategories, t.stageView, setTweak]);
+
   const isDark = t.theme === "dark";
   const toggleTheme = () => {
     setTweak("theme", isDark ? "light" : "dark");
@@ -1079,20 +1092,27 @@ export default function AppShell({
 
   const sc = statusCounts ?? {};
 
-  // Grouped View options — same three groups the plan specifies. "Stations"
-  // only includes stages that actually have event data (derived from the
-  // already-fetched `events`, mapped through viewStages for labels) so the
-  // dropdown never shows an empty station. Uses the exact same visibility
-  // filter as before for dataset tabs (computed in the effect above).
-  // Stages the ledger has but the catalog never learned (Production etc. — no
-  // workbook described them) get their own station view, upstream of the gates.
-  // Same union the metrics use, so the dropdown can't disagree with the KPIs.
+  // Grouped View options. "Stations" only lists stages that:
+  //   1) have ledger data, AND
+  //   2) belong to a section enabled in Sources (stageCategories).
+  // Plant default is Assembly only — Primary / Secondary stations appear in
+  // this menu only after the user turns those sections on in Sources.
   const stationCandidates = viewStages.length
     ? stagesFor(events ?? [], { stages: viewStages.map((v) => ({ stageId: v.id, label: v.label })), defects: [], sizes: [], fiscalYearStartMonth: 4 })
         .map((s) => ({ id: s.stageId, label: s.label || s.stageId }))
     : VIEW_OPTIONS.slice(1);
   const stagesWithData = new Set((events ?? []).map((e: any) => e.stageId).filter(Boolean));
-  const stationOptions = stationCandidates.filter((v) => stagesWithData.has(v.id));
+  const enabledSections = new Set(
+    (t.stageCategories?.length ? t.stageCategories : DEFAULT_STAGE_CATEGORIES) as string[],
+  );
+  const stationOptions = stationCandidates.filter((v) => {
+    if (!stagesWithData.has(v.id)) return false;
+    const cat = STAGE_CATEGORY[v.id];
+    // Unknown stage ids: only show when every section is selected (or none
+    // mapped yet) so we don't hide custom plant stages permanently.
+    if (!cat) return enabledSections.size >= STAGE_CATEGORIES.length;
+    return enabledSections.has(cat);
+  });
   const allViewOptions = [{ id: "cumulative", label: "Factory Overview" }, ...stationOptions];
   const currentView = allViewOptions.find((v) => v.id === t.stageView)
     ?? { id: t.stageView, label: t.stageView === "cumulative" ? "Factory Overview" : t.stageView };
@@ -1478,7 +1498,13 @@ export default function AppShell({
                 <ViewMenuGroup
                   label="Stations"
                   options={stationOptions}
-                  emptyLabel="No stations have data yet"
+                  emptyLabel={
+                    enabledSections.size === 0
+                      ? "Enable a section in Sources first"
+                      : enabledSections.has("assembly") && enabledSections.size === 1
+                        ? "No assembly stations with data yet — enable Primary/Secondary in Sources for those stations"
+                        : "No stations have data in the selected sections"
+                  }
                   activeId={t.stageView}
                   onSelect={(id) => { setTweak("stageView", id); setShowViewMenu(false); }}
                 />

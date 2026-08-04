@@ -18,6 +18,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   buildBatchId,
+  canonicalBatchId,
   formatBatchIdInput,
   parseBatchId,
   MONTH_NAMES,
@@ -72,6 +73,10 @@ export default function BatchIdField({
   const dateRef = useRef<HTMLInputElement>(null);
 
   const parsed = parseBatchId(batchId);
+  // Non-null only when what the operator typed differs from what gets stored.
+  const canonical = canonicalBatchId(batchId);
+  const filedAs =
+    canonical && canonical !== batchId.trim().toUpperCase() ? canonical : null;
   const preview = buildBatchId(batchDate, size);
   const spansDays = recordedOn !== batchDate;
 
@@ -224,6 +229,30 @@ export default function BatchIdField({
           {batchId.trim()
             ? "Not a full lot code yet — it needs a size, like 26F27-14"
             : "No lot set"}
+        </p>
+      )}
+
+      {/* Says what will actually be stored, before it is stored.
+          `26G01-06` and `26G01-6` are one physical lot; filing them apart is
+          what made a finished lot read "3/4 Stalled" with its Final gate
+          sitting under the twin. Stated as a fact, not an error — the fold is
+          automatic and nothing is lost. */}
+      {filedAs && (
+        <p
+          style={{
+            margin: "6px 0 0",
+            padding: "5px 8px",
+            borderRadius: "var(--radius-sm)",
+            background: "var(--surface-2)",
+            border: "1px solid var(--border)",
+            fontSize: "var(--text-2xs)",
+            color: "var(--text-2)",
+            lineHeight: 1.45,
+          }}
+        >
+          Saved as{" "}
+          <strong style={{ fontFamily: "var(--font-mono)", color: "var(--text)" }}>{filedAs}</strong>{" "}
+          so this stays one lot. A size never keeps a leading zero.
         </p>
       )}
 

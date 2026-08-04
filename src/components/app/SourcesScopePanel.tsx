@@ -143,7 +143,11 @@ export default function SourcesScopePanel({
     if (on) {
       const next = t.stageCategories.filter((x) => x !== id);
       setTweak("stageCategories", next);
-      if (id === "assembly" && t.stageView !== "cumulative" && STAGE_CATEGORY[t.stageView] === "assembly") {
+      // Pinned station in View must belong to an enabled section — clear if not.
+      if (
+        t.stageView !== "cumulative" &&
+        STAGE_CATEGORY[t.stageView] === id
+      ) {
         setTweak("stageView", "cumulative");
       }
     } else {
