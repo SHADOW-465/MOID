@@ -1,4 +1,4 @@
-import { buildBatchProgress, progressFor, ASSEMBLY_GATES } from "../batch-progress";
+import { buildBatchProgress, progressFor, openWip, ASSEMBLY_GATES } from "../batch-progress";
 import {
   batchFiguresInconsistent,
   filterEntryRows,
@@ -138,4 +138,47 @@ test("the size filter keeps only matching rows, and 'all' keeps everything", () 
   expect(filterEntryRows(rows, { size: "Fr14" }).map((r) => r.batch)).toEqual(["A"]);
   expect(filterEntryRows(rows, { size: "all" })).toHaveLength(3);
   expect(filterEntryRows(rows, {})).toHaveLength(3);
+});
+
+describe("openWip — what is stuck on the floor", () => {
+  const gate = (batch: string, stageId: string, day: string, accepted: number) => [
+    ev(batch, stageId, day, { quantity: accepted + 10 }),
+    ev(batch, stageId, day, { eventType: "inspection", disposition: "accepted", quantity: accepted }),
+  ];
+
+  const EVENTS = [
+    // Finished — must not appear.
+    ...ASSEMBLY_GATES.flatMap((g, i) => gate("26F01-14", g.stageId, `2026-06-0${1 + i}`, 100)),
+    // Idle 30 days at 1/4.
+    ...gate("26F02-14", "visual", "2026-06-05", 500),
+    // Idle 2 days at 2/4 — open but not stalled.
+    ...gate("26G03-14", "visual", "2026-07-01", 300),
+    ...gate("26G03-14", "balloon", "2026-07-03", 280),
+  ];
+  const TODAY = "2026-07-05";
+
+  it("lists only in-progress lots, longest idle first", () => {
+    const w = openWip(EVENTS, { today: TODAY });
+    expect(w.lots.map((l) => l.batch)).toEqual(["26F02-14", "26G03-14"]);
+    expect(w.openCount).toBe(2);
+    expect(w.oldest?.batch).toBe("26F02-14");
+    expect(w.oldest?.daysIdle).toBe(30);
+  });
+
+  it("counts only the genuinely stalled ones", () => {
+    const w = openWip(EVENTS, { today: TODAY, stalledAfterDays: 3 });
+    expect(w.stalledCount).toBe(1);
+    expect(w.lots.find((l) => l.batch === "26G03-14")!.stalled).toBe(false);
+  });
+
+  it("units waiting is the last cleared gate's accepted qty, not a sum of gates", () => {
+    const w = openWip(EVENTS, { today: TODAY });
+    // 500 waiting after Visual + 280 waiting after Balloon — never 300+280.
+    expect(w.unitsWaiting).toBe(500 + 280);
+  });
+
+  it("an empty ledger is empty, not a crash", () => {
+    const w = openWip([], { today: TODAY });
+    expect(w).toMatchObject({ openCount: 0, stalledCount: 0, unitsWaiting: 0, oldest: null });
+  });
 });

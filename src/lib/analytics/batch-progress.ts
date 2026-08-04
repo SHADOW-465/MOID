@@ -42,6 +42,8 @@ export interface BatchProgress {
   lastDate: string | null;
   /** Calendar days between first and last gate entry (0 when single-day). */
   spanDays: number;
+  /** Days since the last gate was recorded — how long this lot has sat. */
+  daysIdle: number;
   /** In progress and untouched for longer than `stalledAfterDays`. */
   stalled: boolean;
   /** Stage ids seen on this lot that are not Assembly gates (primary/secondary). */
@@ -127,6 +129,7 @@ export function buildBatchProgress(
     const firstDate = dates[0] ?? null;
     const lastDate = dates[dates.length - 1] ?? null;
     const status = doneCount === 0 ? "not-started" : doneCount === steps.length ? "complete" : "in-progress";
+    const daysIdle = lastDate ? Math.max(0, daysBetween(lastDate, today)) : 0;
 
     out.set(batch, {
       batch,
@@ -139,11 +142,63 @@ export function buildBatchProgress(
       firstDate,
       lastDate,
       spanDays: firstDate && lastDate ? daysBetween(firstDate, lastDate) : 0,
-      stalled: status === "in-progress" && !!lastDate && daysBetween(lastDate, today) > stalledAfterDays,
+      daysIdle,
+      stalled: status === "in-progress" && daysIdle > stalledAfterDays,
       offGateStages: [...a.off].sort(),
     });
   }
   return out;
+}
+
+export interface OpenWip {
+  /** In-progress lots, longest-idle first. */
+  lots: BatchProgress[];
+  openCount: number;
+  stalledCount: number;
+  /** Units sitting in those lots — the accepted qty of each lot's last cleared
+   *  gate, i.e. what physically passed forward and is now waiting. */
+  unitsWaiting: number;
+  /** Longest-idle lot, or null when nothing is open. */
+  oldest: BatchProgress | null;
+}
+
+/**
+ * Work in progress: lots that entered the line and have not cleared Final.
+ *
+ * This was computable from day one and visible nowhere — 25+ of ~66 lots sit
+ * mid-line at any time, one of them 38 days idle, and the only surface was a
+ * small count inside a filter bar. "What is stuck on my floor?" is a daily
+ * question the ledger can already answer.
+ *
+ * Sorted longest-idle first because that is the order someone acts in.
+ */
+export function openWip(
+  events: AuditEventLike[],
+  opts: { today?: string; stalledAfterDays?: number } = {},
+): OpenWip {
+  const lots = [...buildBatchProgress(events, opts).values()]
+    .filter((p) => p.status === "in-progress")
+    .sort((a, b) => b.daysIdle - a.daysIdle || a.batch.localeCompare(b.batch));
+
+  let unitsWaiting = 0;
+  for (const p of lots) {
+    // Walk back to the last gate that actually ran; its accepted qty is what
+    // moved on and is now queued at the next gate.
+    for (let i = p.steps.length - 1; i >= 0; i--) {
+      if (p.steps[i].done) {
+        unitsWaiting += p.steps[i].accepted;
+        break;
+      }
+    }
+  }
+
+  return {
+    lots,
+    openCount: lots.length,
+    stalledCount: lots.filter((p) => p.stalled).length,
+    unitsWaiting,
+    oldest: lots[0] ?? null,
+  };
 }
 
 /** Case-insensitive lookup into the map returned by `buildBatchProgress`. */

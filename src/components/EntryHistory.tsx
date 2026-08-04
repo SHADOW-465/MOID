@@ -103,15 +103,18 @@ function fmtStamp(iso: string): string {
 export default function EntryHistory({
   events,
   onReuse,
+  initialStatus = "all",
 }: {
   events: AuditEventLike[];
   /** Copy a saved row's identity back onto the entry form. */
   onReuse?: (row: AuditEntryRow) => void;
+  /** Status to land on, e.g. arriving from the dashboard's WIP strip. */
+  initialStatus?: StatusScope;
 }) {
   const { canEraseLedger } = usePersona();
   const [search, setSearch] = useState("");
   const [scope, setScope] = useState<SourceScope>("mine");
-  const [status, setStatus] = useState<StatusScope>("all");
+  const [status, setStatus] = useState<StatusScope>(initialStatus);
   const [size, setSize] = useState("all");
   const [openBatch, setOpenBatch] = useState<string | null>(null);
 

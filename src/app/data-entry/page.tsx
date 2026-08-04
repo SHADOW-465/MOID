@@ -23,11 +23,21 @@ export default function DataEntryPage() {
   /** Batch id handed to the entry form by History → Reuse. */
   const [reuseBatch, setReuseBatch] = useState<string | null>(null);
 
-  // Deep link: /data-entry?batch=… opens History focused on that lot.
+  /** Status History should open on, from ?status= (the dashboard WIP strip). */
+  const [initialStatus, setInitialStatus] = useState<"all" | "open" | "complete">("all");
+
+  // Deep links: ?batch=… opens History on that lot, ?status=open opens it on
+  // the lots still moving through the line.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const batch = new URLSearchParams(window.location.search).get("batch");
+    const params = new URLSearchParams(window.location.search);
+    const batch = params.get("batch");
+    const status = params.get("status");
     if (batch?.trim()) setActiveTab("history");
+    if (status === "open" || status === "complete") {
+      setInitialStatus(status);
+      setActiveTab("history");
+    }
   }, []);
 
   // Success feedback is brief on this surface.
@@ -126,7 +136,11 @@ export default function DataEntryPage() {
           onPrefillConsumed={() => setReuseBatch(null)}
         />
       ) : (
-        <EntryHistory events={(events ?? []) as AuditEventLike[]} onReuse={handleReuse} />
+        <EntryHistory
+          events={(events ?? []) as AuditEventLike[]}
+          onReuse={handleReuse}
+          initialStatus={initialStatus}
+        />
       )}
     </AppShell>
   );

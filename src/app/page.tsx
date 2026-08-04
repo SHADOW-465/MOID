@@ -9,6 +9,8 @@ import { useRegistry } from "@/components/app/RegistryContext";
 import Icon from "@/components/editorial/Icon";
 import FloatingDetailModal, { type SourceRow, type SourceMetricKind } from "@/components/FloatingDetailModal";
 import ChartBuilder from "@/components/ChartBuilder";
+import OpenWipStrip from "@/components/app/OpenWipStrip";
+import type { AuditEventLike } from "@/lib/analytics/audit-sessions";
 import CapaComposerModal from "@/components/CapaComposerModal";
 import { draftFromRecommendation, blankDraft, titleFromText, type CapaRecord } from "@/lib/capa-store";
 import { useTweaks } from "@/components/editorial/TweaksContext";
@@ -636,7 +638,8 @@ export default function Dashboard() {
             />
           </div>
 
-
+          {/* Not a sixth KPI: this is a worklist, not a rate. */}
+          <OpenWipStrip events={(events ?? []) as AuditEventLike[]} />
 
           {/* Row 1: Primary Rejection Analytics (3-column layout) */}
           <div style={{ 
