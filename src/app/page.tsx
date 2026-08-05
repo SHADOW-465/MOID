@@ -141,9 +141,6 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    // Load target rejection rate from settings/localStorage
-    setTargetRej(getTargetRejectionRate());
-
     // Load stashed raw sheets if any are available in sessionStorage
     try {
       let activeId = sessionStorage.getItem("rais_active_session_id");
@@ -167,6 +164,11 @@ export default function Dashboard() {
     () => resolveScope(events ?? [], t, policy),
     [events, t, policy],
   );
+
+  // Plant policy target (not per-browser localStorage).
+  useEffect(() => {
+    setTargetRej(getTargetRejectionRate(scope));
+  }, [scope, policy.targetRejectionPct]);
 
   const m = useMemo(() => {
     if (!events || events.length === 0) return null;
@@ -285,6 +287,11 @@ export default function Dashboard() {
   // Build provenance rows for a metric's "View Source" panel (scoped to the snapshot period).
   const srcRows = (filter: Parameters<typeof toSourceRows>[1] = {}): SourceRow[] =>
     events && m ? toSourceRows(scopeEvents(events, m.snapshotScope), filter) : [];
+
+  /** Full provenance for rejection-rate drill-downs: production + inspection +
+   *  bare rejection events (defect fallbacks) so HOW IT ADDS UP matches the KPI. */
+  const rejectionSrc = (): SourceRow[] =>
+    srcRows({ types: ["production", "inspection", "rejection"] });
 
   // Executive summary points
   const exec = useMemo(() => {
@@ -599,7 +606,7 @@ export default function Dashboard() {
                 `${grainLabel} Rejection Rate — Drill-down`,
                 kpiNarrative("rate", `The rejection rate stands at ${pct(m.rate)}, compared to the target of ${pct(targetRej)} (${stats.rateDiff}).`),
                 <div style={{ minHeight: 220, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={m.tr} target={targetRej} fmt={pct} /></div>,
-                { rows: srcRows({ types: ["production", "inspection"] }), value: pct(m.rate) , metricKind: "rejection_rate"},
+                { rows: rejectionSrc(), value: pct(m.rate), metricKind: "rejection_rate" },
               )}
             />
             <Kpi
@@ -613,7 +620,7 @@ export default function Dashboard() {
                 `${grainLabel} First Pass Yield — Drill-down`,
                 kpiNarrative("fpy", `First Pass Yield stands at ${pct(m.fpy)} for the latest period (${stats.fpyDiff}).`),
                 <div style={{ minHeight: 220, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={m.tr.map(p => ({ ...p, value: 1 - p.value }))} fmt={pct} /></div>,
-                { rows: srcRows({ types: ["production", "inspection"] }), value: pct(m.fpy) , metricKind: "rejection_rate"},
+                { rows: rejectionSrc(), value: pct(m.fpy), metricKind: "rejection_rate" },
               )}
             />
             <Kpi
@@ -670,7 +677,7 @@ export default function Dashboard() {
             <Card 
               title="Rejection Trend" 
               sub={`Target (${(targetRej * 100).toFixed(0)}%) & Mean`} 
-              onClick={() => openModal(`Rejection Trend (${grainLabel})`, `${grainLabel} rejection trend lines compared to the target limit of ${(targetRej * 100).toFixed(0)}% and the period mean limit.`, <div style={{ minHeight: 240, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={m.tr} target={targetRej} fmt={pct} mean /></div>, { rows: srcRows({ types: ["production", "inspection"] }), value: pct(m.rate) , metricKind: "rejection_rate" })}
+              onClick={() => openModal(`Rejection Trend (${grainLabel})`, `${grainLabel} rejection trend lines compared to the target limit of ${(targetRej * 100).toFixed(0)}% and the period mean limit.`, <div style={{ minHeight: 240, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={m.tr} target={targetRej} fmt={pct} mean /></div>, { rows: rejectionSrc(), value: pct(m.rate), metricKind: "rejection_rate" })}
             >
               <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-between", height: "100%" }}>
                 <div style={{ flex: 1, minHeight: 180, display: "flex", flexDirection: "column", justifyContent: "center" }}>
@@ -682,7 +689,7 @@ export default function Dashboard() {
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      openModal(`Rejection Trend (${grainLabel})`, `${grainLabel} rejection trend lines compared to the target limit of ${(targetRej * 100).toFixed(0)}% and the period mean limit.`, <div style={{ minHeight: 240, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={m.tr} target={targetRej} fmt={pct} mean /></div>, { rows: srcRows({ types: ["production", "inspection"] }), value: pct(m.rate) , metricKind: "rejection_rate"});
+                      openModal(`Rejection Trend (${grainLabel})`, `${grainLabel} rejection trend lines compared to the target limit of ${(targetRej * 100).toFixed(0)}% and the period mean limit.`, <div style={{ minHeight: 240, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={m.tr} target={targetRej} fmt={pct} mean /></div>, { rows: rejectionSrc(), value: pct(m.rate), metricKind: "rejection_rate" });
                     }}
                     style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--accent)", textDecoration: "none" }}
                   >
@@ -826,7 +833,7 @@ export default function Dashboard() {
             <Card 
               title={`Stage-wise Rejection Trend (${grainLabel})`} 
               sub="per-stage + Total — hover for values" 
-              onClick={() => openModal(`Stage-wise Rejection Trend (${grainLabel})`, "Each line is a station's rejection rate over its own checked quantity; the Total line is the per-period sum of those stage rates. Recomputed from raw counts.", <div style={{ minHeight: 240, display: "flex", flexDirection: "column", justifyContent: "center" }}><MultiLine data={m.cumTrend} stages={[...m.stagesAll.map((s) => ({ stageId: s.stageId, label: s.label })), { stageId: CUM_TOTAL_KEY, label: "Total" }]} /></div>, { rows: srcRows({ types: ["production", "inspection"] }), value: pct(m.rate) , metricKind: "rejection_rate" })}
+              onClick={() => openModal(`Stage-wise Rejection Trend (${grainLabel})`, "Each line is a station's rejection rate over its own checked quantity; the Total line is the plant rejection rule for that period. Recomputed from raw counts.", <div style={{ minHeight: 240, display: "flex", flexDirection: "column", justifyContent: "center" }}><MultiLine data={m.cumTrend} stages={[...m.stagesAll.map((s) => ({ stageId: s.stageId, label: s.label })), { stageId: CUM_TOTAL_KEY, label: "Total" }]} /></div>, { rows: rejectionSrc(), value: pct(m.rate), metricKind: "rejection_rate" })}
             >
               <MultiLine data={m.cumTrend} stages={[...m.stagesAll.map((s) => ({ stageId: s.stageId, label: s.label })), { stageId: CUM_TOTAL_KEY, label: "Total" }]} height={180} />
             </Card>

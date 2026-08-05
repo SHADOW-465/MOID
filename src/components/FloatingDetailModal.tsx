@@ -17,6 +17,7 @@ import {
   filterSourceRows,
   groupSourceRows,
   summarizeSource,
+  rejectionRateFromSummary,
   defaultSourceFilters,
   stageOptionsFromRows,
   sizeOptionsFromRows,
@@ -24,6 +25,7 @@ import {
   DETAIL_PAGE_SIZE,
 } from "@/lib/analytics/source-trace";
 import { STAGE_CATEGORY as SECTION_OF } from "@/core/ontology/plant-catalog";
+import { usePolicy } from "@/components/app/RegistryContext";
 
 export type { SourceRow, SourceMetricKind };
 
@@ -119,6 +121,7 @@ export default function FloatingDetailModal({
   periodGrain: _periodGrain = "month",
 }: FloatingDetailModalProps) {
   void _periodGrain; // retained on the public prop surface; grouping modes removed
+  const policy = usePolicy();
   const [showSource, setShowSource] = useState(false);
   const [isInsightExpanded, setIsInsightExpanded] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -204,6 +207,26 @@ export default function FloatingDetailModal({
     [filteredRows, metricKind],
   );
 
+  /** One formula for both COMPUTED VALUE and HOW IT ADDS UP — never two answers. */
+  const rejectionProof = useMemo(() => {
+    if (metricKind !== "rejection_rate") return null;
+    if (
+      summary.sectionBreakdown.length === 0 &&
+      summary.stageBreakdown.length === 0 &&
+      summary.checkedQty === 0
+    ) {
+      return null;
+    }
+    return rejectionRateFromSummary(summary, policy.headlineRejection);
+  }, [metricKind, summary, policy.headlineRejection]);
+
+  const computedDisplay = useMemo(() => {
+    if (rejectionProof) {
+      return `${(rejectionProof.value * 100).toFixed(2)}%`;
+    }
+    return primaryValue ?? "—";
+  }, [rejectionProof, primaryValue]);
+
   // Always flat — no By stage / period / file / type grouping chrome.
   const groups = useMemo(
     () => groupSourceRows(filteredRows, "flat", { metricKind }),
@@ -228,7 +251,7 @@ export default function FloatingDetailModal({
       {
         title,
         insight: insightText,
-        primaryValue,
+        primaryValue: computedDisplay !== "—" ? computedDisplay : primaryValue,
         checkedQty: summary.checkedQty,
         acceptedQty: summary.acceptedQty,
         rejectedQty: summary.rejectedQty,
@@ -243,7 +266,7 @@ export default function FloatingDetailModal({
     );
     return () => setMetric(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, title, primaryValue, insight, summary, effectiveOrigin]);
+  }, [isOpen, title, primaryValue, computedDisplay, insight, summary, effectiveOrigin]);
 
   // Reset classification when modal opens for a new metric
   useEffect(() => {
@@ -672,7 +695,7 @@ export default function FloatingDetailModal({
                     lineHeight: 1.15,
                   }}
                 >
-                  {primaryValue ?? "—"}
+                  {computedDisplay}
                 </div>
                 <p className="muted" style={{ fontSize: 12, lineHeight: 1.5, margin: 0 }}>
                   Traced to{" "}
@@ -717,14 +740,9 @@ export default function FloatingDetailModal({
                   </div>
                 )}
 
-                {/* The headline rejection % is the SUM of each gate's own rate,
-                    each with its OWN denominator — not rejected ÷ checked.
-                    Without this the two stats below read as a fraction that
-                    doesn't reproduce the number above them. */}
-                {/* How the headline is built: one row per SECTION, each with its
-                    own denominator. Gates inside a section share the section's
-                    entry count, so they are shown as detail, never as addends. */}
-                {metricKind === "rejection_rate" && summary.sectionBreakdown.length > 0 && (
+                {/* Plant rule (by-section): one row per SECTION with its own
+                    denominator; rates add. Never total-rejects ÷ Primary-checked. */}
+                {rejectionProof && rejectionProof.rows.length > 0 && (
                   <div
                     style={{
                       border: "1px solid var(--border)",
@@ -747,42 +765,42 @@ export default function FloatingDetailModal({
                       How it adds up
                     </div>
 
-                    {summary.sectionBreakdown
-                      .filter((sec) => sec.checkedQty > 0)
-                      .map((sec) => {
-                        const gates = summary.stageBreakdown.filter(
-                          (g) => (SECTION_OF[g.key] ?? g.key) === sec.key,
-                        );
-                        return (
-                          <div key={sec.key} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                            <div
+                    {rejectionProof.rows.map((row) => {
+                      const gates =
+                        policy.headlineRejection === "by-section"
+                          ? summary.stageBreakdown.filter(
+                              (g) => (SECTION_OF[g.key] ?? g.key) === row.key,
+                            )
+                          : [];
+                      return (
+                        <div key={row.key} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              gap: 10,
+                              fontSize: 11.5,
+                              fontFamily: "var(--font-mono)",
+                            }}
+                          >
+                            <span style={{ flex: 1, color: "var(--text)", fontWeight: 600 }}>
+                              {row.label}
+                            </span>
+                            <span className="muted">{row.detail.split(" · ")[0]}</span>
+                            <span
                               style={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                gap: 10,
-                                fontSize: 11.5,
-                                fontFamily: "var(--font-mono)",
+                                color: "var(--text)",
+                                fontWeight: 700,
+                                minWidth: 52,
+                                textAlign: "right",
                               }}
                             >
-                              <span style={{ flex: 1, color: "var(--text)", fontWeight: 600 }}>
-                                {sec.label}
-                              </span>
-                              <span className="muted">
-                                {fmtQty(sec.rejectedQty)}/{fmtQty(sec.checkedQty)}
-                              </span>
-                              <span
-                                style={{
-                                  color: "var(--text)",
-                                  fontWeight: 700,
-                                  minWidth: 52,
-                                  textAlign: "right",
-                                }}
-                              >
-                                {(sec.rate * 100).toFixed(2)}%
-                              </span>
-                            </div>
+                              {(row.rate * 100).toFixed(2)}%
+                            </span>
+                          </div>
+                          {row.detail.includes(" · ") && (
                             <div className="muted" style={{ fontSize: 10, paddingLeft: 8 }}>
-                              measured at {sec.entryLabel}
+                              {row.detail.split(" · ").slice(1).join(" · ")}
                               {gates.length > 1 && (
                                 <>
                                   {" · rejects from "}
@@ -793,13 +811,11 @@ export default function FloatingDetailModal({
                                 </>
                               )}
                             </div>
-                          </div>
-                        );
-                      })}
+                          )}
+                        </div>
+                      );
+                    })}
 
-                    {/* Stated, not left to be added: each row is rounded to 2dp,
-                        so adding the column can land a hundredth off the
-                        headline. The total is the sum of the UNROUNDED rates. */}
                     <div
                       style={{
                         display: "flex",
@@ -820,13 +836,17 @@ export default function FloatingDetailModal({
                           textAlign: "right",
                         }}
                       >
-                        {(summary.sectionBreakdown.reduce((t, x) => t + x.rate, 0) * 100).toFixed(2)}%
+                        {computedDisplay}
                       </span>
                     </div>
                     <p className="muted" style={{ fontSize: 10.5, lineHeight: 1.45, margin: "2px 0 0" }}>
-                      {summary.sectionBreakdown.length > 1
-                        ? "Each section is a separate population with its own denominator, so the section rates add. Gates inside a section share that section's checked count and are never added to each other."
-                        : "Every gate in this section shares one denominator — the units that entered it. Gate rejects are summed; gate rates are not."}
+                      {policy.headlineRejection === "by-section"
+                        ? rejectionProof.rows.length > 1
+                          ? "Each section is a separate population with its own denominator — section rates add. Gates inside a section share that section’s checked count."
+                          : "Every gate in this section shares one denominator (entry checked). Gate rejects are summed; gate rates are not."
+                        : policy.headlineRejection === "sum-of-stage-rates"
+                          ? "Each gate’s own rate, then added. Counts the funnel once per gate."
+                          : "One fraction: all rejects over a single entry count. Across sections this mixes populations."}
                     </p>
                   </div>
                 )}

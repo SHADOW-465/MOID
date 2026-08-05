@@ -10,7 +10,13 @@
 // making the rate read 286/6,115 = 4.68% against the dashboard's
 // 286/5,930 = 4.82%. rejection.ts has always kept rework in its own bucket.
 
-import { inferSourceKind, summarizeSource, consolidateEntries, type SourceRow } from "../source-trace";
+import {
+  inferSourceKind,
+  summarizeSource,
+  consolidateEntries,
+  rejectionRateFromSummary,
+  type SourceRow,
+} from "../source-trace";
 import { aggregate } from "../rejection";
 import type { Event } from "@/lib/store/types";
 
@@ -149,6 +155,33 @@ test("the entry stage is named while one section is in view, null once several a
   // the UI has to read sectionBreakdown instead of mislabelling it.
   const withPrimary = [...gate("production", "Production", 6400, 0), ...ASSEMBLY];
   expect(summarizeSource(withPrimary, "rejection_rate").entryStage).toBeNull();
+});
+
+test("rejectionRateFromSummary: COMPUTED and HOW IT ADDS UP share one formula", () => {
+  // Primary 77,504 / 757 + Assembly rejects over Visual checked — plant numbers.
+  const plant = [
+    ...gate("production", "Production", 77_504, 757),
+    ...gate("visual", "Visual Inspection", 176_838, 9_243),
+    ...gate("balloon", "Balloon Inspection", 143_269, 650),
+    ...gate("valve-integrity", "Valve Integrity", 143_052, 2_668),
+    ...gate("final", "Final Inspection", 109_761, 2_401),
+  ];
+  const s = summarizeSource(plant, "rejection_rate");
+
+  const bySection = rejectionRateFromSummary(s, "by-section");
+  expect((bySection.value * 100).toFixed(2)).toBe("9.44");
+  // Total row uses the same unrounded sum as the value.
+  expect(bySection.rows.reduce((t, r) => t + r.rate, 0)).toBeCloseTo(bySection.value, 12);
+
+  // Pooled over the summary's entry checked (sections summed, same as
+  // checkedMeasuredAt: "section-entry"). 15,719 / (77,504 + 176,838) ≈ 6.18%.
+  // The infamous 20.28% is total rejects ÷ Primary only (most-upstream).
+  const pooled = rejectionRateFromSummary(s, "pooled");
+  expect((pooled.value * 100).toFixed(2)).toBe("6.18");
+  expect(pooled.value).toBeCloseTo(15_719 / (77_504 + 176_838), 8);
+
+  const summed = rejectionRateFromSummary(s, "sum-of-stage-rates");
+  expect((summed.value * 100).toFixed(2)).toBe("10.71");
 });
 
 test("stageBreakdown is in process order, not by size", () => {

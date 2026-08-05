@@ -811,3 +811,57 @@ export function sizeOptionsFromRows(rows: SourceRow[]): string[] {
 }
 
 export const DETAIL_PAGE_SIZE = 50;
+
+/**
+ * Headline rejection % from a source summary, using the same three conventions
+ * as rejection.ts `rejectionRate`. Keeps COMPUTED VALUE and HOW IT ADDS UP on
+ * one formula so the modal never shows 20.28% (pooled) next to a 9.44% section sum.
+ */
+export function rejectionRateFromSummary(
+  summary: Pick<
+    SourceSummary,
+    "sectionBreakdown" | "stageBreakdown" | "checkedQty" | "rejectedQty" | "defectQty"
+  >,
+  mode: "by-section" | "pooled" | "sum-of-stage-rates" = "by-section",
+): { value: number; rows: { key: string; label: string; detail: string; rate: number }[] } {
+  if (mode === "sum-of-stage-rates") {
+    const rows = summary.stageBreakdown
+      .filter((g) => g.checkedQty > 0)
+      .map((g) => ({
+        key: g.key,
+        label: g.label,
+        detail: `${g.rejectedQty.toLocaleString()} / ${g.checkedQty.toLocaleString()}`,
+        rate: g.rate,
+      }));
+    return { value: rows.reduce((t, r) => t + r.rate, 0), rows };
+  }
+
+  if (mode === "pooled") {
+    const rejected = summary.rejectedQty + summary.defectQty;
+    const checked = summary.checkedQty;
+    const rate = checked > 0 ? rejected / checked : 0;
+    return {
+      value: rate,
+      rows: [
+        {
+          key: "pooled",
+          label: "All rejects ÷ entry checked",
+          detail: `${rejected.toLocaleString()} / ${checked.toLocaleString()}`,
+          rate,
+        },
+      ],
+    };
+  }
+
+  // by-section (plant rule): each section's own rate, then add.
+  const rows = summary.sectionBreakdown
+    .filter((s) => s.checkedQty > 0 || s.rejectedQty > 0)
+    .map((s) => ({
+      key: s.key,
+      label: s.label,
+      detail: `${s.rejectedQty.toLocaleString()} / ${s.checkedQty.toLocaleString()} · at ${s.entryLabel}`,
+      rate: s.rate,
+    }));
+  return { value: rows.reduce((t, r) => t + r.rate, 0), rows };
+}
+

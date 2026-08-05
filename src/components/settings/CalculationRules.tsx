@@ -819,49 +819,102 @@ export default function CalculationRules() {
                 {hasDiff && <span className="rules-group-flag">Edited</span>}
               </header>
 
-              {group.id === "rates" && sectionRows.length > 0 && (
-                <div className="rules-worked">
-                  <div className="rules-worked-head">
-                    <span className="rules-worked-title">Right now, on your ledger</span>
-                    <span className="rules-worked-scope">
-                      {sectionRows.length === 1 ? "1 section in view" : `${sectionRows.length} sections in view`}
-                    </span>
+              {group.id === "rates" && (
+                <>
+                  <div className="rules-tiers" aria-label="Plant rejection formula">
+                    <div className="rules-tier">
+                      <span className="rules-tier-step">1</span>
+                      <div className="rules-tier-body">
+                        <h5 className="rules-tier-title">Inside a section</h5>
+                        <p className="rules-tier-formula">
+                          section rejects ÷ section entry checked
+                        </p>
+                        <p className="rules-tier-ex">
+                          Gates share one batch (Visual → Final). Sum all rejects; divide by
+                          the entry gate only — never add gate rates.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="rules-tier-join" aria-hidden>
+                      +
+                    </div>
+                    <div className="rules-tier">
+                      <span className="rules-tier-step">2</span>
+                      <div className="rules-tier-body">
+                        <h5 className="rules-tier-title">Across sections</h5>
+                        <p className="rules-tier-formula">
+                          Primary rate + Secondary rate + Assembly rate
+                        </p>
+                        <p className="rules-tier-ex">
+                          Departments are separate populations. Their rates add. Never divide
+                          all rejects by one section’s checked count.
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                  <table className="rules-worked-table">
-                    <thead>
-                      <tr>
-                        <th scope="col">Section</th>
-                        <th scope="col">Measured at</th>
-                        <th scope="col" className="num">Rejected</th>
-                        <th scope="col" className="num">Checked</th>
-                        <th scope="col" className="num">Rate</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sectionRows.map((r) => (
-                        <tr key={r.section}>
-                          <th scope="row">{SECTION_LABEL[r.section] ?? r.section}</th>
-                          <td>{stageLabel(r.entryStageId)}</td>
-                          <td className="num">{r.rejected.toLocaleString()}</td>
-                          <td className="num">{r.checked.toLocaleString()}</td>
-                          <td className="num strong">{(r.rate * 100).toFixed(2)}%</td>
-                        </tr>
-                      ))}
-                      <tr className="rules-worked-total">
-                        <th scope="row" colSpan={4}>
-                          Plant rejection rate
-                        </th>
-                        <td className="num strong accent">
-                          {(sectionRows.reduce((t, r) => t + r.rate, 0) * 100).toFixed(2)}%
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                  <p className="rules-worked-note">
-                    Section rates add. Gate rates never do — every gate in a section shares
-                    that section’s checked qty, so only their rejects are summed.
-                  </p>
-                </div>
+
+                  {sectionRows.length > 0 && (
+                    <div className="rules-worked">
+                      <div className="rules-worked-head">
+                        <span className="rules-worked-title">Live proof — your ledger</span>
+                        <span className="rules-worked-scope">
+                          {sectionRows.length === 1
+                            ? "1 section in view"
+                            : `${sectionRows.length} sections in view`}
+                        </span>
+                      </div>
+                      <table className="rules-worked-table">
+                        <thead>
+                          <tr>
+                            <th scope="col">Section</th>
+                            <th scope="col">Measured at</th>
+                            <th scope="col" className="num">
+                              Rejected
+                            </th>
+                            <th scope="col" className="num">
+                              Checked
+                            </th>
+                            <th scope="col" className="num">
+                              Rate
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sectionRows.map((r) => (
+                            <tr key={r.section}>
+                              <th scope="row">{SECTION_LABEL[r.section] ?? r.section}</th>
+                              <td>{stageLabel(r.entryStageId)}</td>
+                              <td className="num">{r.rejected.toLocaleString()}</td>
+                              <td className="num">{r.checked.toLocaleString()}</td>
+                              <td className="num strong">{(r.rate * 100).toFixed(2)}%</td>
+                            </tr>
+                          ))}
+                          <tr className="rules-worked-total">
+                            <th scope="row" colSpan={4}>
+                              {sectionRows.length > 1
+                                ? sectionRows
+                                    .map((r) => `${(r.rate * 100).toFixed(2)}%`)
+                                    .join(" + ")
+                                : "Plant rejection rate"}
+                            </th>
+                            <td className="num strong accent">
+                              {(sectionRows.reduce((t, r) => t + r.rate, 0) * 100).toFixed(2)}%
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                      <p className="rules-worked-note">
+                        Wrong answers this replaces:{" "}
+                        <span className="rules-worked-wrong">
+                          total rejects ÷ Primary checked
+                        </span>{" "}
+                        (mixes populations) and{" "}
+                        <span className="rules-worked-wrong">sum of every gate’s rate</span>{" "}
+                        (counts the Assembly funnel four times).
+                      </p>
+                    </div>
+                  )}
+                </>
               )}
 
               {group.id === "targets" && (
