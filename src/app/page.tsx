@@ -599,12 +599,13 @@ export default function Dashboard() {
               primary
               label="Overall Rejection"
               value={pct(m.rate)}
+              detail={`${num(m.rejected)} rejected · ${num(m.checked)} checked`}
               sub={stats.rateDiff}
               tone={m.rate > targetRej ? "bad" : "good"}
               spark={m.tr}
               onClick={() => openModal(
                 `${grainLabel} Rejection Rate — Drill-down`,
-                kpiNarrative("rate", `The rejection rate stands at ${pct(m.rate)}, compared to the target of ${pct(targetRej)} (${stats.rateDiff}).`),
+                kpiNarrative("rate", `The rejection rate stands at ${pct(m.rate)} (${num(m.rejected)} of ${num(m.checked)} checked), compared to the target of ${pct(targetRej)} (${stats.rateDiff}).`),
                 <div style={{ minHeight: 220, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={m.tr} target={targetRej} fmt={pct} /></div>,
                 { rows: rejectionSrc(), value: pct(m.rate), metricKind: "rejection_rate" },
               )}
@@ -613,6 +614,7 @@ export default function Dashboard() {
               primary
               label="First Pass Yield"
               value={pct(m.fpy)}
+              detail={`${num(m.checked)} entered · ${num(m.rejected)} rejected`}
               sub={stats.fpyDiff}
               tone={m.fpy >= (1 - targetRej) ? "good" : "bad"}
               spark={m.tr.map(p => ({ ...p, value: 1 - p.value }))}
@@ -626,18 +628,28 @@ export default function Dashboard() {
             <Kpi
               label="Top Rejecting Stage"
               value={worstStageByRejs}
+              detail={
+                worstStageRow
+                  ? `${num(worstStageRow.rejected)} rejected · ${num(worstStageRow.checked)} checked`
+                  : undefined
+              }
               sub={worstStageRow ? `${pct(worstStageRow.rejRate)} rejection rate` : "—"}
               tone={worstStageRow && worstStageRow.rejRate > targetRej ? "bad" : "warn"}
               onClick={() => openModal(
                 `${worstStageByRejs} — Drill-down`,
                 kpiNarrative("bottleneck", `${worstStageByRejs} is the top bottleneck stage, contributing ${num(worstStageRow?.rejected ?? 0)} rejections (${worstStageRow ? pct(worstStageRow.rejRate) : "—"} rejection rate).`),
                 <div style={{ minHeight: 220, display: "flex", flexDirection: "column", justifyContent: "center" }}><ProcessFlow rows={m.stages} /></div>,
-                { rows: srcRows({ stageId: worstStageRow?.stageId, types: ["production", "inspection"] }), value: worstStageRow ? pct(worstStageRow.rejRate) : "—" , metricKind: "rejection_rate"},
+                { rows: srcRows({ stageId: worstStageRow?.stageId, types: ["production", "inspection", "rejection"] }), value: worstStageRow ? pct(worstStageRow.rejRate) : "—" , metricKind: "rejection_rate"},
               )}
             />
             <Kpi
               label="Top Defect"
               value={m.defects[0]?.label ?? "—"}
+              detail={
+                m.defects[0]
+                  ? `${num(m.defects[0].rejected)} rejected`
+                  : undefined
+              }
               sub={m.defects[0] ? `${m.defects[0].pct.toFixed(1)}% of all rejections` : "—"}
               tone="warn"
               onClick={() => m.defects[0] && openModal(
@@ -651,6 +663,7 @@ export default function Dashboard() {
               primary
               label="COPQ (₹)"
               value={rupee(m.copq)}
+              detail={m.rejected > 0 ? `${num(m.rejected)} rejected units` : undefined}
               sub={stats.copqDiff || "Cost of poor quality"}
               tone={m.copq > 0 ? "bad" : "good"}
               spark={m.copqTrend}
@@ -1449,11 +1462,18 @@ function StationView({ events, stageId, label, scope, trendScope, grainLabel, ta
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--gap-grid)" }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "var(--gap-grid)" }}>
-        <Kpi primary label={`${label} — Rejection Rate`} value={pct(d.rate)} tone={d.rate > targetRej ? "bad" : "good"} spark={d.trend}
-          onClick={() => openModal(`${label} — Rejection Rate`, `${label} rejection rate is ${pct(d.rate)} for the selected range.`, <div style={{ minHeight: 280, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={d.trend} target={targetRej} fmt={pct} mean /></div>, { rows: srcRows({ stageId, types: ["production", "inspection"] }), value: pct(d.rate) , metricKind: "rejection_rate" })} />
-        <Kpi label="Quantity Checked" value={num(d.checked)} />
-        <Kpi label="Total Rejected" value={num(d.rejected)} tone="bad" />
-        <Kpi label="First Pass Yield" value={pct(d.fpy)} tone={d.fpy >= 1 - targetRej ? "good" : "bad"} />
+        <Kpi
+          primary
+          label={`${label} — Rejection Rate`}
+          value={pct(d.rate)}
+          detail={`${num(d.rejected)} rejected · ${num(d.checked)} checked`}
+          tone={d.rate > targetRej ? "bad" : "good"}
+          spark={d.trend}
+          onClick={() => openModal(`${label} — Rejection Rate`, `${label} rejection rate is ${pct(d.rate)} (${num(d.rejected)} of ${num(d.checked)} checked) for the selected range.`, <div style={{ minHeight: 280, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={d.trend} target={targetRej} fmt={pct} mean /></div>, { rows: srcRows({ stageId, types: ["production", "inspection", "rejection"] }), value: pct(d.rate) , metricKind: "rejection_rate" })}
+        />
+        <Kpi label="Quantity Checked" value={num(d.checked)} detail="units entered this gate" />
+        <Kpi label="Total Rejected" value={num(d.rejected)} detail={d.checked > 0 ? `${pct(d.rate)} of checked` : undefined} tone="bad" />
+        <Kpi label="First Pass Yield" value={pct(d.fpy)} detail={`${num(d.checked)} entered · ${num(d.rejected)} rejected`} tone={d.fpy >= 1 - targetRej ? "good" : "bad"} />
       </div>
 
       <Card title={`${label} — Rejection % Trend (${grainLabel})`} sub="recomputed from raw checked / rejected"

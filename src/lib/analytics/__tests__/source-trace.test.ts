@@ -138,8 +138,11 @@ describe("source-trace", () => {
     expect(qtyNumber("—")).toBe(0);
   });
 
-  it("primaryQty prefers rejected for rejection_rate", () => {
-    expect(primaryQty({ checkedQty: 100, acceptedQty: 0, rejectedQty: 5, defectQty: 2 }, "rejection_rate")).toBe(7);
+  it("primaryQty does not double-count disposition rejects + defect codes", () => {
+    // Same physical units logged twice — disposition wins (5), not 5+2.
+    expect(primaryQty({ checkedQty: 100, acceptedQty: 0, rejectedQty: 5, defectQty: 2 }, "rejection_rate")).toBe(5);
+    // Defect-only ledger (no disposition rejects) still uses the breakdown.
+    expect(primaryQty({ checkedQty: 100, acceptedQty: 0, rejectedQty: 0, defectQty: 2 }, "rejection_rate")).toBe(2);
     expect(primaryQty({ checkedQty: 100, acceptedQty: 0, rejectedQty: 0, defectQty: 0 }, "checked")).toBe(100);
   });
 });

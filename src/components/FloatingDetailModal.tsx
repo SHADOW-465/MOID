@@ -18,6 +18,7 @@ import {
   groupSourceRows,
   summarizeSource,
   rejectionRateFromSummary,
+  resolvedRejectedQty,
   defaultSourceFilters,
   stageOptionsFromRows,
   sizeOptionsFromRows,
@@ -856,7 +857,12 @@ export default function FloatingDetailModal({
                     label={summary.entryStage ? `Entered · ${summary.entryStage}` : "Entered"}
                     value={fmtQty(summary.checkedQty)}
                   />
-                  <MiniStat label="Rejected · all gates" value={fmtQty(summary.rejectedQty + summary.defectQty)} />
+                  <MiniStat
+                    label="Rejected · all gates"
+                    value={fmtQty(
+                      resolvedRejectedQty(summary.rejectedQty, summary.defectQty),
+                    )}
+                  />
                   {summary.reworkQty > 0 && (
                     <MiniStat label="Held / rework" value={fmtQty(summary.reworkQty)} />
                   )}

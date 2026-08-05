@@ -15,6 +15,7 @@ import {
   summarizeSource,
   consolidateEntries,
   rejectionRateFromSummary,
+  resolvedRejectedQty,
   type SourceRow,
 } from "../source-trace";
 import { aggregate } from "../rejection";
@@ -155,6 +156,38 @@ test("the entry stage is named while one section is in view, null once several a
   // the UI has to read sectionBreakdown instead of mislabelling it.
   const withPrimary = [...gate("production", "Production", 6400, 0), ...ASSEMBLY];
   expect(summarizeSource(withPrimary, "rejection_rate").entryStage).toBeNull();
+});
+
+test("disposition rejects and defect codes for the same units are not double-counted", () => {
+  // Gate logs 286 rejected AND 286 defect-coded rows explaining them.
+  const rows: SourceRow[] = [
+    ...gate("visual", "Visual Inspection", 5930, 286),
+    {
+      ...asRow({ eventType: "inspection", disposition: "rejected", quantity: 286 }, 9),
+      stageId: "visual",
+      stage: "Visual Inspection",
+      kind: "defect",
+      defectCode: "PINHOLE",
+      type: "rejection PINHOLE",
+      qty: 200,
+    },
+    {
+      ...asRow({ eventType: "inspection", disposition: "rejected", quantity: 286 }, 10),
+      stageId: "visual",
+      stage: "Visual Inspection",
+      kind: "defect",
+      defectCode: "FLASH",
+      type: "rejection FLASH",
+      qty: 86,
+    },
+  ];
+  const s = summarizeSource(rows, "rejection_rate");
+  expect(s.rejectedQty).toBe(286);
+  expect(s.defectQty).toBe(286);
+  // Mini-stat and rate numerators must use 286, not 572.
+  expect(resolvedRejectedQty(s.rejectedQty, s.defectQty)).toBe(286);
+  expect(s.stageBreakdown.find((g) => g.key === "visual")?.rejectedQty).toBe(286);
+  expect(s.sectionBreakdown.find((g) => g.key === "assembly")?.rejectedQty).toBe(286);
 });
 
 test("rejectionRateFromSummary: COMPUTED and HOW IT ADDS UP share one formula", () => {

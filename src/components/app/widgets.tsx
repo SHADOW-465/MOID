@@ -271,6 +271,7 @@ function isWordKpiValue(value: string): boolean {
 export function Kpi({
   label,
   value,
+  detail,
   sub,
   tone,
   primary,
@@ -279,6 +280,11 @@ export function Kpi({
 }: {
   label: string;
   value: string;
+  /**
+   * Compact count line under the hero value (e.g. "13,562 rejected · 176,838 checked").
+   * Tabular mono so operators can read absolute qty without opening View Source.
+   */
+  detail?: string;
   sub?: string;
   tone?: "good" | "warn" | "bad";
   primary?: boolean;
@@ -302,7 +308,7 @@ export function Kpi({
         justifyContent: "space-between",
         cursor: onClick ? "pointer" : "default",
         minWidth: 0,
-        minHeight: primary ? 104 : undefined,
+        minHeight: primary ? (detail ? 118 : 104) : undefined,
         boxShadow: tone
           ? `0 6px 20px -4px color-mix(in srgb, ${color} 14%, transparent), var(--shadow-1)`
           : primary
@@ -347,7 +353,7 @@ export function Kpi({
                 : "var(--text-kpi-sm)",
             fontWeight: 600,
             color,
-            margin: "6px 0 2px",
+            margin: "6px 0 0",
             letterSpacing: wordValue ? "-0.015em" : "var(--tracking-tight)",
             lineHeight: wordValue ? 1.25 : "var(--leading-tight)",
             overflowWrap: "anywhere",
@@ -358,8 +364,27 @@ export function Kpi({
         >
           {wordValue ? value : <AnimatedValue value={value} />}
         </div>
+        {detail && (
+          <div
+            className="num"
+            title={detail}
+            style={{
+              marginTop: 4,
+              fontFamily: "var(--font-mono)",
+              fontSize: "var(--text-xs)",
+              fontWeight: 600,
+              fontVariantNumeric: "tabular-nums",
+              color: "var(--text-2)",
+              lineHeight: 1.3,
+              letterSpacing: "-0.01em",
+              overflowWrap: "anywhere",
+            }}
+          >
+            {detail}
+          </div>
+        )}
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: 8, gap: 12, position: "relative", zIndex: 1 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: detail ? 6 : 8, gap: 12, position: "relative", zIndex: 1 }}>
         {sub && (
           <div
             style={{
@@ -373,6 +398,7 @@ export function Kpi({
                     : "var(--text-3)",
               fontWeight: 500,
               lineHeight: 1.35,
+              minWidth: 0,
             }}
           >
             {sub}

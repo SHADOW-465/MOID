@@ -601,6 +601,18 @@ function rollup(rows: SourceRow[]) {
   return { checkedQty, entryStage: entry.label, entrySections, acceptedQty, rejectedQty, reworkQty, defectQty, fileCount: files.size, source, excel, manual };
 }
 
+/**
+ * Single-count rejected units — same rule as rejection.ts `aggregate()`.
+ *
+ * Plants log the same scrapped catheter twice: once as inspection·rejected
+ * (disposition total) and again as per-defect rejection rows (why it failed).
+ * Adding both double-counts (13,562 + 13,527 → 27,089). Disposition wins;
+ * defect qty only fills the gap when no disposition rejects were logged.
+ */
+export function resolvedRejectedQty(rejectedQty: number, defectQty: number): number {
+  return rejectedQty > 0 ? rejectedQty : defectQty;
+}
+
 /** Primary quantity for ranking groups given metric kind. */
 export function primaryQty(
   roll: { checkedQty: number; rejectedQty: number; defectQty: number; acceptedQty: number },
@@ -610,15 +622,20 @@ export function primaryQty(
     case "checked":
       return roll.checkedQty || roll.acceptedQty;
     case "pareto":
+      // Pareto is *about* defect codes — prefer the itemized breakdown.
       return roll.defectQty || roll.rejectedQty;
     case "rejected":
     case "rejection_rate":
     case "copq":
-      return roll.rejectedQty + roll.defectQty || roll.checkedQty;
+      return resolvedRejectedQty(roll.rejectedQty, roll.defectQty) || roll.checkedQty;
     case "size":
     case "generic":
     default:
-      return roll.rejectedQty + roll.defectQty || roll.checkedQty || roll.acceptedQty;
+      return (
+        resolvedRejectedQty(roll.rejectedQty, roll.defectQty) ||
+        roll.checkedQty ||
+        roll.acceptedQty
+      );
   }
 }
 
@@ -738,7 +755,8 @@ export function summarizeSource(
   const stageGroups = groupSourceRows(normalized, "stage", { metricKind });
   const stageBreakdown = stageGroups
     .map((g) => {
-      const rejectedQty = g.rejectedQty + g.defectQty;
+      // Disposition rejects OR defect breakdown — never both (double-count).
+      const rejectedQty = resolvedRejectedQty(g.rejectedQty, g.defectQty);
       return {
         key: g.key,
         label: g.label,
@@ -759,7 +777,8 @@ export function summarizeSource(
   const sectionRejected = new Map<string, number>();
   for (const g of stageGroups) {
     const section = STAGE_CATEGORY[g.key] ?? g.key;
-    sectionRejected.set(section, (sectionRejected.get(section) ?? 0) + g.rejectedQty + g.defectQty);
+    const rejectedQty = resolvedRejectedQty(g.rejectedQty, g.defectQty);
+    sectionRejected.set(section, (sectionRejected.get(section) ?? 0) + rejectedQty);
   }
   const sectionBreakdown = r.entrySections.map((sec) => {
     const rejectedQty = sectionRejected.get(sec.section) ?? 0;
@@ -837,7 +856,7 @@ export function rejectionRateFromSummary(
   }
 
   if (mode === "pooled") {
-    const rejected = summary.rejectedQty + summary.defectQty;
+    const rejected = resolvedRejectedQty(summary.rejectedQty, summary.defectQty);
     const checked = summary.checkedQty;
     const rate = checked > 0 ? rejected / checked : 0;
     return {
