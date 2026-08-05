@@ -18,6 +18,7 @@ function sheetRecords(sheet: RawSheet, stageId: string, ingestionId: string, siz
 import { DISPOSAFE_REGISTRY as REG } from "./fixtures/disposafe-registry";
 import { emitMany } from "@/lib/ingest/emit";
 import type { Event } from "@/lib/store/types";
+import { DEFAULT_POLICY } from "@/core/policy/policy";
 import type { RawSheet } from "@/types/dashboard";
 import {
   rejectionRate, totalRejected, totalChecked, fpy, byStage, trend, stageTrend, stageBySize,
@@ -64,11 +65,25 @@ describe("analytics — rejection selectors", () => {
     expect(totalRejected(events, FY).value).toBe(1054 + 828 + 451 + 129);
   });
 
-  test("rejection rate = Σ per-stage rates (client 'Total Rejection %' convention)", () => {
+  test("rejection rate = section rejected ÷ section checked (plant rule)", () => {
+    // Visual and Valve Integrity are both Assembly gates, so they share one
+    // denominator — Assembly's entry (Visual). Per-gate rates are NOT added:
+    // that would count the same funnel twice.
     const r = rejectionRate(events, FY, REG).value;
+    const assemblyChecked = 10982 + 11054 + 8346;
+    const assemblyRejected = 1054 + 828 + 451 + 129;
+    expect(r).toBeCloseTo(assemblyRejected / assemblyChecked, 9);
+  });
+
+  test("the older Σ-per-gate convention is still selectable", () => {
+    const legacy = rejectionRate(
+      events,
+      { ...FY, policy: { ...DEFAULT_POLICY, headlineRejection: "sum-of-stage-rates" } },
+      REG,
+    ).value;
     const visualRate = (1054 + 828 + 451) / (10982 + 11054 + 8346);
     const valveRate = 129 / 9612;
-    expect(r).toBeCloseTo(visualRate + valveRate, 9);
+    expect(legacy).toBeCloseTo(visualRate + valveRate, 9);
   });
 
   test("fpy = rolled-throughput yield Π(1 − stageRate)", () => {

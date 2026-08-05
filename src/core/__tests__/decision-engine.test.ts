@@ -100,10 +100,11 @@ beforeEach(() => {
 });
 
 describe("computeCanonicalVars", () => {
-  it("derives headline rate as sum of stage rates (client convention)", () => {
+  it("derives headline rate per section, keeping per-gate rates for ranking", () => {
     const ctx = computeCanonicalVars(highRejectionCorpus(), SCOPE, REG as any);
-    // visual 100/1000=0.1 + valve 180/900=0.2 → 0.3
-    expect(ctx.vars.rejection_rate).toBeCloseTo(0.3, 5);
+    // Both gates are Assembly: (100 + 180) / 1000 = 0.28. Per-gate rates below
+    // are unchanged — they answer "which gate is worst", not "what is the rate".
+    expect(ctx.vars.rejection_rate).toBeCloseTo(0.28, 5);
     expect(ctx.vars["stage_rate.visual"]).toBeCloseTo(0.1, 5);
     expect(ctx.vars["stage_rate.valve-integrity"]).toBeCloseTo(0.2, 5);
     expect(ctx.vars.max_stage_rate).toBeCloseTo(0.2, 5);
@@ -138,7 +139,7 @@ describe("decide", () => {
       rules: SEED_DECISION_RULES,
     });
 
-    expect(vars.rejection_rate).toBeCloseTo(0.3, 5);
+    expect(vars.rejection_rate).toBeCloseTo(0.28, 5);
     const ids = recommendations.map((r) => r.ruleId);
     expect(ids).toContain("D-001"); // rate > 10%
     expect(ids).toContain("D-002"); // max stage rate > 5%
@@ -149,7 +150,7 @@ describe("decide", () => {
     expect(d001.severity).toBe("critical");
     expect(d001.ruleVersion).toBe(1);
     expect(d001.text).toMatch(/exceeds the/);
-    expect(d001.vars.rejection_rate).toBeCloseTo(0.3, 5);
+    expect(d001.vars.rejection_rate).toBeCloseTo(0.28, 5);
     expect(d001.eventIds.length).toBeGreaterThan(0);
     expect(d001.explanation).toBeNull();
 

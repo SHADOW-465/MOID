@@ -60,3 +60,49 @@ test("policy is per company", async () => {
   expect((await store.current("acme")).policy.unitCostInr).toBe(99);
   expect((await store.current("other")).policy.unitCostInr).toBe(DEFAULT_POLICY.unitCostInr);
 });
+
+test("plant baseline is independent of live policy until restored", async () => {
+  const store = getPolicyStore();
+  expect(await store.baseline("acme")).toBeNull();
+
+  const base = await store.setBaseline(
+    "acme",
+    { ...DEFAULT_POLICY, targetRejectionPct: 7 },
+    { changedBy: "GM", note: "Set as plant default" },
+  );
+  expect(base.policy.targetRejectionPct).toBe(7);
+  expect((await store.baseline("acme"))?.policy.targetRejectionPct).toBe(7);
+
+  // Live policy still shipped defaults until someone saves live.
+  expect((await store.current("acme")).policy.targetRejectionPct).toBe(
+    DEFAULT_POLICY.targetRejectionPct,
+  );
+
+  await store.save(
+    "acme",
+    { ...DEFAULT_POLICY, targetRejectionPct: 12 },
+    { changedBy: "GM", note: "temporary raise" },
+  );
+  expect((await store.current("acme")).policy.targetRejectionPct).toBe(12);
+  // Baseline untouched by a normal save.
+  expect((await store.baseline("acme"))?.policy.targetRejectionPct).toBe(7);
+});
+
+test("setBaseline overwrites the restore point without appending history", async () => {
+  const store = getPolicyStore();
+  await store.save("acme", DEFAULT_POLICY, { changedBy: "GM", note: "live v1" });
+  await store.setBaseline(
+    "acme",
+    { ...DEFAULT_POLICY, unitCostInr: 40 },
+    { changedBy: "GM", note: "default A" },
+  );
+  await store.setBaseline(
+    "acme",
+    { ...DEFAULT_POLICY, unitCostInr: 55 },
+    { changedBy: "GM", note: "default B" },
+  );
+
+  expect((await store.baseline("acme"))?.policy.unitCostInr).toBe(55);
+  // History still only the live save — baseline is not a history entry.
+  expect((await store.history("acme")).map((r) => r.note)).toEqual(["live v1"]);
+});

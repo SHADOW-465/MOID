@@ -1,5 +1,16 @@
 [
   {
+    "date": "2026-08-05",
+    "scope": "app",
+    "macrostructure": "Narrative Workflow",
+    "theme": "project-locked",
+    "theme_axes": "light / geometric-sans / warm",
+    "enrichment": "none",
+    "brief": "Calculation rules folded into /settings as section 01 — numbered decision stages + sticky transposed Now/After table; /settings/rules now redirects",
+    "nav": "N/A (AppShell)",
+    "genre": "modern-minimal"
+  },
+  {
     "date": "2026-07-23",
     "macrostructure": "Workbench",
     "theme": "project-locked",

@@ -13,20 +13,30 @@ import { z } from "zod";
 export const CalculationPolicy = z.object({
   /**
    * A1 — what "the plant's rejection rate" means.
-   *  sum-of-stage-rates: Visual% + Balloon% + Valve% + Final% (the plant's own
-   *    REJECTION ANALYSIS / YEARLY sheets work this way)
-   *  pooled: total rejected ÷ units entered
+   *
+   *  by-section (plant rule): each section's total rejected ÷ that section's
+   *    own checked, then the section rates are added.
+   *      Assembly           14,962 ÷ 176,838            = 8.46%
+   *      Primary + Assembly (757÷77,504) + (14,962÷176,838) = 9.44%
+   *    Sections are separate populations; gates inside one are not.
+   *
+   *  pooled: total rejected ÷ one entry count. Fine for a single section;
+   *    across sections it divides Assembly's rejects by Primary's checked.
+   *
+   *  sum-of-stage-rates: every gate against its own denominator, added — the
+   *    older REJECTION ANALYSIS / YEARLY sheet convention.
    */
-  headlineRejection: z.enum(["sum-of-stage-rates", "pooled"]),
+  headlineRejection: z.enum(["by-section", "pooled", "sum-of-stage-rates"]),
 
   /**
    * A2 — where "checked / entered" is measured.
-   *  most-upstream: once, at the first gate in scope. Correct when gates are
-   *    sequential (this plant: Visual's accepted units are Balloon's input).
-   *  sum-of-gates: add every gate's checked. Only correct if gates inspect
-   *    DIFFERENT units; double-counts otherwise.
+   *  section-entry: each section once at its own entry gate, then added.
+   *    Gates inside a section are sequential, so the section is measured once.
+   *  most-upstream: a single entry gate for the whole scope.
+   *  sum-of-gates: add every gate. Only correct if gates inspect DIFFERENT
+   *    units; double-counts within a section.
    */
-  checkedMeasuredAt: z.enum(["most-upstream", "sum-of-gates"]),
+  checkedMeasuredAt: z.enum(["section-entry", "most-upstream", "sum-of-gates"]),
 
   /** A3 — units pulled out at a gate for rework/hold. */
   reworkCountsAs: z.enum(["excluded", "checked"]),
@@ -54,8 +64,8 @@ export type CalculationPolicyT = z.infer<typeof CalculationPolicy>;
  * shipping the feature a no-op until somebody deliberately changes a rule.
  */
 export const DEFAULT_POLICY: CalculationPolicyT = {
-  headlineRejection: "sum-of-stage-rates", // rejection.ts rejectionRate()
-  checkedMeasuredAt: "most-upstream",      // rejection.ts totalChecked()
+  headlineRejection: "by-section",         // rejection.ts rejectionRate()
+  checkedMeasuredAt: "section-entry",      // rejection.ts totalChecked()
   reworkCountsAs: "excluded",              // rejection.ts aggregate()
   defaultSections: ["assembly"],           // plant-catalog DEFAULT_STAGE_CATEGORIES
   targetRejectionPct: 10,                  // was localStorage rais_settings_target_rejection

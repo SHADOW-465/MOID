@@ -15,6 +15,7 @@ import { EMPTY_REGISTRY } from "@/core/ontology/empty-registry";
 import { useEvents } from "@/components/app/EventsContext";
 import { useRegistry } from "@/components/app/RegistryContext";
 import { usePersona } from "@/components/app/PersonaContext";
+import CalculationRules from "@/components/settings/CalculationRules";
 import {
   DEFAULT_SHIFT_WINDOWS,
   readShiftWindowConfig,
@@ -22,13 +23,12 @@ import {
   type ShiftWindowConfig,
 } from "@/lib/entry/shift-window";
 
-type SectionId = "quality" | "valuation" | "shifts" | "registry" | "custom" | "admin";
+type SectionId = "rules" | "shifts" | "registry" | "custom" | "admin";
 
 const SECTIONS: { id: SectionId; label: string; hint: string }[] = [
-  { id: "quality", label: "Quality thresholds", hint: "Rejection limits & status badges" },
-  { id: "valuation", label: "Financial valuation", hint: "Unit cost & stage weights" },
-  { id: "shifts", label: "Shift windows", hint: "When operators may edit without GM grant" },
-  { id: "registry", label: "Defect registry", hint: "Read-only plant catalog" },
+  { id: "rules", label: "Calculation rules", hint: "Targets, costs, rejection math" },
+  { id: "shifts", label: "Shift windows", hint: "When operators may edit freely" },
+  { id: "registry", label: "Defect registry", hint: "Plant catalog (read-only)" },
   { id: "custom", label: "Custom codes", hint: "Plant-specific aliases" },
   { id: "admin", label: "Administrative", hint: "Purge & schema reset" },
 ];
@@ -38,18 +38,19 @@ export default function SettingsPage() {
   const { registry } = useRegistry();
   const { canConfigure } = usePersona();
   const activeRegistry = registry || EMPTY_REGISTRY;
-  const [section, setSection] = useState<SectionId>("quality");
+  const [section, setSection] = useState<SectionId>("rules");
 
   // Deep link: /settings#admin opens the danger zone directly. Plant Schema
   // points here rather than carrying its own copy of the registry wipe.
+  // Legacy hashes quality|valuation → rules (both folded into this page).
   useEffect(() => {
-    const id = window.location.hash.replace("#", "") as SectionId;
+    const raw = window.location.hash.replace("#", "");
+    const id = (raw === "quality" || raw === "valuation" ? "rules" : raw) as SectionId;
     if (SECTIONS.some((s) => s.id === id)) setSection(id);
   }, []);
   const [shiftCfg, setShiftCfg] = useState<ShiftWindowConfig>(DEFAULT_SHIFT_WINDOWS);
 
   const [saved, setSaved] = useState(false);
-  const [resetSaved, setResetSaved] = useState(false);
 
   useEffect(() => {
     setShiftCfg(readShiftWindowConfig());
@@ -111,8 +112,8 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      // Target / watch / unit cost / stage weights moved to versioned plant
-      // policy (/settings/rules). Nothing reads these keys any more.
+      // Target / watch / unit cost / stage weights are versioned plant policy
+      // now (see the Calculation rules section). Nothing reads these keys.
       try {
         const cd = localStorage.getItem("rais_custom_defects");
         if (cd) setCustomDefects(JSON.parse(cd));
@@ -145,28 +146,22 @@ export default function SettingsPage() {
   const removeCustomDefect = (code: string) =>
     setCustomDefects((prev) => prev.filter((d) => d.code !== code));
 
-  // Thresholds and cost weights reset from /settings/rules now (Restore on any
-  // history entry). This only clears what this page still owns.
-  const handleReset = () => {
-    setResetSaved(true);
-    setTimeout(() => setResetSaved(false), 1500);
-  };
-
   const active = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0];
   const stageCount = activeRegistry.stages?.length ?? 0;
   const defectCount = activeRegistry.defects?.length ?? 0;
+  const showFoot = section === "custom" || section === "shifts";
 
   return (
     <AppShell active="settings">
-      <div className="settings-page">
-        {/* Masthead — compact index header, not a marketing hero */}
+      <div className="settings-page settings-page--dense">
         <header className="settings-mast">
           <div className="settings-mast-copy">
             <p className="settings-kicker">Plant configuration</p>
             <h1 className="settings-title">Settings</h1>
             <p className="settings-lede">
-              Thresholds, cost weights, defect codes, and administrative reset.
-              Changes apply to dashboard status and COPQ after save.
+              Plant-wide options: calculation rules, shift windows, defect codes,
+              and admin tools. Calculation rules are versioned and shared — not
+              stored per browser.
             </p>
           </div>
           <div className="settings-mast-meta" aria-label="Registry snapshot">
@@ -177,7 +172,7 @@ export default function SettingsPage() {
             <div className="settings-stat-rule" />
             <div className="settings-stat">
               <span className="settings-stat-val">{defectCount}</span>
-              <span className="settings-stat-lab">Defect codes</span>
+              <span className="settings-stat-lab">Defects</span>
             </div>
             <div className="settings-stat-rule" />
             <div className="settings-stat">
@@ -190,7 +185,7 @@ export default function SettingsPage() {
         {saved && (
           <div className="settings-toast settings-toast--ok" role="status">
             <Icon name="check" size={15} stroke={2.5} />
-            Saved. Dashboard calculations use the new values.
+            Saved for this browser.
           </div>
         )}
 
@@ -241,35 +236,20 @@ export default function SettingsPage() {
             </div>
 
             <div className="settings-panel-body">
-              {(section === "quality" || section === "valuation") && (
-                /* Moved to /settings/rules. These values used to live in
-                   localStorage, so every browser had its own target and unit
-                   cost and no server-rendered number agreed with the screen.
-                   They are versioned plant policy now — one editor, not two. */
-                <div className="settings-field-stack">
-                  <p className="settings-field-help">
-                    {section === "quality"
-                      ? "Rejection targets and the watch line"
-                      : "Unit cost and stage-wise cost weights"}{" "}
-                    are now part of <strong>Calculation rules</strong>, alongside the
-                    conventions that decide how every number is computed — with a live
-                    preview of what a change does to today&apos;s figures before you save.
-                  </p>
-                  <a className="settings-btn primary" href="/settings/rules">
-                    Open Calculation rules →
-                  </a>
-                </div>
+              {section === "rules" && (
+                <CalculationRules />
               )}
 
               {section === "shifts" && (
                 <div className="settings-field-stack">
-                  <p className="settings-field-help" style={{ marginBottom: 12 }}>
-                    Operators may create or edit batch entries only inside these windows (plant local time).
-                    Outside the window they must request GM approval. Default: Day Shift 08:00–20:00 Asia/Kolkata.
+                  <p className="settings-field-help">
+                    Operators can create or edit batch entries only inside these windows
+                    (plant local time). Outside them they need GM approval. Default: Day
+                    Shift 08:00–20:00 Asia/Kolkata.
                   </p>
                   {!canConfigure && (
-                    <p className="settings-field-help" style={{ color: "var(--status-warn)" }}>
-                      View-only — only GM can change shift windows.
+                    <p className="settings-field-help settings-field-help--warn">
+                      View only — switch to General Manager to edit shift windows.
                     </p>
                   )}
                   <label className="settings-field">
@@ -323,25 +303,14 @@ export default function SettingsPage() {
                       }
                     />
                   </label>
-                  <button
-                    type="button"
-                    className="settings-btn settings-btn--primary"
-                    disabled={!canConfigure}
-                    onClick={() => {
-                      writeShiftWindowConfig(shiftCfg);
-                      setSaved(true);
-                      window.setTimeout(() => setSaved(false), 2500);
-                    }}
-                  >
-                    Save shift windows
-                  </button>
                 </div>
               )}
 
               {section === "registry" && (
                 <div className="settings-table-wrap">
-                  <p className="settings-field-help" style={{ marginBottom: 12 }}>
-                    The stages, defects and sizes MOID reads your files with. Edit them on Plant Schema.
+                  <p className="settings-field-help settings-field-help--mb">
+                    Stages, defects, and sizes used when reading workbooks. Edit on{" "}
+                    <a href="/schema" className="settings-inline-link">Data Schema</a>.
                   </p>
                   <table className="settings-table">
                     <thead>
@@ -381,8 +350,9 @@ export default function SettingsPage() {
 
               {section === "custom" && (
                 <div className="settings-field-stack">
-                  <p className="settings-field-help" style={{ marginBottom: 4 }}>
-                    Plant-specific codes and aliases merge into parsing on save. Base registry stays read-only.
+                  <p className="settings-field-help">
+                    Extra defect codes and aliases for this plant. Saved in this browser
+                    for now; base registry stays read-only.
                   </p>
 
                   {customDefects.length > 0 && (
@@ -465,14 +435,14 @@ export default function SettingsPage() {
               {section === "admin" && (
                 <div className="settings-admin">
                   <p className="settings-admin-warn">
-                    Destructive operations. Type the confirmation word in the dialog before any purge runs.
+                    Destructive. You must type a confirmation word before anything is deleted.
                   </p>
                   <div className="settings-admin-grid">
                     <article className="settings-admin-card">
-                      <h3 className="settings-admin-title">Purge transactional logs</h3>
+                      <h3 className="settings-admin-title">Purge transaction data</h3>
                       <p className="settings-admin-body">
-                        Deletes production, inspection, rejection records, trends, and findings. Registry schema and
-                        configurations stay intact.
+                        Deletes production, inspection, and rejection records, trends, and
+                        findings. Schema and calculation rules stay intact.
                       </p>
                       <button
                         type="button"
@@ -488,11 +458,11 @@ export default function SettingsPage() {
 
                     <article className="settings-admin-card settings-admin-card--critical">
                       <h3 className="settings-admin-title settings-admin-title--critical">
-                        Clear schema registry
+                        Reset schema registry
                       </h3>
                       <p className="settings-admin-body">
-                        Removes custom fields and custom inspection stages. Resets schema to default layout. Keeps base
-                        configurations.
+                        Removes custom fields and custom stages. Returns schema to the base
+                        layout. Ledger events are not deleted.
                       </p>
                       <button
                         type="button"
@@ -502,7 +472,7 @@ export default function SettingsPage() {
                         }}
                         className="settings-btn settings-btn--danger"
                       >
-                        Clear schema registry
+                        Reset schema registry
                       </button>
                     </article>
                   </div>
@@ -512,28 +482,39 @@ export default function SettingsPage() {
           </section>
         </div>
 
-        {/* Sticky save bar */}
-        <footer className="settings-foot">
-          <p className="settings-foot-note">
-            Local to this browser until saved. Reset restores quality defaults only — not custom codes.
-          </p>
-          <div className="settings-foot-actions">
-            <button
-              type="button"
-              onClick={handleReset}
-              className={`settings-btn settings-btn--ghost ${resetSaved ? "is-success" : ""}`}
-            >
-              {resetSaved ? "Values reset" : "Reset defaults"}
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              className={`settings-btn settings-btn--primary ${saved ? "is-success" : ""}`}
-            >
-              {saved ? "Saved" : "Save configurations"}
-            </button>
-          </div>
-        </footer>
+        {showFoot && (
+          <footer className="settings-foot">
+            <p className="settings-foot-note">
+              {section === "shifts"
+                ? "Shift windows are stored in this browser. Save after you edit."
+                : "Custom codes are stored in this browser. Save after you add or remove codes."}
+            </p>
+            <div className="settings-foot-actions">
+              {section === "shifts" ? (
+                <button
+                  type="button"
+                  className={`settings-btn settings-btn--primary ${saved ? "is-success" : ""}`}
+                  disabled={!canConfigure}
+                  onClick={() => {
+                    writeShiftWindowConfig(shiftCfg);
+                    setSaved(true);
+                    window.setTimeout(() => setSaved(false), 2500);
+                  }}
+                >
+                  {saved ? "Saved" : "Save shift windows"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  className={`settings-btn settings-btn--primary ${saved ? "is-success" : ""}`}
+                >
+                  {saved ? "Saved" : "Save custom codes"}
+                </button>
+              )}
+            </div>
+          </footer>
+        )}
       </div>
 
       {showClearModal && (

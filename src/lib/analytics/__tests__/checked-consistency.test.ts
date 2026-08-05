@@ -98,12 +98,29 @@ test("checked is the entry gate's, not the sum of every gate in the slice", () =
   expect(s.rejectedQty).toBe(286 + 40 + 12 + 8);
 });
 
-test("adding an upstream section moves the measuring point, never adds one", () => {
+test("adding a section ADDS its entry count — sections are separate populations", () => {
   const withPrimary = [...gate("production", "Production", 6400, 0), ...ASSEMBLY];
-  expect(summarizeSource(withPrimary, "rejection_rate").checkedQty).toBe(6400);
+  expect(summarizeSource(withPrimary, "rejection_rate").checkedQty).toBe(6400 + 5930);
 
   const withSecondary = [...gate("secondary", "Secondary Production", 6100, 0), ...ASSEMBLY];
-  expect(summarizeSource(withSecondary, "rejection_rate").checkedQty).toBe(6100);
+  expect(summarizeSource(withSecondary, "rejection_rate").checkedQty).toBe(6100 + 5930);
+});
+
+test("sectionBreakdown gives each section its own numerator and denominator", () => {
+  const withPrimary = [...gate("production", "Production", 6400, 64), ...ASSEMBLY];
+  const secs = summarizeSource(withPrimary, "rejection_rate").sectionBreakdown;
+  const byKey = Object.fromEntries(secs.map((x) => [x.key, x]));
+
+  expect(byKey.primary.checkedQty).toBe(6400);
+  expect(byKey.primary.rejectedQty).toBe(64);
+  expect(byKey.primary.entryLabel).toBe("Production");
+
+  expect(byKey.assembly.checkedQty).toBe(5930);
+  expect(byKey.assembly.rejectedQty).toBe(286 + 40 + 12 + 8);
+  expect(byKey.assembly.entryLabel).toBe("Visual Inspection");
+
+  // 1.00% + 5.83%
+  expect((secs.reduce((t, x) => t + x.rate, 0) * 100).toFixed(2)).toBe("6.83");
 });
 
 // The headline is Σ(per-gate rate), NOT rejectedQty ÷ checkedQty. With the real
@@ -126,10 +143,12 @@ test("stageBreakdown carries each gate's OWN denominator and rate", () => {
   expect(summed).not.toBeCloseTo(flat, 4);
 });
 
-test("the entry stage is named, so `checked` is never read as the denominator", () => {
+test("the entry stage is named while one section is in view, null once several are", () => {
   expect(summarizeSource(ASSEMBLY, "rejection_rate").entryStage).toBe("Visual Inspection");
+  // Two sections, two denominators — no single stage can label the figure, so
+  // the UI has to read sectionBreakdown instead of mislabelling it.
   const withPrimary = [...gate("production", "Production", 6400, 0), ...ASSEMBLY];
-  expect(summarizeSource(withPrimary, "rejection_rate").entryStage).toBe("Production");
+  expect(summarizeSource(withPrimary, "rejection_rate").entryStage).toBeNull();
 });
 
 test("stageBreakdown is in process order, not by size", () => {

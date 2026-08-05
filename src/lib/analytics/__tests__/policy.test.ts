@@ -65,16 +65,22 @@ test("no policy on the scope = the shipped defaults (feature is a no-op until se
   );
 });
 
-// A1 — the 9.73 vs 8.46 argument, in miniature.
-test("A1: sum-of-stage-rates and pooled give different, correct answers", () => {
-  const summed = rejectionRate(LEDGER, scope(), REGISTRY).value;
+// A1 — the three conventions, on an Assembly-only ledger.
+test("A1: the default is the section rule; the legacy conventions still differ", () => {
+  const bySectionRate = rejectionRate(LEDGER, scope(), REGISTRY).value;
+  const summed = rejectionRate(LEDGER, withRule("headlineRejection", "sum-of-stage-rates"), REGISTRY).value;
   const pooled = rejectionRate(LEDGER, withRule("headlineRejection", "pooled"), REGISTRY).value;
 
-  // 4.82 + 0.73 + 0.22 + 0.15
+  // 346 / 5930 — Assembly's rejects over Assembly's entry gate
+  expect((bySectionRate * 100).toFixed(2)).toBe("5.83");
+  // 4.82 + 0.73 + 0.22 + 0.15 — every gate against its own denominator
   expect((summed * 100).toFixed(2)).toBe("5.93");
-  // 346 / 5930 — every rejected unit over the units that entered
+  expect(summed).not.toBeCloseTo(bySectionRate, 4);
+
+  // With ONE section in scope, by-section and pooled necessarily agree — they
+  // only diverge once a second section brings its own denominator.
   expect((pooled * 100).toFixed(2)).toBe("5.83");
-  expect(summed).not.toBeCloseTo(pooled, 4);
+  expect(pooled).toBeCloseTo(bySectionRate, 10);
 });
 
 test("A1: pooled divides by units ENTERED, not by the sum of every gate", () => {
@@ -84,7 +90,7 @@ test("A1: pooled divides by units ENTERED, not by the sum of every gate", () => 
 });
 
 // A2 — the bug that started all this, now an explicit choice.
-test("A2: most-upstream measures once; sum-of-gates adds every gate", () => {
+test("A2: a section is measured once; sum-of-gates adds every gate", () => {
   expect(totalChecked(LEDGER, scope(), REGISTRY).value).toBe(5930);
   expect(totalChecked(LEDGER, withRule("checkedMeasuredAt", "sum-of-gates"), REGISTRY).value).toBe(
     5930 + 5459 + 5376 + 5300,

@@ -12,7 +12,7 @@
  * 4.82% every other screen showed. lib/analytics/rejection.ts has always kept
  * rework in its own StageAgg bucket; this mirrors that.
  */
-import { STAGES } from "@/core/ontology/plant-catalog";
+import { STAGES, STAGE_CATEGORY, STAGE_CATEGORIES } from "@/core/ontology/plant-catalog";
 
 export type SourceKind = "checked" | "accepted" | "rejected" | "rework" | "defect" | "other";
 
@@ -81,8 +81,8 @@ export interface SourceSummary {
   dateTo: string | null;
   /** Units that ENTERED, measured once at the most upstream stage present. */
   checkedQty: number;
-  /** Which stage checkedQty was measured at — so the UI never labels it as if
-   *  it were the denominator of a multi-gate rate. */
+  /** Which stage checkedQty was measured at, when a single section is in view.
+   *  Null once several sections contribute — then read `sectionBreakdown`. */
   entryStage: string | null;
   acceptedQty: number;
   rejectedQty: number;
@@ -101,6 +101,20 @@ export interface SourceSummary {
     count: number;
     rejectedQty: number;
     checkedQty: number;
+    rate: number;
+  }[];
+  /**
+   * How the headline rejection % is actually built: one row per SECTION, each
+   * with its own denominator, summing to the headline. Primary / Secondary /
+   * Assembly are separate populations; the gates inside a section are not.
+   * This — not `stageBreakdown` — is what the drill-down must show.
+   */
+  sectionBreakdown: {
+    key: string;
+    label: string;
+    entryLabel: string;
+    checkedQty: number;
+    rejectedQty: number;
     rate: number;
   }[];
 }
@@ -509,36 +523,62 @@ function groupKeyFor(row: SourceRow, mode: SourceGroupMode, grain: SourcePeriodG
  * Rejected is the opposite case and IS summed — a unit scrapped at Visual and
  * another scrapped at Final are two different units.
  */
-function entryStageChecked(rows: SourceRow[]): { qty: number; stageId: string | null; label: string | null } {
-  let bestKey = Infinity;
-  let bestStage: string | null = null;
-  let bestLabel: string | null = null;
+/**
+ * Section-aware "entered" count.
+ *
+ * Primary / Secondary / Assembly are separate populations, so each is measured
+ * once at its OWN entry gate and the results add. Inside a section the gates are
+ * sequential, so only the first one counts. Mirrors rejection.ts `bySection` —
+ * this is a presentation rollup of the same rule, not a second rule.
+ */
+function entryStageChecked(rows: SourceRow[]): {
+  qty: number;
+  label: string | null;
+  sections: { section: string; entryStageId: string; entryLabel: string; checked: number }[];
+} {
+  // section -> best (most upstream) gate seen so far
+  const best = new Map<string, { key: number; stage: string; label: string }>();
   const byStage = new Map<string, number>();
+
   for (const r of rows) {
     if (r.kind !== "checked") continue;
     const q = qtyNumber(r.qty);
     if (q <= 0) continue;
     const stage = r.stageId || r.stage || "(unknown stage)";
     byStage.set(stage, (byStage.get(stage) ?? 0) + q);
+
+    // Unclassified stages become their own section rather than borrowing one.
+    const section = STAGE_CATEGORY[stage] ?? stage;
     const key = stageSortKey(r.stageId, r.stage);
-    // Ties (two stages the catalog doesn't know) break on id so the answer is
-    // stable rather than dependent on row order.
-    if (key < bestKey || (key === bestKey && bestStage !== null && stage < bestStage)) {
-      bestKey = key;
-      bestStage = stage;
-      bestLabel = STAGE_LABELS[stage] ?? r.stage ?? stage;
+    const cur = best.get(section);
+    // Ties break on id so the answer never depends on row order.
+    if (!cur || key < cur.key || (key === cur.key && stage < cur.stage)) {
+      best.set(section, { key, stage, label: STAGE_LABELS[stage] ?? r.stage ?? stage });
     }
   }
+
+  const sections = [...best.entries()]
+    .map(([section, b]) => ({
+      section,
+      entryStageId: b.stage,
+      entryLabel: b.label,
+      checked: byStage.get(b.stage) ?? 0,
+      _k: b.key,
+    }))
+    .sort((a, b) => a._k - b._k)
+    .map(({ _k, ...rest }) => rest);
+
   return {
-    qty: bestStage === null ? 0 : (byStage.get(bestStage) ?? 0),
-    stageId: bestStage,
-    label: bestLabel,
+    qty: sections.reduce((sum, x) => sum + x.checked, 0),
+    label: sections.length === 1 ? sections[0].entryLabel : null,
+    sections,
   };
 }
 
 function rollup(rows: SourceRow[]) {
   const entry = entryStageChecked(rows);
   const checkedQty = entry.qty;
+  const entrySections = entry.sections;
   let acceptedQty = 0;
   let rejectedQty = 0;
   let reworkQty = 0;
@@ -558,7 +598,7 @@ function rollup(rows: SourceRow[]) {
   }
   const source: "manual" | "excel" | "mixed" =
     excel > 0 && manual > 0 ? "mixed" : manual > 0 ? "manual" : "excel";
-  return { checkedQty, entryStage: entry.label, acceptedQty, rejectedQty, reworkQty, defectQty, fileCount: files.size, source, excel, manual };
+  return { checkedQty, entryStage: entry.label, entrySections, acceptedQty, rejectedQty, reworkQty, defectQty, fileCount: files.size, source, excel, manual };
 }
 
 /** Primary quantity for ranking groups given metric kind. */
@@ -711,6 +751,28 @@ export function summarizeSource(
     })
     .sort((a, b) => stageSortKey(a.key, a.label) - stageSortKey(b.key, b.label));
 
+  // Sections: entry gate supplies the denominator, every gate in the section
+  // supplies the numerator. Sums to the headline rejection %.
+  const SECTION_LABEL: Record<string, string> = Object.fromEntries(
+    STAGE_CATEGORIES.map((c) => [c.id, c.label.replace(/\s*\(.*\)$/, "")]),
+  );
+  const sectionRejected = new Map<string, number>();
+  for (const g of stageGroups) {
+    const section = STAGE_CATEGORY[g.key] ?? g.key;
+    sectionRejected.set(section, (sectionRejected.get(section) ?? 0) + g.rejectedQty + g.defectQty);
+  }
+  const sectionBreakdown = r.entrySections.map((sec) => {
+    const rejectedQty = sectionRejected.get(sec.section) ?? 0;
+    return {
+      key: sec.section,
+      label: SECTION_LABEL[sec.section] ?? sec.entryLabel,
+      entryLabel: sec.entryLabel,
+      checkedQty: sec.checked,
+      rejectedQty,
+      rate: sec.checked > 0 ? rejectedQty / sec.checked : 0,
+    };
+  });
+
   return {
     recordCount: normalized.length,
     excelCount: r.excel,
@@ -726,6 +788,7 @@ export function summarizeSource(
     defectQty: r.defectQty,
     topDriver: top,
     stageBreakdown,
+    sectionBreakdown,
   };
 }
 

@@ -5,6 +5,10 @@
 -- old values again, so history stays complete and any past report can be
 -- reproduced under the policy that produced it.
 --
+-- version = 0 is reserved for the plant restore-point ("Set as plant default").
+-- Live history and current() only use version > 0. Upsert on (company_id, 0)
+-- overwrites the baseline without appending a history entry.
+--
 -- No backfill. An empty table means "shipped defaults" (see core/policy/policy.ts
 -- DEFAULT_POLICY), which is exactly how the app already behaves.
 

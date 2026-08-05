@@ -4,6 +4,7 @@
 import type { Event } from "@/lib/store/types";
 import { type Scope, scopeEvents, periodKey, periodLabel, periodsIn, policyOf } from "./scope";
 import { DEFAULT_POLICY, type CalculationPolicyT } from "@/core/policy/policy";
+import { STAGE_CATEGORY } from "@/core/ontology/plant-catalog";
 
 /** Structural catalog type — the caller's MOD catalog (or a test fixture). */
 export type Registry = { stages: any[]; defects: any[]; sizes: any[]; fiscalYearStartMonth: number };
@@ -181,24 +182,90 @@ function perStageAgg(
   });
 }
 
-/** Headline "Total Rejection %" — the client convention: the SUM of each
- *  stage's own rejection rate (Visual% + Balloon% + Valve% + Final%), matching
- *  the totals on their REJECTION ANALYSIS / YEARLY sheets. This is a funnel-loss
- *  figure, NOT overall rejected÷checked. */
-export function rejectionRate(events: Event[], scope: Scope, registry: Registry = DERIVED_REGISTRY): MetricValue {
+/**
+ * Per-SECTION aggregate — the plant's real unit of computation.
+ *
+ * Primary, Secondary and Assembly are separate populations, not one sequential
+ * line. The ledger proves it: Production checked 77,504 in a window where
+ * Visual checked 176,838, and a sequential line cannot inspect more than it
+ * made. Each section therefore carries its own denominator.
+ *
+ * Within a section:
+ *   checked  = the section's ENTRY gate (first in catalog order with data).
+ *              Assembly's gates ARE sequential — Visual's accepted units are
+ *              what Balloon checks — so the section is measured once, at Visual.
+ *   rejected = every gate in the section, summed. A unit scrapped at Visual and
+ *              another at Final are two different units.
+ *
+ * Across sections nothing is shared: rates are computed per section and added.
+ */
+export interface SectionAgg {
+  section: string;
+  entryStageId: string | null;
+  checked: number;
+  rejected: number;
+  rate: number;
+}
+
+export function bySection(
+  events: Event[],
+  scope: Scope,
+  registry: Registry = DERIVED_REGISTRY,
+): SectionAgg[] {
   const ev = scopeEvents(events, scope);
   const policy = policyOf(scope);
   const stages = perStageAgg(ev, registry, policy);
-  // A1 — "sum-of-stage-rates" is funnel loss (each gate against its own
-  // denominator); "pooled" is every rejected unit over the units that entered.
-  // They legitimately differ: 9.73% vs 8.46% on this plant's July–August data.
-  const value =
-    policy.headlineRejection === "pooled"
-      ? (() => {
-          const entered = totalChecked(events, scope, registry).value;
-          return entered > 0 ? aggregate(ev, policy).rejected / entered : 0;
-        })()
-      : stages.reduce((sum, s) => sum + s.rate, 0);
+
+  const order: string[] = [];
+  const acc = new Map<string, SectionAgg>();
+  for (const s of stages) {
+    // A stage the catalog doesn't classify is its own section — never silently
+    // folded into someone else's denominator.
+    const section = STAGE_CATEGORY[s.stageId] ?? s.stageId;
+    let cur = acc.get(section);
+    if (!cur) {
+      cur = { section, entryStageId: null, checked: 0, rejected: 0, rate: 0 };
+      acc.set(section, cur);
+      order.push(section);
+    }
+    // perStageAgg is already in catalog order, so the first gate with a checked
+    // qty is the section's entry.
+    if (cur.entryStageId === null && s.checked > 0) {
+      cur.entryStageId = s.stageId;
+      cur.checked = s.checked;
+    }
+    cur.rejected += s.rejected;
+  }
+
+  return order.map((k) => {
+    const a = acc.get(k)!;
+    return { ...a, rate: a.checked > 0 ? a.rejected / a.checked : 0 };
+  });
+}
+
+/** Headline "Total Rejection %". Default is the plant's rule: each section's
+ *  own rejected ÷ its own checked, summed across sections. */
+export function rejectionRate(events: Event[], scope: Scope, registry: Registry = DERIVED_REGISTRY): MetricValue {
+  const ev = scopeEvents(events, scope);
+  const policy = policyOf(scope);
+
+  let value = 0;
+  if (policy.headlineRejection === "by-section") {
+    // The plant's rule. Assembly alone: 14,962 / 176,838 = 8.46%.
+    // Primary + Assembly: 0.98% + 8.46% = 9.44%.
+    value = bySection(events, scope, registry).reduce((sum, s) => sum + s.rate, 0);
+  } else if (policy.headlineRejection === "pooled") {
+    // Every rejected unit over ONE denominator. Only defensible when a single
+    // section is in scope — across sections it divides Assembly's rejects by
+    // Primary's checked.
+    const entered = totalChecked(events, scope, registry).value;
+    value = entered > 0 ? aggregate(ev, policy).rejected / entered : 0;
+  } else {
+    // Every gate against its own denominator, summed — the plant's older
+    // REJECTION ANALYSIS / YEARLY sheet convention. Counts Assembly's funnel
+    // four times over.
+    value = perStageAgg(ev, registry, policy).reduce((sum, s) => sum + s.rate, 0);
+  }
   return { value, sourceEventIds: ids(ev, (e) => isProd(e) || isRej(e)) };
 }
 
@@ -209,45 +276,50 @@ export function totalRejected(events: Event[], scope: Scope): MetricValue {
 }
 
 /**
- * Units that entered the line = the checked qty of the single most UPSTREAM
- * in-scope stage that has data.
+ * Units that entered.
  *
- * One rule, and it holds whether one section is selected or all three, because
- * Primary -> Secondary -> Assembly are sequential departments handling the SAME
- * physical catheters, not parallel lines:
+ * Sections are separate populations (see `bySection`), so their entry counts
+ * ADD: Primary 77,504 + Assembly 176,838 = 254,342. Within a section the gates
+ * are sequential, so the section is still measured once, at its entry gate —
+ * never Visual + Balloon + Valve + Final.
  *
- *   Assembly alone           -> Visual's 5,930
- *   Primary alone            -> Production's 6,400
- *   Primary + Assembly       -> Production's 6,400
- *
- * The tube dipped at Production is the tube inspected at Visual. Summing the
- * sections would count it twice, exactly as summing Visual + Balloon + Valve +
- * Final would count it four times. Selecting an upstream section moves the
- * measuring point upstream; it never adds a second one.
- *
- * "Most upstream" means first in catalog order (production, …, visual, balloon,
+ * "Entry" means first in catalog order (production, …, visual, balloon,
  * valve-fixing, valve-integrity, final), not first to appear in the ledger —
  * the ledger emits a batch's gates in arbitrary order.
  *
- * Total Rejected is the opposite case and IS summed: a unit scrapped at Visual
- * and another scrapped at Final are two different units.
+ * Total Rejected is summed unconditionally: a unit scrapped at Visual and
+ * another at Final are two different units.
  */
 export function totalChecked(events: Event[], scope: Scope, registry: Registry = DERIVED_REGISTRY): MetricValue {
   const ev = scopeEvents(events, scope);
   const policy = policyOf(scope);
   const stages = perStageAgg(ev, registry, policy);
-  // A2 — "sum-of-gates" is only correct when gates inspect DIFFERENT units.
-  // At this plant they are sequential, so it counts one catheter once per gate.
+
+  // Every gate added together. Only correct if gates inspect DIFFERENT units;
+  // within a section they do not.
   if (policy.checkedMeasuredAt === "sum-of-gates") {
     return {
       value: stages.reduce((sum, s) => sum + s.checked, 0),
       sourceEventIds: ids(ev, isProd),
     };
   }
-  const entry = stages.find((s) => s.checked > 0);
+
+  // One denominator for the whole scope — the most upstream gate anywhere.
+  // Correct only while a single section is in view.
+  if (policy.checkedMeasuredAt === "most-upstream") {
+    const entry = stages.find((s) => s.checked > 0);
+    return {
+      value: entry?.checked ?? 0,
+      sourceEventIds: ids(ev, (e) => isProd(e) && stageOf(e) === (entry?.stageId ?? null)),
+    };
+  }
+
+  // Default — each section measured once at its own entry gate, then added.
+  const sections = bySection(events, scope, registry);
+  const entryIds = new Set(sections.map((s) => s.entryStageId).filter(Boolean) as string[]);
   return {
-    value: entry?.checked ?? 0,
-    sourceEventIds: ids(ev, (e) => isProd(e) && stageOf(e) === (entry?.stageId ?? null)),
+    value: sections.reduce((sum, s) => sum + s.checked, 0),
+    sourceEventIds: ids(ev, (e) => isProd(e) && entryIds.has(stageOf(e) ?? "")),
   };
 }
 

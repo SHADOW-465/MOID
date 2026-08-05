@@ -23,6 +23,7 @@ import {
   fileBasename,
   DETAIL_PAGE_SIZE,
 } from "@/lib/analytics/source-trace";
+import { STAGE_CATEGORY as SECTION_OF } from "@/core/ontology/plant-catalog";
 
 export type { SourceRow, SourceMetricKind };
 
@@ -720,7 +721,10 @@ export default function FloatingDetailModal({
                     each with its OWN denominator — not rejected ÷ checked.
                     Without this the two stats below read as a fraction that
                     doesn't reproduce the number above them. */}
-                {metricKind === "rejection_rate" && summary.stageBreakdown.length > 1 && (
+                {/* How the headline is built: one row per SECTION, each with its
+                    own denominator. Gates inside a section share the section's
+                    entry count, so they are shown as detail, never as addends. */}
+                {metricKind === "rejection_rate" && summary.sectionBreakdown.length > 0 && (
                   <div
                     style={{
                       border: "1px solid var(--border)",
@@ -728,7 +732,7 @@ export default function FloatingDetailModal({
                       padding: "10px 12px",
                       display: "flex",
                       flexDirection: "column",
-                      gap: 6,
+                      gap: 8,
                     }}
                   >
                     <div
@@ -742,30 +746,57 @@ export default function FloatingDetailModal({
                     >
                       How it adds up
                     </div>
-                    {summary.stageBreakdown
-                      .filter((s) => s.checkedQty > 0)
-                      .map((s) => (
-                        <div
-                          key={s.key}
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            gap: 10,
-                            fontSize: 11.5,
-                            fontFamily: "var(--font-mono)",
-                          }}
-                        >
-                          <span className="muted" style={{ flex: 1 }}>
-                            {s.label}
-                          </span>
-                          <span className="muted">
-                            {fmtQty(s.rejectedQty)}/{fmtQty(s.checkedQty)}
-                          </span>
-                          <span style={{ color: "var(--text)", fontWeight: 700, minWidth: 52, textAlign: "right" }}>
-                            {(s.rate * 100).toFixed(2)}%
-                          </span>
-                        </div>
-                      ))}
+
+                    {summary.sectionBreakdown
+                      .filter((sec) => sec.checkedQty > 0)
+                      .map((sec) => {
+                        const gates = summary.stageBreakdown.filter(
+                          (g) => (SECTION_OF[g.key] ?? g.key) === sec.key,
+                        );
+                        return (
+                          <div key={sec.key} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                gap: 10,
+                                fontSize: 11.5,
+                                fontFamily: "var(--font-mono)",
+                              }}
+                            >
+                              <span style={{ flex: 1, color: "var(--text)", fontWeight: 600 }}>
+                                {sec.label}
+                              </span>
+                              <span className="muted">
+                                {fmtQty(sec.rejectedQty)}/{fmtQty(sec.checkedQty)}
+                              </span>
+                              <span
+                                style={{
+                                  color: "var(--text)",
+                                  fontWeight: 700,
+                                  minWidth: 52,
+                                  textAlign: "right",
+                                }}
+                              >
+                                {(sec.rate * 100).toFixed(2)}%
+                              </span>
+                            </div>
+                            <div className="muted" style={{ fontSize: 10, paddingLeft: 8 }}>
+                              measured at {sec.entryLabel}
+                              {gates.length > 1 && (
+                                <>
+                                  {" · rejects from "}
+                                  {gates
+                                    .filter((g) => g.rejectedQty > 0)
+                                    .map((g) => `${g.label} ${fmtQty(g.rejectedQty)}`)
+                                    .join(", ")}
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+
                     {/* Stated, not left to be added: each row is rounded to 2dp,
                         so adding the column can land a hundredth off the
                         headline. The total is the sum of the UNROUNDED rates. */}
@@ -789,16 +820,13 @@ export default function FloatingDetailModal({
                           textAlign: "right",
                         }}
                       >
-                        {(
-                          summary.stageBreakdown.reduce((t, s) => t + s.rate, 0) * 100
-                        ).toFixed(2)}
-                        %
+                        {(summary.sectionBreakdown.reduce((t, x) => t + x.rate, 0) * 100).toFixed(2)}%
                       </span>
                     </div>
                     <p className="muted" style={{ fontSize: 10.5, lineHeight: 1.45, margin: "2px 0 0" }}>
-                      Each gate has its own denominator, so the total is the sum of
-                      these rates — not {fmtQty(summary.rejectedQty + summary.defectQty)} ÷{" "}
-                      {fmtQty(summary.checkedQty)}.
+                      {summary.sectionBreakdown.length > 1
+                        ? "Each section is a separate population with its own denominator, so the section rates add. Gates inside a section share that section's checked count and are never added to each other."
+                        : "Every gate in this section shares one denominator — the units that entered it. Gate rejects are summed; gate rates are not."}
                     </p>
                   </div>
                 )}

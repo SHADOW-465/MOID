@@ -1,9 +1,12 @@
-// "Checked" = units that ENTERED, measured at the most upstream in-scope stage.
+// "Checked" = units that ENTERED, measured once per SECTION at that section's
+// entry gate, then added across sections.
 //
-// Primary -> Secondary -> Assembly are sequential departments handling the same
-// physical catheters. Selecting an upstream section moves the measuring point
-// upstream; it never adds a second one. Same reason Visual + Balloon + Valve +
-// Final are not summed within Assembly.
+// Within Assembly the gates ARE sequential — Visual's accepted units are what
+// Balloon checks — so Visual + Balloon + Valve + Final is never summed.
+// Across sections nothing is shared: Primary and Assembly are separate
+// populations (the live ledger shows Production 77,504 against Visual 176,838
+// in one window, which a single sequential line cannot do), so their entry
+// counts add.
 //
 // Numbers are the real ledger for batch 26G04-14 on 2026-07-04.
 
@@ -57,22 +60,22 @@ test("primary alone is Production's checked", () => {
   expect(totalChecked(PRIMARY, scope(["production"]), REGISTRY).value).toBe(6400);
 });
 
-test("primary + assembly measures at Production — the same tubes, further upstream", () => {
+test("primary + assembly adds the two sections' entry counts", () => {
   const both = [...PRIMARY, ...ASSEMBLY];
   const v = totalChecked(both, scope(["production", ...ASSEMBLY_IDS]), REGISTRY).value;
-  expect(v).toBe(6400);
-  // Never the sum: the tube dipped at Production is the tube seen at Visual.
-  expect(v).not.toBe(6400 + 5930);
+  expect(v).toBe(6400 + 5930);
+  // Not one section's denominator standing in for both.
+  expect(v).not.toBe(6400);
 });
 
-test("all three sections still measure once, at the most upstream stage", () => {
+test("all three sections add, each measured once at its own entry", () => {
   const all = [...PRIMARY, ...SECONDARY, ...ASSEMBLY];
-  expect(totalChecked(all, scope(), REGISTRY).value).toBe(6400);
+  expect(totalChecked(all, scope(), REGISTRY).value).toBe(6400 + 6100 + 5930);
 });
 
-test("secondary + assembly measures at Secondary", () => {
+test("secondary + assembly adds Secondary's entry to Assembly's", () => {
   const both = [...SECONDARY, ...ASSEMBLY];
-  expect(totalChecked(both, scope(["secondary", ...ASSEMBLY_IDS]), REGISTRY).value).toBe(6100);
+  expect(totalChecked(both, scope(["secondary", ...ASSEMBLY_IDS]), REGISTRY).value).toBe(6100 + 5930);
 });
 
 test("entry is chosen by catalog order, not by which event happens to be first", () => {

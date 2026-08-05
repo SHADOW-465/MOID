@@ -1,11 +1,13 @@
 // src/app/api/policy/route.ts
 // Calculation policy — the conventions behind every number.
 //
-// GET → { policy, version, changedBy, changedAt, note, history[] }
-// PUT → save a new version (append-only; latest wins)
+// GET → { policy, version, changedBy, changedAt, note, history[], baseline }
+// PUT → save a new live version (append-only; latest wins)
+//       body.asBaseline === true promotes the payload to the plant restore-point
+//       body.baselineOnly === true with asBaseline skips the live append
 //
 // Reads are also served inline by /api/schema so the client gets plant config
-// in one round trip; this route owns writes and history.
+// in one round trip; this route owns writes, history, and plant baseline.
 
 import { NextRequest, NextResponse } from "next/server";
 import { CalculationPolicy } from "@/core/policy/policy";
@@ -18,12 +20,14 @@ function companyId(): string {
 export async function GET() {
   const store = getPolicyStore();
   const company = companyId();
-  const [current, history] = await Promise.all([store.current(company), store.history(company)]);
-  return NextResponse.json({ ...current, history });
+  const [current, history, baseline] = await Promise.all([
+    store.current(company),
+    store.history(company),
+    store.baseline(company),
+  ]);
+  return NextResponse.json({ ...current, history, baseline });
 }
 
-// A note is required on save: history nobody can read a year later is not an
-// audit trail. changedBy comes from the active persona.
 export async function PUT(req: NextRequest) {
   let body: unknown;
   try {
@@ -32,10 +36,18 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: "Body must be JSON" }, { status: 400 });
   }
 
-  const { policy: rawPolicy, note, changedBy } = (body ?? {}) as {
+  const {
+    policy: rawPolicy,
+    note,
+    changedBy,
+    asBaseline,
+    baselineOnly,
+  } = (body ?? {}) as {
     policy?: unknown;
     note?: unknown;
     changedBy?: unknown;
+    asBaseline?: unknown;
+    baselineOnly?: unknown;
   };
 
   const parsed = CalculationPolicy.safeParse(rawPolicy);
@@ -45,22 +57,59 @@ export async function PUT(req: NextRequest) {
       { status: 400 },
     );
   }
-  if (typeof note !== "string" || note.trim().length === 0) {
+
+  const promoteBaseline = asBaseline === true;
+  const onlyBaseline = promoteBaseline && baselineOnly === true;
+  const noteStr = typeof note === "string" ? note.trim() : "";
+
+  // Live saves always need a human reason. Pure "set as plant default" may use
+  // an automatic note so the GM is not blocked by a second form field.
+  if (!promoteBaseline && noteStr.length === 0) {
     return NextResponse.json(
       { error: "A note explaining the change is required" },
       { status: 400 },
     );
   }
+  if (promoteBaseline && !onlyBaseline && noteStr.length === 0) {
+    return NextResponse.json(
+      {
+        error:
+          "A note is required when saving rule changes. Or use Set as plant default on the live rules.",
+      },
+      { status: 400 },
+    );
+  }
+
+  const who =
+    typeof changedBy === "string" && changedBy.trim() ? changedBy.trim() : "unknown";
+  const auditNote =
+    noteStr || "Set current rules as plant default";
 
   try {
-    const saved = await getPolicyStore().save(companyId(), parsed.data, {
-      changedBy: typeof changedBy === "string" && changedBy.trim() ? changedBy.trim() : "unknown",
-      note: note.trim(),
-    });
-    return NextResponse.json(saved);
+    const store = getPolicyStore();
+    const company = companyId();
+
+    let saved = await store.current(company);
+
+    if (!onlyBaseline) {
+      saved = await store.save(company, parsed.data, {
+        changedBy: who,
+        note: auditNote,
+      });
+    }
+
+    let baseline = null;
+    if (promoteBaseline) {
+      baseline = await store.setBaseline(company, parsed.data, {
+        changedBy: who,
+        note: auditNote,
+      });
+    } else {
+      baseline = await store.baseline(company);
+    }
+
+    return NextResponse.json({ ...saved, baseline });
   } catch (err) {
-    // Match on name, not instanceof: HMR and route bundling can load two copies
-    // of the class, and then instanceof silently misses.
     if (err instanceof Error && err.name === "PolicyTableMissingError") {
       return NextResponse.json({ error: err.message }, { status: 503 });
     }
