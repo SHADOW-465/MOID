@@ -19,6 +19,9 @@ DROP POLICY IF EXISTS company_catalog_service_role_all ON company_catalog;
 CREATE POLICY company_catalog_service_role_all ON company_catalog
   FOR ALL USING (true) WITH CHECK (true);
 
+-- PostgREST roles need explicit table grants (RLS alone is not enough).
+GRANT ALL ON TABLE public.company_catalog TO anon, authenticated, service_role;
+
 -- One-time backfill from currently verified MOD rows (merge first-wins per id).
 -- Safe to re-run: only inserts companies that have no catalog row yet.
 INSERT INTO company_catalog (company_id, stages, defects, sizes, fiscal_year_start_month, updated_at, last_merged_from)

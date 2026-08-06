@@ -75,6 +75,13 @@ CREATE POLICY global_ontology_service_role_all ON global_ontology FOR ALL USING 
 DROP POLICY IF EXISTS decision_rules_service_role_all ON decision_rules;
 CREATE POLICY decision_rules_service_role_all ON decision_rules FOR ALL USING (true) WITH CHECK (true);
 
+-- PostgREST roles need explicit table grants (RLS alone is not enough).
+GRANT ALL ON TABLE public.workbook_snapshots TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.mods TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.company_knowledge TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.global_ontology TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.decision_rules TO anon, authenticated, service_role;
+
 -- Global ontology seed (mirrors src/core/ontology/global-ontology.ts).
 INSERT INTO global_ontology (concept_id, kind, match_terms, description) VALUES
   ('CHECKED_QTY',  'measure',      '["checked","chk","qty checked","quantity","input","rec","received","inspected"]', 'Units entering an inspection gate (denominator).'),

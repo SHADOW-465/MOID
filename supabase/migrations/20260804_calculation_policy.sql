@@ -30,3 +30,6 @@ ALTER TABLE calculation_policy ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS calculation_policy_service_role_all ON calculation_policy;
 CREATE POLICY calculation_policy_service_role_all ON calculation_policy
   FOR ALL USING (true) WITH CHECK (true);
+
+-- PostgREST roles need explicit table grants (RLS alone is not enough).
+GRANT ALL ON TABLE public.calculation_policy TO anon, authenticated, service_role;
