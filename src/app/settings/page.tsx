@@ -22,12 +22,20 @@ import {
   writeShiftWindowConfig,
   type ShiftWindowConfig,
 } from "@/lib/entry/shift-window";
+import {
+  DEFAULT_DATA_ENTRY_EXPORT_CONFIG,
+  describeDataEntryExportConfig,
+  readDataEntryExportConfig,
+  writeDataEntryExportConfig,
+  type DataEntryExportConfig,
+} from "@/lib/entry/export-config";
 
-type SectionId = "rules" | "shifts" | "registry" | "custom" | "admin";
+type SectionId = "rules" | "shifts" | "export" | "registry" | "custom" | "admin";
 
 const SECTIONS: { id: SectionId; label: string; hint: string }[] = [
   { id: "rules", label: "Calculation rules", hint: "Targets, costs, rejection math" },
   { id: "shifts", label: "Shift windows", hint: "When operators may edit freely" },
+  { id: "export", label: "Data Entry export", hint: "Topbar Export on /data-entry" },
   { id: "registry", label: "Defect registry", hint: "Plant catalog (read-only)" },
   { id: "custom", label: "Custom codes", hint: "Plant-specific aliases" },
   { id: "admin", label: "Administrative", hint: "Purge & schema reset" },
@@ -49,11 +57,15 @@ export default function SettingsPage() {
     if (SECTIONS.some((s) => s.id === id)) setSection(id);
   }, []);
   const [shiftCfg, setShiftCfg] = useState<ShiftWindowConfig>(DEFAULT_SHIFT_WINDOWS);
+  const [exportCfg, setExportCfg] = useState<DataEntryExportConfig>(
+    DEFAULT_DATA_ENTRY_EXPORT_CONFIG,
+  );
 
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     setShiftCfg(readShiftWindowConfig());
+    setExportCfg(readDataEntryExportConfig());
   }, []);
 
   const [showClearModal, setShowClearModal] = useState(false);
@@ -149,7 +161,14 @@ export default function SettingsPage() {
   const active = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0];
   const stageCount = activeRegistry.stages?.length ?? 0;
   const defectCount = activeRegistry.defects?.length ?? 0;
-  const showFoot = section === "custom" || section === "shifts";
+  const showFoot =
+    section === "custom" || section === "shifts" || section === "export";
+
+  const saveExportCfg = () => {
+    writeDataEntryExportConfig(exportCfg);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
 
   return (
     <AppShell active="settings">
@@ -159,9 +178,9 @@ export default function SettingsPage() {
             <p className="settings-kicker">Plant configuration</p>
             <h1 className="settings-title">Settings</h1>
             <p className="settings-lede">
-              Plant-wide options: calculation rules, shift windows, defect codes,
-              and admin tools. Calculation rules are versioned and shared — not
-              stored per browser.
+              Plant-wide options: calculation rules, Data Entry export, shift windows,
+              defect codes, and admin tools. Calculation rules are versioned and shared;
+              export preferences are stored in this browser.
             </p>
           </div>
           <div className="settings-mast-meta" aria-label="Registry snapshot">
@@ -303,6 +322,131 @@ export default function SettingsPage() {
                       }
                     />
                   </label>
+                </div>
+              )}
+
+              {section === "export" && (
+                <div className="settings-field-stack">
+                  <p className="settings-field-help">
+                    Controls what the topbar <strong>Export entries</strong> button does
+                    on Data Entry. Default is a transfer JSON you can re-import on Staging
+                    (move rows between local and another DB). Import stays on{" "}
+                    <a href="/staging" className="settings-inline-link">
+                      Staging → Import transfer package
+                    </a>
+                    .
+                  </p>
+                  <p className="settings-field-help" style={{ marginTop: 0 }}>
+                    Current:{" "}
+                    <strong>{describeDataEntryExportConfig(exportCfg)}</strong>
+                  </p>
+
+                  <fieldset className="settings-field" style={{ border: "none", padding: 0, margin: 0 }}>
+                    <legend className="settings-field-label" style={{ marginBottom: 8 }}>
+                      Export format
+                    </legend>
+                    <label style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 8, cursor: "pointer" }}>
+                      <input
+                        type="radio"
+                        name="export-mode"
+                        checked={exportCfg.mode === "entry-transfer"}
+                        onChange={() =>
+                          setExportCfg((c) => ({ ...c, mode: "entry-transfer" }))
+                        }
+                      />
+                      <span>
+                        <strong>Data entries transfer (JSON)</strong>
+                        <br />
+                        <span className="settings-field-help" style={{ margin: 0 }}>
+                          Recommended for DB→DB moves. Import on Staging.
+                        </span>
+                      </span>
+                    </label>
+                    <label style={{ display: "flex", gap: 8, alignItems: "flex-start", cursor: "pointer" }}>
+                      <input
+                        type="radio"
+                        name="export-mode"
+                        checked={exportCfg.mode === "audit-zip"}
+                        onChange={() =>
+                          setExportCfg((c) => ({ ...c, mode: "audit-zip" }))
+                        }
+                      />
+                      <span>
+                        <strong>Full audit package (ZIP)</strong>
+                        <br />
+                        <span className="settings-field-help" style={{ margin: 0 }}>
+                          Legacy ALCOA+ CSV extracts + hash manifest (same as other screens).
+                        </span>
+                      </span>
+                    </label>
+                  </fieldset>
+
+                  {exportCfg.mode === "entry-transfer" && (
+                    <>
+                      <label className="settings-field">
+                        <span className="settings-field-label">What to include</span>
+                        <select
+                          className="settings-input"
+                          value={exportCfg.channel}
+                          onChange={(e) =>
+                            setExportCfg((c) => ({
+                              ...c,
+                              channel: e.target.value as DataEntryExportConfig["channel"],
+                            }))
+                          }
+                        >
+                          <option value="direct-entry">Data Entry only</option>
+                          <option value="all">All ledger events (incl. Excel ingest)</option>
+                        </select>
+                      </label>
+
+                      <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={exportCfg.useDateScope}
+                          onChange={(e) =>
+                            setExportCfg((c) => ({
+                              ...c,
+                              useDateScope: e.target.checked,
+                            }))
+                          }
+                        />
+                        <span className="settings-field-label" style={{ margin: 0 }}>
+                          Use topbar date range when exporting
+                        </span>
+                      </label>
+
+                      {!exportCfg.useDateScope && (
+                        <>
+                          <label className="settings-field">
+                            <span className="settings-field-label">From date (optional)</span>
+                            <input
+                              type="date"
+                              className="settings-input"
+                              value={exportCfg.from}
+                              onChange={(e) =>
+                                setExportCfg((c) => ({ ...c, from: e.target.value }))
+                              }
+                            />
+                          </label>
+                          <label className="settings-field">
+                            <span className="settings-field-label">To date (optional)</span>
+                            <input
+                              type="date"
+                              className="settings-input"
+                              value={exportCfg.to}
+                              onChange={(e) =>
+                                setExportCfg((c) => ({ ...c, to: e.target.value }))
+                              }
+                            />
+                          </label>
+                          <p className="settings-field-help">
+                            Leave both empty to export every matching event on the ledger.
+                          </p>
+                        </>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
 
@@ -487,7 +631,9 @@ export default function SettingsPage() {
             <p className="settings-foot-note">
               {section === "shifts"
                 ? "Shift windows are stored in this browser. Save after you edit."
-                : "Custom codes are stored in this browser. Save after you add or remove codes."}
+                : section === "export"
+                  ? "Export preferences are stored in this browser. They apply the next time you click Export entries on Data Entry."
+                  : "Custom codes are stored in this browser. Save after you add or remove codes."}
             </p>
             <div className="settings-foot-actions">
               {section === "shifts" ? (
@@ -502,6 +648,14 @@ export default function SettingsPage() {
                   }}
                 >
                   {saved ? "Saved" : "Save shift windows"}
+                </button>
+              ) : section === "export" ? (
+                <button
+                  type="button"
+                  className={`settings-btn settings-btn--primary ${saved ? "is-success" : ""}`}
+                  onClick={saveExportCfg}
+                >
+                  {saved ? "Saved" : "Save export settings"}
                 </button>
               ) : (
                 <button

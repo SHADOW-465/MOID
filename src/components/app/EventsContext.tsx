@@ -10,6 +10,7 @@ import React, {
   useRef,
 } from "react";
 import type { Event } from "@/lib/store/types";
+import { usePersona } from "@/components/app/PersonaContext";
 
 interface EventsContextType {
   events: Event[] | null;
@@ -27,15 +28,29 @@ const EventsContext = createContext<EventsContextType | undefined>(undefined);
  * SWR-style: first load shows loading; later refreshes keep stale data on screen
  * (isValidating) so navigating / agent ingest / entry save never blank the UI.
  * One in-flight fetch is coalesced so concurrent refreshEvents() share a promise.
+ *
+ * When plant auth is on, we wait for a session before calling /api/events so a
+ * signed-out shell does not spam 401s, and we re-fetch as soon as the user signs in.
  */
 export function EventsProvider({ children }: { children: React.ReactNode }) {
+  const { authEnabled, authUser, authReady } = usePersona();
   const [events, setEvents] = useState<Event[] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isValidating, setIsValidating] = useState(false);
   const inflight = useRef<Promise<void> | null>(null);
   const hasData = useRef(false);
 
+  /** Session required before private APIs: auth on and no user yet. */
+  const blockedByAuth = authReady && authEnabled && !authUser;
+  const canFetch = authReady && !blockedByAuth;
+
   const refreshEvents = useCallback(async () => {
+    if (!canFetch) {
+      setEvents([]);
+      setIsLoading(false);
+      setIsValidating(false);
+      return;
+    }
     if (inflight.current) return inflight.current;
 
     const run = (async () => {
@@ -43,9 +58,15 @@ export function EventsProvider({ children }: { children: React.ReactNode }) {
       else setIsLoading(true);
       try {
         const res = await fetch("/api/events", {
-          // Browser may cache briefly; we still revalidate on focus/refresh.
+          credentials: "same-origin",
           headers: { Accept: "application/json" },
         });
+        // Expected when signed out; do not throw a console error.
+        if (res.status === 401) {
+          setEvents([]);
+          hasData.current = false;
+          return;
+        }
         if (!res.ok) throw new Error(`events ${res.status}`);
         const data = await res.json();
         const next = (data.events ?? []) as Event[];
@@ -53,9 +74,7 @@ export function EventsProvider({ children }: { children: React.ReactNode }) {
         hasData.current = true;
       } catch (err) {
         console.error("Failed to fetch events:", err);
-        // Keep previous events if we had them; only empty on first failure.
         setEvents((prev) => (prev != null ? prev : []));
-        hasData.current = hasData.current || false;
       } finally {
         setIsLoading(false);
         setIsValidating(false);
@@ -65,22 +84,30 @@ export function EventsProvider({ children }: { children: React.ReactNode }) {
 
     inflight.current = run;
     return run;
-  }, []);
+  }, [canFetch]);
 
+  // Load (or clear) whenever auth readiness / session changes — including post-login.
   useEffect(() => {
+    if (!authReady) return;
+    if (blockedByAuth) {
+      setEvents([]);
+      hasData.current = false;
+      setIsLoading(false);
+      setIsValidating(false);
+      return;
+    }
     void refreshEvents();
-  }, [refreshEvents]);
+  }, [authReady, blockedByAuth, authUser?.username, refreshEvents]);
 
-  // Revalidate when the tab becomes visible again (operator left for Excel, returned).
   useEffect(() => {
     const onVis = () => {
-      if (document.visibilityState === "visible" && hasData.current) {
+      if (document.visibilityState === "visible" && hasData.current && canFetch) {
         void refreshEvents();
       }
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
-  }, [refreshEvents]);
+  }, [refreshEvents, canFetch]);
 
   const value = useMemo(
     () => ({ events, isLoading, isValidating, refreshEvents }),

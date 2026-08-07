@@ -33,6 +33,13 @@ yarn-error.log*
 # env files (.env.example is intentionally tracked)
 .env*
 !.env.example
+!deploy/env.example
+
+# plant appliance local state
+deploy/.env
+deploy/backups/
+deploy/AUTH-CREDENTIALS.local.md
+deploy/AUTH-CREDENTIALS.local.txt
 
 # vercel
 .vercel
@@ -76,6 +83,7 @@ graphify-out/manifest.json
 graphify-out/cost.json
 graphify-out/.graphify_root
 graphify-out/.graphify_*.json
+graphify-out/.graphify_*.json.sig
 graphify-out/.graphify_chunk_*.json
 
 # Playwright MCP diagnostic captures + ad-hoc screenshots

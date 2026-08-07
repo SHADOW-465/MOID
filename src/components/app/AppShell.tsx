@@ -48,6 +48,10 @@ const ReportPanel = dynamic(() => import("@/components/report/ReportPanel"), {
   ssr: false,
   loading: () => null,
 });
+const EntryExportPanelLazy = dynamic(
+  () => import("@/components/entry/EntryExportPanel"),
+  { ssr: false, loading: () => null },
+);
 const SourcesScopePanel = dynamic(() => import("@/components/app/SourcesScopePanel"), {
   ssr: false,
   loading: () => null,
@@ -200,13 +204,23 @@ export default function AppShell({
   const { events, refreshEvents } = useEvents();
   const { t, setTweak } = useTweaks();
   const policy = usePolicy();
-  const { persona, setPersona, canConfigure, canWrite } = usePersona();
+  const {
+    persona,
+    setPersona,
+    canConfigure,
+    canWrite,
+    authEnabled,
+    authUser,
+    personaLocked,
+    signOut,
+  } = usePersona();
   const [mounted, setMounted] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [showPersonaMenu, setShowPersonaMenu] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [banner, setBanner] = useState<NavBanner | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
+  const [entryExportOpen, setEntryExportOpen] = useState(false);
 
   /** The window the report covers — resolved exactly as the screens resolve it,
    *  so a report always answers the same question the page is answering. */
@@ -310,6 +324,10 @@ export default function AppShell({
   }, [banner]);
 
   const setPersonaAndStore = (id: PersonaId) => {
+    if (personaLocked) {
+      setShowPersonaMenu(false);
+      return;
+    }
     if (id === persona) {
       setShowPersonaMenu(false);
       return;
@@ -938,17 +956,22 @@ export default function AppShell({
     }
   }, [t.datePreset, t.dateFrom, t.dateTo, dateMinMax, setTweak]);
 
-  // Export the audit-ready package: CSV extracts (rejection summary, stage-wise,
-  // defect Pareto, size-wise, monthly trend, full ledger) + manifest.json with a
-  // SHA-256 of every file, zipped (MOID-SPEC §365, ALCOA+). Pulls the live
-  // (already-canonicalized) ledger; no server round-trip beyond /api/events.
+  // Export:
+  // - Data Entry: open floating configurator (EntryExportPanel).
+  // - Other screens: full ALCOA+ audit package ZIP (or Report panel when canReport).
   async function handleExport() {
+    if (active === "data-entry") {
+      setEntryExportOpen(true);
+      return;
+    }
     if (exporting) return;
     setExporting(true);
     try {
       const exportEvents = events ?? [];
       const { buildAuditPackage } = await import("@/lib/audit-package");
-      const { blob, fileName } = await buildAuditPackage(exportEvents, { grain: "month" });
+      const { blob, fileName } = await buildAuditPackage(exportEvents, {
+        grain: "month",
+      });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -958,8 +981,10 @@ export default function AppShell({
       a.remove();
       URL.revokeObjectURL(url);
     } catch (e) {
-      console.error("Audit export failed:", e);
-      window.print(); // fallback: print the current view to PDF
+      console.error("Export failed:", e);
+      window.alert(
+        e instanceof Error ? e.message : "Export failed. Try again.",
+      );
     } finally {
       setExporting(false);
     }
@@ -1886,14 +1911,18 @@ export default function AppShell({
                 {personaDef.initial}
               </div>
               <div style={{ display: "flex", flexDirection: "column", textAlign: "left", minWidth: 0 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, lineHeight: 1.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{personaDef.label}</span>
-                <span className="muted" style={{ fontSize: 9, lineHeight: 1.1 }}>{personaDef.title}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, lineHeight: 1.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {personaDef.label}
+                </span>
+                <span className="muted" style={{ fontSize: 9, lineHeight: 1.1 }}>
+                  {authEnabled ? "Signed in" : personaDef.title}
+                </span>
               </div>
             </button>
             {showPersonaMenu && (
               <div
                 role="listbox"
-                aria-label="Dashboard role"
+                aria-label={personaLocked ? "Account" : "Dashboard role"}
                 style={{
                   position: "absolute",
                   top: "100%",
@@ -1909,48 +1938,86 @@ export default function AppShell({
                 }}
               >
                 <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-3)", padding: "4px 8px 6px" }}>
-                  Dashboard role
+                  {personaLocked ? "Signed in" : "Dashboard role"}
                 </div>
-                {PERSONA_ORDER.map((id) => {
-                  const p = PERSONAS[id];
-                  const on = id === persona;
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      role="option"
-                      aria-selected={on}
-                      onClick={() => setPersonaAndStore(id)}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        border: "none",
-                        borderRadius: "var(--radius-sm)",
-                        padding: "8px 10px",
-                        cursor: "pointer",
-                        background: on ? "var(--accent-weak)" : "transparent",
-                        fontFamily: "inherit",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 1,
-                      }}
-                    >
-                      <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>{p.label}</span>
-                      <span style={{ fontSize: 11, color: "var(--text-3)" }}>{p.title}</span>
-                    </button>
-                  );
-                })}
+                {!personaLocked &&
+                  PERSONA_ORDER.map((id) => {
+                    const p = PERSONAS[id];
+                    const on = id === persona;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        role="option"
+                        aria-selected={on}
+                        onClick={() => setPersonaAndStore(id)}
+                        style={{
+                          width: "100%",
+                          textAlign: "left",
+                          border: "none",
+                          borderRadius: "var(--radius-sm)",
+                          padding: "8px 10px",
+                          cursor: "pointer",
+                          background: on ? "var(--accent-weak)" : "transparent",
+                          fontFamily: "inherit",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 1,
+                        }}
+                      >
+                        <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>{p.label}</span>
+                        <span style={{ fontSize: 11, color: "var(--text-3)" }}>{p.title}</span>
+                      </button>
+                    );
+                  })}
+                {personaLocked && (
+                  <div style={{ padding: "6px 10px 10px", fontSize: 12, color: "var(--text-2)", lineHeight: 1.4 }}>
+                    Role is set by your account ({personaDef.label}). It cannot be switched from the UI.
+                  </div>
+                )}
+                {authEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPersonaMenu(false);
+                      void signOut();
+                    }}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      border: "none",
+                      borderTop: "1px solid var(--border)",
+                      borderRadius: "var(--radius-sm)",
+                      padding: "10px",
+                      cursor: "pointer",
+                      background: "transparent",
+                      fontFamily: "inherit",
+                      fontSize: 12.5,
+                      fontWeight: 700,
+                      color: "var(--status-bad, #b91c1c)",
+                      marginTop: 4,
+                    }}
+                  >
+                    Sign out
+                  </button>
+                )}
               </div>
             )}
           </div>
 
           <NotificationsPanel />
 
-          {/* Export Action: Pillbox Card Button — full plant audit package */}
+          {/* Export: report builder (analysis screens) · entries JSON (data-entry) · audit ZIP (else) */}
           <button 
-            onClick={() => (canReport(active) ? setReportOpen(true) : handleExport())} 
+            onClick={() => (canReport(active) ? setReportOpen(true) : void handleExport())} 
             disabled={exporting} 
-            title={canReport(active) ? "Build a report from this screen" : "Download the audit data package"}
+            title={
+              canReport(active)
+                ? "Build a report from this screen"
+                : active === "data-entry"
+                  ? "Configure and download data entries"
+                  : "Download the audit data package"
+            }
             style={{
               background: "var(--surface)",
               color: "var(--text)", 
@@ -1983,7 +2050,13 @@ export default function AppShell({
             }}
           >
             <Icon name="print" size={11} /> 
-            {exporting ? "Exporting…" : canReport(active) ? "Export report" : "Export"}
+            {exporting
+              ? "Exporting…"
+              : canReport(active)
+                ? "Export report"
+                : active === "data-entry"
+                  ? "Export entries"
+                  : "Export"}
           </button>
         </div>
       </header>
@@ -1995,6 +2068,15 @@ export default function AppShell({
           scope={reportScope}
           periodLabel={dateRange ?? "all data"}
           onClose={() => setReportOpen(false)}
+        />
+      )}
+
+      {entryExportOpen && active === "data-entry" && (
+        <EntryExportPanelLazy
+          events={events ?? []}
+          topbarFrom={t.dateFrom}
+          topbarTo={t.dateTo}
+          onClose={() => setEntryExportOpen(false)}
         />
       )}
 

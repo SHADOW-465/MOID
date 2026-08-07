@@ -199,4 +199,30 @@ describe("buildEntryRows + groupByBatchThenStage", () => {
     expect(tree[0].batch).toBe("25A28");
     expect(tree[0].stages.map((s) => s.stageId)).toEqual(["visual", "balloon"]);
   });
+
+  it("last-write-wins: re-save does not double checked qty", () => {
+    const events: AuditEventLike[] = [
+      ev({
+        eventId: "p-old",
+        eventType: "production",
+        stageId: "visual",
+        quantity: 1000,
+        recordedAt: "2025-04-01T10:00:00.000Z",
+        customFields: { batch: "25A28" },
+      } as any),
+      ev({
+        eventId: "p-new",
+        eventType: "production",
+        stageId: "visual",
+        quantity: 900,
+        recordedAt: "2025-04-01T12:00:00.000Z",
+        customFields: { batch: "25A28" },
+      } as any),
+    ];
+    for (const e of events) (e as any).size = "Fr16";
+    const rows = buildEntryRows(events);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].checked).toBe(900);
+    expect(rows[0].hasCorrection || rows[0].revisionCount > 1).toBe(true);
+  });
 });

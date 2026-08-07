@@ -4,11 +4,14 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import {
   DEFAULT_PERSONA,
   PERSONAS,
+  isPersonaId,
   readStoredPersona,
   writeStoredPersona,
   type PersonaCapabilities,
   type PersonaId,
 } from "@/lib/persona";
+
+type AuthUser = { username: string; role: PersonaId } | null;
 
 type PersonaCtx = {
   persona: PersonaId;
@@ -19,20 +22,75 @@ type PersonaCtx = {
   canConfigure: boolean;
   /** GM only — may permanently erase rows already in the ledger. */
   canEraseLedger: boolean;
+  /** True when MOID_AUTH_* is configured on the server. */
+  authEnabled: boolean;
+  /** Signed-in user when auth is on; null when open or signed out. */
+  authUser: AuthUser;
+  /** When auth is on, persona is bound to the session role. */
+  personaLocked: boolean;
+  /** True until the first /api/auth/me round-trip finishes. */
+  authReady: boolean;
+  /** Re-read session (call after login so events/registry can load). */
+  refreshAuth: () => Promise<void>;
+  signOut: () => Promise<void>;
 };
 
 const Ctx = createContext<PersonaCtx | null>(null);
 
 export function PersonaProvider({ children }: { children: React.ReactNode }) {
   const [persona, setPersonaState] = useState<PersonaId>(DEFAULT_PERSONA);
+  const [authEnabled, setAuthEnabled] = useState(false);
+  const [authUser, setAuthUser] = useState<AuthUser>(null);
+  const [authReady, setAuthReady] = useState(false);
 
-  useEffect(() => {
-    setPersonaState(readStoredPersona());
+  const refreshAuth = useCallback(async () => {
+    try {
+      const res = await fetch("/api/auth/me", { credentials: "same-origin" });
+      const data = await res.json().catch(() => ({}));
+      if (data.authEnabled) {
+        setAuthEnabled(true);
+        if (data.user?.username && isPersonaId(data.user.role)) {
+          setAuthUser({ username: data.user.username, role: data.user.role });
+          setPersonaState(data.user.role);
+          writeStoredPersona(data.user.role);
+        } else {
+          setAuthUser(null);
+        }
+      } else {
+        setAuthEnabled(false);
+        setAuthUser(null);
+        setPersonaState(readStoredPersona());
+      }
+    } catch {
+      setPersonaState(readStoredPersona());
+    } finally {
+      setAuthReady(true);
+    }
   }, []);
 
-  const setPersona = useCallback((id: PersonaId) => {
-    setPersonaState(id);
-    writeStoredPersona(id);
+  useEffect(() => {
+    void refreshAuth();
+  }, [refreshAuth]);
+
+  const setPersona = useCallback(
+    (id: PersonaId) => {
+      // Role comes from the session when auth is enabled — chrome switcher is locked.
+      if (authEnabled) return;
+      setPersonaState(id);
+      writeStoredPersona(id);
+    },
+    [authEnabled],
+  );
+
+  const signOut = useCallback(async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
+    } finally {
+      setAuthUser(null);
+      if (typeof window !== "undefined") {
+        window.location.href = "/login";
+      }
+    }
   }, []);
 
   const value = useMemo<PersonaCtx>(() => {
@@ -45,8 +103,14 @@ export function PersonaProvider({ children }: { children: React.ReactNode }) {
       canApprove: capabilities.approve,
       canConfigure: capabilities.configure,
       canEraseLedger: capabilities.eraseLedger,
+      authEnabled,
+      authUser,
+      personaLocked: authEnabled,
+      authReady,
+      refreshAuth,
+      signOut,
     };
-  }, [persona, setPersona]);
+  }, [persona, setPersona, authEnabled, authUser, authReady, refreshAuth, signOut]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
@@ -64,6 +128,12 @@ export function usePersona(): PersonaCtx {
       canApprove: capabilities.approve,
       canConfigure: capabilities.configure,
       canEraseLedger: capabilities.eraseLedger,
+      authEnabled: false,
+      authUser: null,
+      personaLocked: false,
+      authReady: true,
+      refreshAuth: async () => {},
+      signOut: async () => {},
     };
   }
   return v;

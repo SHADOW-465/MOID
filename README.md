@@ -147,9 +147,23 @@ other as a fallback.
 
 ## Deployment
 
-Standard Next.js App Router deploy. Set the Supabase variables plus at least one
-AI backend. `MOID_COMPANY_ID` scopes the schema stores if you host more than one
-plant; it defaults to `default`.
+**Plant / on-prem (supported path):** Docker Compose appliance on a single Linux
+server — see **[docs/deploy/on-prem.md](docs/deploy/on-prem.md)** and the
+[`deploy/`](deploy/) kit (`install.sh`, backup/restore, air-gap notes).
+
+**Generic Next.js / Vercel:** set Supabase variables plus optional AI backends.
+`MOID_COMPANY_ID` scopes schema stores if you host more than one plant; it
+defaults to `default`.
+
+**Optional sign-in (Vercel + plant):** set `MOID_AUTH_SECRET` (≥16 chars). The
+login page lists the same three roles as the topbar (GM / Owner / Operator);
+pick one and enter its password. Defaults: `moid-gm`, `moid-owner`,
+`moid-operator` — override with `MOID_AUTH_PASSWORD_GM` etc. When the secret is
+unset, the app stays open and the topbar role switcher works as before.
+
+**Move Data Entry between databases:** On Data Entry, topbar **Export entries**
+opens a panel to pick scope/dates/format → download JSON → Staging →
+*Import transfer package* (idempotent append).
 
 ## License
 

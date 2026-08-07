@@ -1,0 +1,24 @@
+node_modules
+.next
+.git
+.worktrees
+DATA
+ANALYTICAL DATA
+docs
+demo
+graphify-out
+coverage
+*.md
+!package.json
+deploy/backups
+deploy/.env
+.env
+.env.local
+.env*.local
+**/*.xlsx
+**/*.xls
+**/*.csv
+.playwright-mcp
+.ua
+.gstack
+.superpowers

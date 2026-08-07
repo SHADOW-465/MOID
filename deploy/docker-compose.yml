@@ -1,0 +1,126 @@
+# MOID plant appliance — single Linux server, air-gapped LAN.
+#
+# From repo root (or after copying deploy/ + migrations onto the server):
+#   cd deploy && cp env.example .env   # then edit
+#   ./scripts/gen-secrets.sh          # fills JWT + DB password + keys
+#   ./scripts/install.sh
+#
+# Optional local LLM: set MINICPM_BASE_URL in .env (host or separate container).
+# Compose does not require outbound internet at runtime once images are loaded.
+
+name: moid-plant
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: postgres
+    volumes:
+      - moid_pgdata:/var/lib/postgresql/data
+      - ./db/00_init_roles.sql:/docker-entrypoint-initdb.d/00_init_roles.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - moid_internal
+    # Postgres is NOT published to the host by default (LAN attackers cannot hit it).
+
+  rest:
+    image: postgrest/postgrest:v12.2.8
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${DB_AUTHENTICATOR_PASSWORD:-changeme_authenticator}@db:5432/postgres
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      PGRST_DB_EXTRA_SEARCH_PATH: public
+      PGRST_SERVER_PORT: 3000
+    networks:
+      - moid_internal
+
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?set plant LAN URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?set anon JWT}
+    image: moid-app:${MOID_IMAGE_TAG:-local}
+    restart: unless-stopped
+    depends_on:
+      - rest
+    environment:
+      NODE_ENV: production
+      # Browser-facing (must match how operators open the app on the LAN).
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      # Server-side calls stay on the compose network (not the LAN hairpin).
+      # Must go through gateway so supabase-js path /rest/v1/ is rewritten to PostgREST.
+      SUPABASE_INTERNAL_URL: http://gateway
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?set service_role JWT}
+      MOID_COMPANY_ID: ${MOID_COMPANY_ID:-default}
+      # Optional local LLM (OpenAI-compatible). Leave empty if none.
+      MINICPM_BASE_URL: ${MINICPM_BASE_URL:-}
+      MINICPM_API_KEY: ${MINICPM_API_KEY:-local}
+      MINICPM_MODEL: ${MINICPM_MODEL:-}
+      MINICPM_MODEL_FAST: ${MINICPM_MODEL_FAST:-}
+      RAIS_AI_BACKEND: ${RAIS_AI_BACKEND:-minicpm}
+      # Never force memory store on plant.
+      MOID_STORE: ${MOID_STORE:-}
+      # Optional app sign-in (same as Vercel). Empty = open access.
+      MOID_AUTH_SECRET: ${MOID_AUTH_SECRET:-}
+      MOID_AUTH_USERS: ${MOID_AUTH_USERS:-}
+    networks:
+      - moid_internal
+      # If LLM runs on the host LAN, app may need host gateway access — use
+      # extra_hosts or put the LLM on moid_internal as well.
+
+  gateway:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+      - rest
+    ports:
+      - "${MOID_HTTP_PORT:-80}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    networks:
+      - moid_internal
+
+  # One-shot: apply SQL migrations in filename order, then exit.
+  migrate:
+    image: postgres:17-alpine
+    profiles: ["tools"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      DB_AUTHENTICATOR_PASSWORD: ${DB_AUTHENTICATOR_PASSWORD:-changeme_authenticator}
+    volumes:
+      - ../supabase/migrations:/migrations:ro
+      - ./scripts/migrate.sh:/migrate.sh:ro
+    entrypoint: ["/bin/sh", "/migrate.sh"]
+    networks:
+      - moid_internal
+
+volumes:
+  moid_pgdata:
+
+networks:
+  moid_internal:
+    driver: bridge

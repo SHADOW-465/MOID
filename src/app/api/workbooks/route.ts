@@ -15,6 +15,8 @@ import { llmLayout } from "@/core/ontology/resolver/llm-layout";
 import { buildModDocument, type ProfiledSheet } from "@/core/ontology/builder/build-mod";
 import { getModStore } from "@/core/ontology/store/mod-store";
 import { getKnowledgeStore } from "@/core/ontology/store/knowledge-store";
+import { loadCatalog } from "@/core/ontology/load-catalog";
+import { diffAgainstCatalog } from "@/core/ontology/catalog-diff";
 import { availableBackends } from "@/lib/ai";
 
 export const runtime = "nodejs";
@@ -85,9 +87,10 @@ export async function POST(req: NextRequest) {
     const useLlm = form.get("llm") !== "off" && availableBackends().length > 0;
 
     const company = companyId();
-    const [exact, concepts] = await Promise.all([
+    const [exact, concepts, catalog] = await Promise.all([
       buildExactIndex(company),
       getKnowledgeStore().concepts(),
+      loadCatalog(company),
     ]);
 
     const mods = [];
@@ -134,6 +137,12 @@ export async function POST(req: NextRequest) {
         document,
       });
 
+      const catalogDiff = diffAgainstCatalog(catalog, {
+        stages: document.stages,
+        defects: document.defects,
+        sizes: document.sizes,
+      });
+
       mods.push({
         modId: draft.modId,
         version: draft.version,
@@ -143,10 +152,21 @@ export async function POST(req: NextRequest) {
         stages: document.stages,
         defects: document.defects,
         sizes: document.sizes,
+        /** Diff vs plant schema — UI asks before growing master catalog. */
+        catalogDiff,
       });
     }
 
-    return NextResponse.json({ mods, llmUsed: useLlm });
+    return NextResponse.json({
+      mods,
+      llmUsed: useLlm,
+      plantConfigured: catalog.stages.length > 0,
+      plantCatalogCounts: {
+        stages: catalog.stages.length,
+        defects: catalog.defects.length,
+        sizes: catalog.sizes.length,
+      },
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Workbook processing failed";
     return NextResponse.json({ error: message }, { status: 500 });

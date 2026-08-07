@@ -1,0 +1,343 @@
+/* Impeccable layout + clarify · operate mode · project tokens
+ * Floating export sheet for Data Entry — one primary action: Download.
+ */
+
+.eep-root {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+  box-sizing: border-box;
+}
+
+.eep-backdrop {
+  position: absolute;
+  inset: 0;
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: var(--overlay, rgba(28, 25, 23, 0.45));
+  cursor: pointer;
+}
+
+.eep-panel {
+  position: relative;
+  z-index: 1;
+  width: min(480px, 100%);
+  max-height: min(88dvh, 720px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  color: var(--text);
+  border: 1.5px solid var(--border-strong);
+  border-radius: 14px;
+  box-shadow: var(--shadow-3);
+  overflow: hidden;
+}
+
+.eep-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px 18px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface));
+}
+
+.eep-head-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.eep-kicker {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.eep-title {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: var(--text);
+}
+
+.eep-lede {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-2);
+  max-width: 42ch;
+}
+
+.eep-close {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.eep-close:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.eep-close:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.eep-body {
+  padding: 16px 18px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.eep-section-title {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.eep-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.eep-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast, 120ms) var(--ease-out, ease),
+    border-color var(--duration-fast, 120ms) var(--ease-out, ease);
+}
+
+.eep-option:hover {
+  background: var(--surface-2);
+}
+
+.eep-option.is-on {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+}
+
+.eep-option input {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.eep-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.eep-option-label {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.25;
+}
+
+.eep-option-hint {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-3);
+}
+
+.eep-dates-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.eep-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.eep-field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.eep-input {
+  height: 40px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 0 10px;
+  font-size: 13px;
+  font-family: inherit;
+  background: var(--surface);
+  color: var(--text);
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.eep-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.eep-preview {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+}
+
+.eep-preview-val {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--text);
+  min-width: 2.5ch;
+}
+
+.eep-preview-lab {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text-2);
+}
+
+.eep-remember {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.eep-alert {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.eep-alert--err {
+  border: 1px solid var(--critical);
+  background: var(--critical-weak);
+  color: var(--critical);
+}
+
+.eep-alert--ok {
+  border: 1px solid var(--positive);
+  background: var(--positive-weak);
+  color: var(--positive);
+}
+
+.eep-foot {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--surface);
+}
+
+.eep-btn {
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.eep-btn:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.eep-btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.eep-btn--ghost:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.eep-btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.eep-btn--primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+@media (max-width: 420px) {
+  .eep-dates-row {
+    grid-template-columns: 1fr;
+  }
+
+  .eep-foot {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .eep-btn {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eep-option {
+    transition: none;
+  }
+}

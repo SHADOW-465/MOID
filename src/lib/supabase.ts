@@ -20,17 +20,30 @@ export function getSupabaseClient() {
  * Only use in Next.js API route handlers (server-side).
  */
 export function createServerClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  // On Docker plant installs the browser must hit the LAN public URL, while
+  // the Next server should talk to PostgREST on the compose network.
+  const url =
+    process.env.SUPABASE_INTERNAL_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  if (!url) throw new Error("NEXT_PUBLIC_SUPABASE_URL is not set");
-  
+  if (!url) {
+    throw new Error(
+      "SUPABASE_INTERNAL_URL or NEXT_PUBLIC_SUPABASE_URL is not set",
+    );
+  }
+
   const keyToUse = serviceKey || anonKey;
-  if (!keyToUse) throw new Error("Neither SUPABASE_SERVICE_ROLE_KEY nor NEXT_PUBLIC_SUPABASE_ANON_KEY is set");
+  if (!keyToUse) {
+    throw new Error(
+      "Neither SUPABASE_SERVICE_ROLE_KEY nor NEXT_PUBLIC_SUPABASE_ANON_KEY is set",
+    );
+  }
 
   if (!serviceKey) {
-    console.warn("[supabase] SUPABASE_SERVICE_ROLE_KEY not set, falling back to anon key. RLS may block operations.");
+    console.warn(
+      "[supabase] SUPABASE_SERVICE_ROLE_KEY not set, falling back to anon key. RLS may block operations.",
+    );
   }
 
   return createClient(url, keyToUse, {

@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { modId, version, verifiedBy } = body ?? {};
+    const { modId, version, verifiedBy, acceptNovel } = body ?? {};
     if (!modId || typeof version !== "number") {
       return NextResponse.json({ error: "modId and version are required" }, { status: 400 });
     }
@@ -47,9 +47,12 @@ export async function POST(req: NextRequest) {
     }
 
     const published = await store.publish(modId, version, verifiedBy || "steward");
-    // Promote stages/defects/sizes into the company-owned master catalog.
-    // This catalog survives workbook delete — only Data Schema may edit it.
-    const catalog = await getCatalogStore().mergeFromMod(published);
+    // Plant schema is master. When already configured, only add entities the
+    // operator explicitly accepted as novel (acceptNovel). Matching existing
+    // codes still unions aliases. Empty plant → full bootstrap merge.
+    const catalog = await getCatalogStore().mergeFromMod(published, {
+      acceptNovel: acceptNovel ?? null,
+    });
     const learned = await learnFromMod(published);
     return NextResponse.json({
       modId: published.modId,
@@ -62,6 +65,7 @@ export async function POST(req: NextRequest) {
         defects: catalog.defects.length,
         sizes: catalog.sizes.length,
       },
+      catalogUpdatedAt: catalog.updatedAt,
     });
   } catch (err: unknown) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Failed to publish MOD" }, { status: 500 });

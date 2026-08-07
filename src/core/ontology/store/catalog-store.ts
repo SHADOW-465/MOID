@@ -16,6 +16,7 @@ import type { StageDef, DefectDef, SizeDef } from "@/lib/contract/d1";
 import type { ModRowT } from "@/shared/models/ontology";
 import { shouldUseSupabase } from "@/lib/store";
 import { createServerClient } from "@/lib/supabase";
+import { filterIncomingForCatalogMerge } from "@/core/ontology/catalog-diff";
 
 export interface CompanyCatalog {
   stages: z.infer<typeof StageDef>[];
@@ -41,8 +42,21 @@ export interface CatalogStore {
   get(companyId: string): Promise<CompanyCatalog>;
   /** Replace entire catalog (admin edit / reset). */
   put(companyId: string, catalog: Omit<CompanyCatalog, "updatedAt"> & { updatedAt?: string | null }): Promise<CompanyCatalog>;
-  /** Merge stages/defects/sizes from a verified MOD — first occurrence wins per id. */
-  mergeFromMod(mod: ModRowT): Promise<CompanyCatalog>;
+  /**
+   * Merge stages/defects/sizes from a verified MOD — first occurrence wins per id.
+   * When plant schema is already configured, pass acceptNovel so only approved
+   * new entities are added (existing codes still get alias unions).
+   */
+  mergeFromMod(
+    mod: ModRowT,
+    opts?: {
+      acceptNovel?: {
+        stageIds?: string[];
+        defectCodes?: string[];
+        sizeIds?: string[];
+      } | null;
+    },
+  ): Promise<CompanyCatalog>;
   upsertStage(companyId: string, stage: z.infer<typeof StageDef>): Promise<CompanyCatalog>;
   upsertDefect(companyId: string, defect: z.infer<typeof DefectDef>): Promise<CompanyCatalog>;
   upsertSize(companyId: string, size: z.infer<typeof SizeDef>): Promise<CompanyCatalog>;
@@ -130,14 +144,30 @@ class MemoryCatalogStore implements CatalogStore {
     this.byCompany.set(companyId, saved);
     return saved;
   }
-  async mergeFromMod(mod: ModRowT) {
+  async mergeFromMod(
+    mod: ModRowT,
+    opts?: {
+      acceptNovel?: {
+        stageIds?: string[];
+        defectCodes?: string[];
+        sizeIds?: string[];
+      } | null;
+    },
+  ) {
     const base = await this.get(mod.companyId);
-    const next = mergeInto(
+    const filtered = filterIncomingForCatalogMerge(
       base,
       {
         stages: mod.document.stages ?? [],
         defects: mod.document.defects ?? [],
         sizes: mod.document.sizes ?? [],
+      },
+      opts?.acceptNovel,
+    );
+    const next = mergeInto(
+      base,
+      {
+        ...filtered,
         fiscalYearStartMonth: mod.document.fiscalYearStartMonth,
       },
       mod.modId,
@@ -266,14 +296,30 @@ class SupabaseCatalogStore implements CatalogStore {
     return fromDb(data as CatalogDbRow);
   }
 
-  async mergeFromMod(mod: ModRowT) {
+  async mergeFromMod(
+    mod: ModRowT,
+    opts?: {
+      acceptNovel?: {
+        stageIds?: string[];
+        defectCodes?: string[];
+        sizeIds?: string[];
+      } | null;
+    },
+  ) {
     const base = await this.get(mod.companyId);
-    const next = mergeInto(
+    const filtered = filterIncomingForCatalogMerge(
       base,
       {
         stages: mod.document.stages ?? [],
         defects: mod.document.defects ?? [],
         sizes: mod.document.sizes ?? [],
+      },
+      opts?.acceptNovel,
+    );
+    const next = mergeInto(
+      base,
+      {
+        ...filtered,
         fiscalYearStartMonth: mod.document.fiscalYearStartMonth,
       },
       mod.modId,

@@ -13,10 +13,12 @@ import { Card, Empty } from "@/components/app/widgets";
 import UploadZone from "@/components/UploadZone";
 import ExcelTabs from "@/components/app/ExcelTabs";
 import Icon from "@/components/editorial/Icon";
+import EntryTransferImport from "@/components/EntryTransferImport";
 import { buildReviewRows, reviewSummary, applyEdit, defectKey } from "@/lib/ingest/review";
 import type { StageDayRecord } from "@/lib/ingest/emit";
 import MappingVerificationPanel, { type UploadedMod } from "@/components/app/MappingVerificationPanel";
 import QtyInput from "@/components/entry/QtyInput";
+import "./staging.css";
 
 const PAGE_SIZE = 31;
 
@@ -285,31 +287,59 @@ export default function StagingPage() {
   };
 
   return (
-    <AppShell active="workbooks" statusCounts={{ anomalies: summary.invalid + summary.corrected }}>
-      {/* Hallmark · Workbench · product register · step-focused import flow */}
-      <h1 className="h1" style={{ margin: "0 0 4px" }}>Excel Data</h1>
-      <p className="muted" style={{ fontSize: "var(--text-sm)", margin: "0 0 14px", maxWidth: "68ch", lineHeight: "var(--leading-body)" }}>
-        Load your plant workbook once so the app learns <strong>your columns</strong> for Data Entry and
-        can put historical numbers on the Dashboard. Day to day, prefer{" "}
-        <a href="/data-entry" style={{ color: "var(--accent)", fontWeight: 600 }}>Data Entry</a>.
-      </p>
+    <AppShell active="staging" statusCounts={{ anomalies: summary.invalid + summary.corrected }}>
+      <div className="import-page">
+      <header className="import-mast">
+        <div>
+          <p className="import-kicker">Data intake</p>
+          <h1 className="import-title">Import from Excel</h1>
+          <p className="import-lede">
+            Match workbook columns to your <strong>Plant Schema</strong>, then load numbers
+            onto the ledger. Day-to-day capture stays on{" "}
+            <a href="/data-entry" style={{ color: "var(--accent)", fontWeight: 600 }}>
+              Data Entry
+            </a>
+            .
+          </p>
+        </div>
+        <div className="import-mast-meta" aria-label="Import status">
+          <div className="import-stat">
+            <span className="import-stat-val">{activeStep}/3</span>
+            <span className="import-stat-lab">Step</span>
+          </div>
+          <div className="import-stat-rule" />
+          <div className="import-stat">
+            <span className="import-stat-val">{rows.length}</span>
+            <span className="import-stat-lab">Rows</span>
+          </div>
+          <div className="import-stat-rule" />
+          <div className="import-stat">
+            <span className="import-stat-val">{summary.invalid}</span>
+            <span className="import-stat-lab">Issues</span>
+          </div>
+        </div>
+      </header>
 
       <ExcelTabs active="staging" />
 
-      {/* Operator path — active step highlighted; inactive steps quiet */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-          gap: 10,
-          marginBottom: 18,
-        }}
-      >
+      <nav className="import-path" aria-label="Import steps">
         {(
           [
-            { n: 1 as const, t: "Upload workbook", d: "Drop the Excel you already use (Visual, Valve, Rejection Analysis, …)." },
-            { n: 2 as const, t: "Confirm column meanings", d: "Check each header maps to Checked / Rejected / defect codes. Fix if wrong." },
-            { n: 3 as const, t: "Load numbers", d: "Clean rows go to the ledger automatically. Then open Dashboard or keep entering new days." },
+            {
+              n: 1 as const,
+              t: "Upload workbook",
+              d: "Drop Visual, Valve, Rejection Analysis, or similar plant files.",
+            },
+            {
+              n: 2 as const,
+              t: "Match Plant Schema",
+              d: "Confirm headers. New codes need your OK before they join Plant Schema.",
+            },
+            {
+              n: 3 as const,
+              t: "Load numbers",
+              d: "Review quantities, then commit to the ledger for the Dashboard.",
+            },
           ] as const
         ).map((s) => {
           const active = activeStep === s.n;
@@ -317,76 +347,63 @@ export default function StagingPage() {
           return (
             <div
               key={s.n}
-              style={{
-                padding: "12px 14px",
-                borderRadius: 10,
-                border: `1.5px solid ${active ? "var(--accent)" : "var(--border)"}`,
-                background: active
-                  ? "color-mix(in srgb, var(--accent) 7%, var(--surface))"
-                  : "var(--surface)",
-                opacity: doneStep ? 0.72 : 1,
-              }}
+              className={`import-path-step ${active ? "is-active" : ""} ${doneStep ? "is-done" : ""}`}
             >
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 800,
-                  color: active || doneStep ? "var(--accent)" : "var(--text-3)",
-                  letterSpacing: "0.04em",
-                  marginBottom: 4,
-                }}
-              >
-                {doneStep ? "DONE" : `STEP ${s.n}`}
-                {active ? " · NOW" : ""}
+              <div className="import-path-n">
+                {doneStep ? "Done" : `Step ${s.n}`}
+                {active ? " · now" : ""}
               </div>
-              <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 4 }}>{s.t}</div>
-              <div className="muted" style={{ fontSize: 12, lineHeight: 1.45 }}>{s.d}</div>
+              <div className="import-path-t">{s.t}</div>
+              <div className="import-path-d">{s.d}</div>
             </div>
           );
         })}
-      </div>
+      </nav>
 
-      {error && <div style={{ marginBottom: 14, padding: "10px 14px", borderRadius: 9, background: "color-mix(in srgb, var(--status-bad) 12%, transparent)", color: "var(--status-bad)", fontSize: 13 }}>{error}</div>}
-      {done && <div style={{ marginBottom: 14, padding: "10px 14px", borderRadius: 9, background: "color-mix(in srgb, var(--status-good) 12%, transparent)", color: "var(--status-good)", fontSize: 13, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <span>
-          <strong>Done.</strong> {done.inserted} new facts on the ledger
-          {done.deduped ? ` (${done.deduped} already present)` : ""}.
-          Your schema is available for Data Entry; numbers show on the Dashboard.
-        </span>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => router.push("/data-entry")} style={{ background: "var(--surface)", color: "var(--text)", border: "1px solid var(--border-strong)", borderRadius: 8, padding: "6px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Data Entry</button>
-          <button onClick={() => router.push("/")} style={{ background: "var(--status-good)", color: "#fff", border: "none", borderRadius: 8, padding: "6px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Dashboard →</button>
+      {error && (
+        <div className="import-banner import-banner--err" role="alert">
+          {error}
         </div>
-      </div>}
+      )}
+      {done && (
+        <div className="import-banner import-banner--ok" role="status">
+          <span>
+            <strong>Done.</strong> {done.inserted} new facts on the ledger
+            {done.deduped ? ` (${done.deduped} already present)` : ""}. Numbers show on the
+            Dashboard.
+          </span>
+          <div className="import-banner-actions">
+            <button type="button" className="import-btn" onClick={() => router.push("/data-entry")}>
+              Data Entry
+            </button>
+            <button type="button" className="import-btn import-btn--primary" onClick={() => router.push("/")}>
+              Dashboard →
+            </button>
+          </div>
+        </div>
+      )}
 
-      {/* Step 2 first in the reading order once a file is analyzed */}
       {modUploads.length > 0 && (
         <MappingVerificationPanel mods={modUploads} onPublished={handleModPublished} />
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(240px, 300px)", gap: 18 }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
-          {/* Collapse upload chrome while confirming mappings to cut scroll thrash */}
+      <div className="import-layout">
+        <div className="import-main">
           {activeStep === 1 ? (
-            <Card
-              title="Upload plant Excel"
-              sub="Close the file in Excel first if it is open. We never change your original workbook."
-            >
+            <div className="import-card">
+              <h2 className="import-card-title">Upload plant Excel</h2>
+              <p className="import-card-sub">
+                Close the file in Excel first if it is open. We never change your original
+                workbook. Plant Schema is matched — not re-created — when it already exists.
+              </p>
               <UploadZone onUpload={handleUpload} />
-            </Card>
+            </div>
           ) : (
-            <details
-              style={{
-                border: "1px solid var(--border)",
-                borderRadius: 10,
-                background: "var(--surface)",
-                padding: "0 14px",
-              }}
-            >
+            <details className="import-card" style={{ paddingTop: 8, paddingBottom: 8 }}>
               <summary
                 style={{
                   cursor: "pointer",
-                  padding: "12px 0",
+                  padding: "8px 0",
                   fontSize: 13,
                   fontWeight: 600,
                   color: "var(--text-2)",
@@ -405,9 +422,11 @@ export default function StagingPage() {
                     </span>
                   ) : null}
                 </span>
-                <span className="small" style={{ color: "var(--text-3)" }}>Expand</span>
+                <span className="small" style={{ color: "var(--text-3)" }}>
+                  Expand
+                </span>
               </summary>
-              <div style={{ paddingBottom: 14 }}>
+              <div style={{ paddingBottom: 8 }}>
                 <UploadZone onUpload={handleUpload} />
               </div>
             </details>
@@ -783,34 +802,125 @@ export default function StagingPage() {
           </Card>
         </div>
 
-        {/* right rail */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <Card title="Quick Stats">
-            <Stat label="Total Records" value={rows.length.toLocaleString()} />
-            <Stat label="Total Input" value={totals.input.toLocaleString()} />
-            <Stat label="Total Rejected" value={totals.rejected.toLocaleString()} tone="bad" />
-            <Stat label="Overall Rejection %" value={`${totals.rejPct.toFixed(2)}%`} tone="bad" />
-          </Card>
-          <Card title="Data Quality Check">
+        <aside className="import-side" aria-label="Import summary">
+          <div className="import-card">
+            <h2 className="import-card-title">How import works</h2>
+            <ul className="import-hint-list">
+              <li>
+                Plant Schema is the master list of stages, defects, and sizes.
+              </li>
+              <li>
+                Excel headers are matched to that catalog — not saved as a second
+                schema.
+              </li>
+              <li>
+                New codes only join Plant Schema if you tick them when prompted.
+              </li>
+            </ul>
+          </div>
+          <div className="import-card">
+            <h2 className="import-card-title">Quick stats</h2>
+            <Stat label="Total records" value={rows.length.toLocaleString()} />
+            <Stat label="Total input" value={totals.input.toLocaleString()} />
+            <Stat label="Total rejected" value={totals.rejected.toLocaleString()} tone="bad" />
+            <Stat label="Overall rejection %" value={`${totals.rejPct.toFixed(2)}%`} tone="bad" />
+          </div>
+          <div className="import-card">
+            <h2 className="import-card-title">Data quality</h2>
             {dq.map((d) => (
-              <div key={d.label} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}>
+              <div
+                key={d.label}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  padding: "5px 0",
+                  fontSize: 13,
+                }}
+              >
                 <span className="muted">{d.label}</span>
-                <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 6, color: d.state === "Passed" ? "var(--status-good)" : d.state === "Warning" ? "var(--status-warn)" : "var(--status-bad)", background: `color-mix(in srgb, ${d.state === "Passed" ? "var(--status-good)" : d.state === "Warning" ? "var(--status-warn)" : "var(--status-bad)"} 14%, transparent)` }}>{d.state}</span>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    padding: "2px 8px",
+                    borderRadius: 6,
+                    color:
+                      d.state === "Passed"
+                        ? "var(--status-good)"
+                        : d.state === "Warning"
+                          ? "var(--status-warn)"
+                          : "var(--status-bad)",
+                    background: `color-mix(in srgb, ${
+                      d.state === "Passed"
+                        ? "var(--status-good)"
+                        : d.state === "Warning"
+                          ? "var(--status-warn)"
+                          : "var(--status-bad)"
+                    } 14%, transparent)`,
+                  }}
+                >
+                  {d.state}
+                </span>
               </div>
             ))}
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--border)", fontSize: 13 }}>
-              <strong>Record Distribution</strong>
-              <span className="muted">{summary.ok + summary.corrected} valid · {summary.invalid} invalid</span>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                marginTop: 8,
+                paddingTop: 8,
+                borderTop: "1px solid var(--border)",
+                fontSize: 13,
+              }}
+            >
+              <strong>Rows</strong>
+              <span className="muted">
+                {summary.ok + summary.corrected} valid · {summary.invalid} invalid
+              </span>
             </div>
-          </Card>
-          <Card title="Actions">
-            <button onClick={publish} disabled={rows.length === 0 || summary.invalid > 0 || busy}
-              style={{ width: "100%", background: "var(--status-good)", color: "#fff", border: "none", borderRadius: 9, padding: "11px", fontSize: 14, fontWeight: 700, cursor: rows.length && !summary.invalid && !busy ? "pointer" : "not-allowed", opacity: rows.length && !summary.invalid && !busy ? 1 : 0.5 }}>
-              <Icon name="check" size={14} /> {busy ? "Publishing…" : "Publish to Analytics"}
+          </div>
+          <div className="import-card">
+            <h2 className="import-card-title">Commit to ledger</h2>
+            <button
+              type="button"
+              onClick={publish}
+              disabled={rows.length === 0 || summary.invalid > 0 || busy}
+              style={{
+                width: "100%",
+                background: "var(--status-good)",
+                color: "#fff",
+                border: "none",
+                borderRadius: 9,
+                padding: "11px",
+                fontSize: 14,
+                fontWeight: 700,
+                cursor:
+                  rows.length && !summary.invalid && !busy ? "pointer" : "not-allowed",
+                opacity: rows.length && !summary.invalid && !busy ? 1 : 0.5,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+              }}
+            >
+              <Icon name="check" size={14} />{" "}
+              {busy ? "Publishing…" : "Publish to analytics"}
             </button>
-            {summary.invalid > 0 && <div className="muted" style={{ fontSize: 11, marginTop: 8 }}>Fix {summary.invalid} invalid row(s) before publishing.</div>}
-          </Card>
-        </div>
+            {summary.invalid > 0 && (
+              <div className="muted" style={{ fontSize: 11, marginTop: 8 }}>
+                Fix {summary.invalid} invalid row(s) before publishing.
+              </div>
+            )}
+          </div>
+          <div className="import-transfer">
+            <h2 className="import-card-title">Transfer package</h2>
+            <p className="import-card-sub" style={{ marginBottom: 8 }}>
+              JSON exported from Data Entry (another DB). Does not use Excel mapping.
+            </p>
+            <EntryTransferImport embedded />
+          </div>
+        </aside>
+      </div>
       </div>
     </AppShell>
   );

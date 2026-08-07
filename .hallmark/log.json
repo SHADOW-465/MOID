@@ -1,5 +1,27 @@
 [
   {
+    "date": "2026-08-07",
+    "scope": "staging",
+    "macrostructure": "Feature Stack",
+    "theme": "project-locked",
+    "theme_axes": "light / geometric-sans / warm",
+    "enrichment": "none",
+    "brief": "Import Excel — match Plant Schema, novel codes require accept; sticky rail + clear step path (impeccable layout/clarity)",
+    "nav": "N/A (AppShell)",
+    "genre": "modern-minimal"
+  },
+  {
+    "date": "2026-08-07",
+    "scope": "login",
+    "macrostructure": "Split Studio",
+    "theme": "project-locked",
+    "theme_axes": "light / geometric-sans / warm",
+    "enrichment": "none",
+    "brief": "Auth gate redesign — diptych brand rail + segmented role picker + password; same GM/Owner/Operator personas as topbar",
+    "nav": "N/A (auth)",
+    "genre": "modern-minimal"
+  },
+  {
     "date": "2026-08-05",
     "scope": "app",
     "macrostructure": "Narrative Workflow",

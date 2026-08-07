@@ -72,7 +72,9 @@ IST business days (e.g. 10:00–18:00), excluding public holidays — unless pre
 | On-prem | LAN server, Postgres, reverse proxy, optional Ollama, backups, no required egress |
 | Hosted pilot | Single-tenant, named users, wipe at end, access logs |
 
-Eng references: `docs/build-spec/14-security-airgap.md`, `16-production-rebuild-guide.md`. Ship with install runbook on the branch you deliver.
+**Install runbook (Compose appliance):** [`docs/deploy/on-prem.md`](../deploy/on-prem.md) + [`deploy/`](../../deploy/).
+
+Background eng notes: `docs/build-spec/14-security-airgap.md`, `16-production-rebuild-guide.md`.
 
 ### Minimum server sketch (starting point — size with IT)
 - 4–8 vCPU, 16–32 GB RAM, SSD  

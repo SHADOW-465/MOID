@@ -5,15 +5,8 @@
 // analytics page shares one copy instead of independently calling
 // DISPOSAFE_REGISTRY as a hardcoded default. Mirrors EventsContext exactly.
 //
-// This is the fix for the root cause traced in this session: rejectionRate(),
-// totalChecked(), fpy(), byStage(), byDefect(), stageTrend(), stageBySize()
-// (src/lib/analytics/rejection.ts, defect.ts) all default their `registry`
-// parameter to the hardcoded DISPOSAFE_REGISTRY, and no page was passing a
-// dynamic one in. perStageAgg() filters ledger events against registry.stages
-// — any event whose stageId isn't one of the 13 hardcoded ones was silently
-// invisible to every headline KPI, even though it was correctly stored in the
-// canonical event ledger. Pages should pass `registry` from useRegistry() into
-// every selector call instead of relying on the hardcoded default.
+// Waits for auth session when MOID_AUTH_SECRET is set so signed-out shells
+// do not log `schema 401`, and re-fetches immediately after sign-in.
 
 import {
   DEFAULT_POLICY,
@@ -29,6 +22,7 @@ import React, {
   useMemo,
   useRef,
 } from "react";
+import { usePersona } from "@/components/app/PersonaContext";
 
 interface RegistryContextType {
   registry: any | null;
@@ -44,6 +38,7 @@ interface RegistryContextType {
 const RegistryContext = createContext<RegistryContextType | undefined>(undefined);
 
 export function RegistryProvider({ children }: { children: React.ReactNode }) {
+  const { authEnabled, authUser, authReady } = usePersona();
   const [registry, setRegistry] = useState<any | null>(null);
   const [policy, setPolicy] = useState<CalculationPolicyT>(DEFAULT_POLICY);
   const [isLoading, setIsLoading] = useState(true);
@@ -51,14 +46,31 @@ export function RegistryProvider({ children }: { children: React.ReactNode }) {
   const inflight = useRef<Promise<void> | null>(null);
   const hasData = useRef(false);
 
+  const blockedByAuth = authReady && authEnabled && !authUser;
+  const canFetch = authReady && !blockedByAuth;
+
   const refreshRegistry = useCallback(async () => {
+    if (!canFetch) {
+      setRegistry(null);
+      setPolicy(DEFAULT_POLICY);
+      setIsLoading(false);
+      setIsValidating(false);
+      return;
+    }
     if (inflight.current) return inflight.current;
 
     const run = (async () => {
       if (hasData.current) setIsValidating(true);
       else setIsLoading(true);
       try {
-        const res = await fetch("/api/schema");
+        const res = await fetch("/api/schema", { credentials: "same-origin" });
+        if (res.status === 401) {
+          // Signed out with auth on — expected; keep empty, no console noise.
+          setRegistry(null);
+          setPolicy(DEFAULT_POLICY);
+          hasData.current = false;
+          return;
+        }
         if (!res.ok) throw new Error(`schema ${res.status}`);
         const data = await res.json();
         setRegistry(data.registry ?? null);
@@ -76,11 +88,20 @@ export function RegistryProvider({ children }: { children: React.ReactNode }) {
 
     inflight.current = run;
     return run;
-  }, []);
+  }, [canFetch]);
 
   useEffect(() => {
+    if (!authReady) return;
+    if (blockedByAuth) {
+      setRegistry(null);
+      setPolicy(DEFAULT_POLICY);
+      hasData.current = false;
+      setIsLoading(false);
+      setIsValidating(false);
+      return;
+    }
     void refreshRegistry();
-  }, [refreshRegistry]);
+  }, [authReady, blockedByAuth, authUser?.username, refreshRegistry]);
 
   const value = useMemo(
     () => ({ registry, policy, isLoading, isValidating, refreshRegistry }),
@@ -100,7 +121,7 @@ export function useRegistry() {
   return context;
 }
 
-/** The plant's calculation conventions. Same provider, no extra fetch. */
+/** Policy only — same object as useRegistry().policy for screens that do not need the catalog. */
 export function usePolicy(): CalculationPolicyT {
   return useRegistry().policy;
 }

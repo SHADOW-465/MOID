@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Plant / Docker image: copy only the standalone server + static assets.
+  output: "standalone",
   // Tree-shake large packages that ship multi-entry barrels (faster cold parse).
   experimental: {
     optimizePackageImports: ["geist", "zod", "ai"],

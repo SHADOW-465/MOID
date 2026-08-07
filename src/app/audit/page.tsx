@@ -33,6 +33,7 @@ import {
   type BatchProgress,
 } from "@/lib/analytics/batch-progress";
 import LotProgress from "@/components/LotProgress";
+import EntryRevisionHistory from "@/components/entry/EntryRevisionHistory";
 import { usePersona } from "@/components/app/PersonaContext";
 import Select from "@/components/ui/Select";
 import {
@@ -969,6 +970,7 @@ function EntryGrid({
   erasingId?: string | null;
   focus?: IntegrityFocus | null;
 }) {
+  const [historyRow, setHistoryRow] = useState<AuditEntryRow | null>(null);
   const anyFocus =
     !!focus &&
     rows.some((r) =>
@@ -1004,6 +1006,8 @@ function EntryGrid({
       >
         <span>
           {name} · {rows.length} entr{rows.length === 1 ? "y" : "ies"}
+          {" · "}
+          values are current (superseded history via History)
         </span>
         {anyFocus && (
           <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 11 }}>
@@ -1011,175 +1015,172 @@ function EntryGrid({
           </span>
         )}
       </div>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
-          <thead>
-            <tr>
-              {[
-                "Date",
-                "Size",
-                "Checked",
-                "Accepted",
-                "Rejected",
-                "Defects",
-                "Saved",
-                "Source",
-                ...(onErase ? ["Erase"] : []),
-              ].map((h) => (
-                <th
-                  key={h}
-                  style={{
-                    padding: "9px 12px",
-                    textAlign:
-                      h === "Checked" || h === "Accepted" || h === "Rejected" || h === "Erase"
-                        ? "right"
-                        : "left",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.04em",
-                    color: "var(--text-3)",
-                    background: "var(--surface-2)",
-                    borderBottom: "1px solid var(--border)",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r, i) => {
-              const hit = !!(
-                focus &&
-                rowMatchesIntegrityFocus({ date: r.date, size: r.size, stageId, batch }, focus)
-              );
-              return (
-              <tr
-                key={r.id}
-                data-integrity-hit={hit ? "1" : undefined}
+      <div style={{ display: "grid", gap: 8, padding: 10 }}>
+        {rows.map((r) => {
+          const hit = !!(
+            focus &&
+            rowMatchesIntegrityFocus({ date: r.date, size: r.size, stageId, batch }, focus)
+          );
+          const edited = r.hasCorrection || r.revisionCount > 1;
+          return (
+            <article
+              key={r.id}
+              data-integrity-hit={hit ? "1" : undefined}
+              style={{
+                position: "relative",
+                border: hit
+                  ? "1.5px solid color-mix(in srgb, var(--critical) 45%, var(--border))"
+                  : "1px solid var(--border-strong)",
+                borderRadius: 10,
+                background: hit
+                  ? "color-mix(in srgb, var(--critical-weak) 70%, var(--surface))"
+                  : "var(--bg)",
+                padding: "12px 14px",
+                paddingRight: onErase ? 72 : 44,
+              }}
+            >
+              <div
                 style={{
-                  borderTop: i === 0 ? "none" : "1px solid var(--border)",
-                  background: hit
-                    ? "color-mix(in srgb, var(--critical-weak) 70%, var(--surface))"
-                    : i % 2
-                      ? "color-mix(in srgb, var(--surface-2) 45%, transparent)"
-                      : "transparent",
-                  outline: hit
-                    ? "2px solid color-mix(in srgb, var(--critical) 45%, transparent)"
-                    : undefined,
-                  outlineOffset: hit ? -2 : undefined,
+                  position: "absolute",
+                  top: 10,
+                  right: 10,
+                  display: "flex",
+                  gap: 4,
+                  alignItems: "center",
                 }}
               >
-                <td style={cellMono}>{r.date}</td>
-                <td style={cellMono}>{r.size ?? "—"}</td>
-                <td style={{ ...cellMono, textAlign: "right", fontWeight: 600 }}>
-                  {r.checked > 0 ? r.checked.toLocaleString() : "—"}
-                </td>
-                <td
+                <button
+                  type="button"
+                  onClick={() => setHistoryRow(r)}
+                  aria-label="View edit history"
+                  title="Edit history"
                   style={{
-                    ...cellMono,
-                    textAlign: "right",
-                    fontWeight: 600,
-                    color: r.accepted > 0 ? "var(--positive)" : "var(--text)",
+                    width: 28,
+                    height: 28,
+                    padding: 0,
+                    borderRadius: 8,
+                    border: edited
+                      ? "1px solid color-mix(in srgb, var(--accent) 45%, var(--border-strong))"
+                      : "1px solid var(--border-strong)",
+                    background: edited ? "var(--accent-weak)" : "var(--surface)",
+                    color: edited ? "var(--accent)" : "var(--text-2)",
+                    display: "grid",
+                    placeItems: "center",
+                    cursor: "pointer",
                   }}
                 >
-                  {r.accepted > 0 ? r.accepted.toLocaleString() : "—"}
-                </td>
-                <td
-                  style={{
-                    ...cellMono,
-                    textAlign: "right",
-                    fontWeight: 600,
-                    color: r.rejected > 0 ? "var(--critical)" : "var(--text)",
-                  }}
-                >
-                  {r.rejected > 0 ? r.rejected.toLocaleString() : "—"}
-                </td>
-                <td style={{ padding: "10px 12px", lineHeight: 1.45, color: "var(--text)" }}>
-                  {r.defects.length === 0 ? (
-                    <span style={{ color: "var(--text-3)" }}>—</span>
-                  ) : (
-                    r.defects.map((d, di) => (
-                      <span key={d.code}>
-                        {di > 0 ? ", " : null}
-                        <strong style={{ fontWeight: 600 }}>{d.code}</strong>
-                        <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-3)", fontSize: 12 }}>
-                          {" "}
-                          {d.qty}
-                        </span>
-                      </span>
-                    ))
-                  )}
-                </td>
-                {/* When the row was written, as distinct from the business day
-                    it covers — the pair is what makes a late or back-dated
-                    entry visible. */}
-                <td
-                  style={{
-                    padding: "10px 12px",
-                    fontSize: 12.5,
-                    color: "var(--text-2)",
-                    whiteSpace: "nowrap",
-                    fontFamily: "var(--font-mono)",
-                  }}
-                  title={r.recordedAt || undefined}
-                >
-                  {fmtStamp(r.recordedAt)}
-                </td>
-                <td style={{ padding: "10px 12px", fontSize: 13 }}>
-                  {r.source === "manual" ? (
-                    <TonePill tone="accent">Data entry</TonePill>
-                  ) : (
-                    <span style={{ color: "var(--text-2)" }} title={r.fileLabel}>
-                      {truncate(r.fileLabel, 24)}
-                    </span>
-                  )}
-                </td>
+                  <Icon name="history" size={14} stroke={1.8} />
+                </button>
                 {onErase && (
-                  <td style={{ padding: "10px 12px", textAlign: "right" }}>
-                    <button
-                      type="button"
-                      onClick={() => onErase(r)}
-                      disabled={erasingId === r.id}
-                      title="Permanently erase this row from the ledger"
-                      style={{
-                        border: "1px solid color-mix(in srgb, var(--critical) 40%, transparent)",
-                        borderRadius: "var(--radius-pill)",
-                        background: "transparent",
-                        color: "var(--critical)",
-                        padding: "3px 11px",
-                        minHeight: 26,
-                        fontSize: 12,
-                        fontWeight: 700,
-                        fontFamily: "inherit",
-                        cursor: erasingId === r.id ? "progress" : "pointer",
-                        opacity: erasingId === r.id ? 0.55 : 1,
-                        whiteSpace: "nowrap",
-                        transition:
-                          "background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out)",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = "var(--critical-weak)";
-                        e.currentTarget.style.borderColor = "var(--critical)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = "transparent";
-                        e.currentTarget.style.borderColor =
-                          "color-mix(in srgb, var(--critical) 40%, transparent)";
-                      }}
-                    >
-                      {erasingId === r.id ? "Erasing…" : "Erase"}
-                    </button>
-                  </td>
+                  <button
+                    type="button"
+                    onClick={() => onErase(r)}
+                    disabled={erasingId === r.id}
+                    aria-label="Erase entry"
+                    title="Erase"
+                    style={{
+                      width: 28,
+                      height: 28,
+                      padding: 0,
+                      borderRadius: 8,
+                      border: "1px solid var(--border-strong)",
+                      background: "var(--surface)",
+                      color: "var(--critical)",
+                      display: "grid",
+                      placeItems: "center",
+                      cursor: erasingId === r.id ? "wait" : "pointer",
+                      fontSize: 14,
+                      fontWeight: 700,
+                      lineHeight: 1,
+                    }}
+                  >
+                    {erasingId === r.id ? "…" : "×"}
+                  </button>
                 )}
-              </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "6px 12px",
+                  marginBottom: 8,
+                  fontSize: 13,
+                }}
+              >
+                <strong>{r.date}</strong>
+                <span style={{ fontFamily: "var(--font-mono)" }}>{r.size ?? "—"}</span>
+                <span style={{ color: "var(--text-3)", fontSize: 12 }}>
+                  {fmtStamp(r.recordedAt)}
+                  {edited ? " · edited" : ""}
+                </span>
+                {r.source === "manual" ? (
+                  <TonePill tone="accent">Data entry</TonePill>
+                ) : (
+                  <span style={{ color: "var(--text-2)", fontSize: 12 }} title={r.fileLabel}>
+                    {truncate(r.fileLabel, 24)}
+                  </span>
+                )}
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                  gap: 8,
+                  marginBottom: r.defects.length ? 8 : 0,
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase" }}>
+                    Checked
+                  </div>
+                  <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700 }}>
+                    {r.checked > 0 ? r.checked.toLocaleString() : "—"}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase" }}>
+                    Accepted
+                  </div>
+                  <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--positive)" }}>
+                    {r.accepted > 0 ? r.accepted.toLocaleString() : "—"}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase" }}>
+                    Rejected
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontWeight: 700,
+                      color: r.rejected > 0 ? "var(--critical)" : "var(--text-3)",
+                    }}
+                  >
+                    {r.rejected > 0 ? r.rejected.toLocaleString() : "—"}
+                  </div>
+                </div>
+              </div>
+              {r.defects.length > 0 && (
+                <div style={{ fontSize: 13, lineHeight: 1.45 }}>
+                  {r.defects.map((d, di) => (
+                    <span key={d.code}>
+                      {di > 0 ? ", " : null}
+                      <strong style={{ fontWeight: 600 }}>{d.code}</strong>
+                      <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-3)", fontSize: 12 }}>
+                        {" "}
+                        {d.qty}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </article>
+          );
+        })}
       </div>
+      {historyRow && (
+        <EntryRevisionHistory row={historyRow} onClose={() => setHistoryRow(null)} />
+      )}
     </div>
   );
 }

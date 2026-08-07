@@ -1,18 +1,20 @@
 "use client";
 // Staging verification panel (MOD pipeline, rung 6 — ADD §11).
-// Excel header → canonical → confidence → reason → accept/override.
-// Contained viewport: paginated proposals (same discipline as Staging Area
-// approve-records grid) + sticky confirm action so operators never scroll a
-// thousand-row meaning list to reach "Confirm & load numbers".
+// When plant schema is configured: match existing catalog; novel stages/defects/
+// sizes require explicit operator accept before they enter company_catalog.
+// Paginated proposals + sticky confirm.
 
 import React, { useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { MappingProposalT } from "@/shared/models/entities";
+import type { CatalogDiff } from "@/core/ontology/catalog-diff";
+import { useRegistry } from "@/components/app/RegistryContext";
 
 export interface UploadedMod {
   modId: string;
   version: number;
   fileName: string;
   proposals: MappingProposalT[];
+  catalogDiff?: CatalogDiff;
 }
 
 const PAGE_SIZE = 20;
@@ -55,6 +57,13 @@ const pgBtn = (disabled: boolean): CSSProperties => ({
   opacity: disabled ? 0.4 : 1,
 });
 
+function toggleId(set: Set<string>, id: string): Set<string> {
+  const next = new Set(set);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  return next;
+}
+
 export default function MappingVerificationPanel({
   mods,
   onPublished,
@@ -62,14 +71,19 @@ export default function MappingVerificationPanel({
   mods: UploadedMod[];
   onPublished?: (modId: string, version: number) => void;
 }) {
+  const { refreshRegistry } = useRegistry();
   // entityId -> edited canonical (an edit = override; untouched = accept).
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
-  const [done, setDone] = useState<Record<string, { learned: number }>>({});
+  const [done, setDone] = useState<Record<string, { learned: number; novelAdded: number }>>({});
   const [error, setError] = useState<string | null>(null);
   const [activeModId, setActiveModId] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [filter, setFilter] = useState<"all" | "low" | "unresolved">("all");
+  // Novel catalog entities the operator opts to add to Plant Schema.
+  const [acceptStages, setAcceptStages] = useState<Set<string>>(new Set());
+  const [acceptDefects, setAcceptDefects] = useState<Set<string>>(new Set());
+  const [acceptSizes, setAcceptSizes] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (mods.length === 0) {
@@ -78,6 +92,10 @@ export default function MappingVerificationPanel({
     }
     setActiveModId((cur) => (cur && mods.some((m) => m.modId === cur) ? cur : mods[0].modId));
     setPage(0);
+    // Reset novel accepts when the upload set changes.
+    setAcceptStages(new Set());
+    setAcceptDefects(new Set());
+    setAcceptSizes(new Set());
   }, [mods]);
 
   const activeMod = useMemo(
@@ -101,6 +119,14 @@ export default function MappingVerificationPanel({
   const lowCount = activeMod?.proposals.filter((p) => p.confidence < 0.9).length ?? 0;
   const unresolvedCount =
     activeMod?.proposals.filter((p) => !p.canonical && !(edits[p.entityId]?.trim())).length ?? 0;
+
+  const diff = activeMod?.catalogDiff;
+  const novel = diff?.novel;
+  const novelTotal =
+    (novel?.stages.length ?? 0) +
+    (novel?.defects.length ?? 0) +
+    (novel?.sizes.length ?? 0);
+  const plantConfigured = diff?.plantConfigured ?? false;
 
   async function publish(mod: UploadedMod) {
     setBusy(mod.modId);
@@ -132,10 +158,22 @@ export default function MappingVerificationPanel({
       });
       if (!vRes.ok) throw new Error((await vRes.json()).error ?? "verify failed");
 
+      const acceptNovel = plantConfigured
+        ? {
+            stageIds: [...acceptStages],
+            defectCodes: [...acceptDefects],
+            sizeIds: [...acceptSizes],
+          }
+        : null;
+
       const pRes = await fetch("/api/mods", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ modId: mod.modId, version: mod.version }),
+        body: JSON.stringify({
+          modId: mod.modId,
+          version: mod.version,
+          acceptNovel,
+        }),
       });
       const pData = await pRes.json();
       if (!pRes.ok) {
@@ -144,7 +182,17 @@ export default function MappingVerificationPanel({
         );
       }
 
-      setDone((d) => ({ ...d, [mod.modId]: { learned: pData.learnedMappings ?? 0 } }));
+      const novelAdded =
+        (acceptNovel?.stageIds.length ?? 0) +
+        (acceptNovel?.defectCodes.length ?? 0) +
+        (acceptNovel?.sizeIds.length ?? 0);
+
+      setDone((d) => ({
+        ...d,
+        [mod.modId]: { learned: pData.learnedMappings ?? 0, novelAdded },
+      }));
+      // Plant Schema / Data Entry template read the catalog — refresh now.
+      await refreshRegistry().catch(() => {});
       onPublished?.(mod.modId, mod.version);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Verification failed");
@@ -162,6 +210,7 @@ export default function MappingVerificationPanel({
   return (
     <section
       id="mapping-verify"
+      className="import-verify"
       style={{
         border: "1.5px solid color-mix(in srgb, var(--accent) 35%, var(--border))",
         borderRadius: "var(--radius-lg)",
@@ -169,13 +218,12 @@ export default function MappingVerificationPanel({
         boxShadow: "var(--shadow-2)",
         display: "flex",
         flexDirection: "column",
-        maxHeight: "min(72vh, 640px)",
+        maxHeight: "min(78vh, 720px)",
         minHeight: 280,
         overflow: "hidden",
         marginBottom: 18,
       }}
     >
-      {/* Header — stays put */}
       <div
         style={{
           padding: "14px 16px 12px",
@@ -204,14 +252,15 @@ export default function MappingVerificationPanel({
                 marginBottom: 4,
               }}
             >
-              Step 2 of 3
+              Match columns
             </div>
             <h3 className="h3" style={{ color: "var(--text)", margin: 0 }}>
-              Confirm column meanings
+              Confirm Excel → plant meanings
             </h3>
-            <p className="small" style={{ color: "var(--text-3)", margin: "4px 0 0", lineHeight: 1.45 }}>
-              Accept or fix each Excel header, then load numbers. Only this page of mappings is shown —
-              use Next / Prev like the staging grid below.
+            <p className="small" style={{ color: "var(--text-3)", margin: "4px 0 0", lineHeight: 1.45, maxWidth: "62ch" }}>
+              {plantConfigured
+                ? "Your Plant Schema is already loaded. Headers are matched to existing stages and defects — not re-extracted as a new schema. New codes below need your OK before they appear on Plant Schema."
+                : "Accept or fix each Excel header, then load numbers into the ledger."}
             </p>
           </div>
           {activeMod && !published && (
@@ -232,12 +281,13 @@ export default function MappingVerificationPanel({
                 boxShadow: "0 2px 8px color-mix(in srgb, var(--accent) 30%, transparent)",
               }}
             >
-              {busy === activeMod.modId ? "Saving schema…" : "Confirm & load numbers"}
+              {busy === activeMod.modId ? "Loading numbers…" : "Confirm & load numbers"}
             </button>
           )}
           {published && (
             <span className="small" style={{ color: "var(--positive)", fontWeight: 700, alignSelf: "center" }}>
-              Schema saved ({published.learned} learned) · loading numbers…
+              Mappings saved ({published.learned} learned
+              {published.novelAdded ? `, ${published.novelAdded} new schema` : ""}) · loading numbers…
             </span>
           )}
         </div>
@@ -248,308 +298,339 @@ export default function MappingVerificationPanel({
           </p>
         )}
 
-        {/* File tabs when multi-upload */}
-        {mods.length > 1 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
-            {mods.map((m) => {
-              const active = m.modId === activeMod?.modId;
-              const isDone = !!done[m.modId];
-              return (
-                <button
-                  key={m.modId}
-                  type="button"
-                  onClick={() => {
-                    setActiveModId(m.modId);
-                    setPage(0);
-                  }}
-                  style={{
-                    fontSize: 11.5,
-                    fontWeight: 600,
-                    padding: "5px 10px",
-                    borderRadius: 999,
-                    border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
-                    background: active
-                      ? "color-mix(in srgb, var(--accent) 12%, transparent)"
-                      : "var(--surface-2)",
-                    color: active ? "var(--accent)" : "var(--text-2)",
-                    cursor: "pointer",
-                    maxWidth: 220,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                  title={m.fileName}
-                >
-                  {isDone ? "✓ " : ""}
-                  {m.fileName}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {activeMod && (
+        {/* Novel schema — only when plant is configured and workbook has new codes */}
+        {plantConfigured && novelTotal > 0 && !published && novel && (
           <div
             style={{
-              display: "flex",
-              flexWrap: "wrap",
-              alignItems: "center",
-              gap: 8,
               marginTop: 12,
+              padding: "12px 14px",
+              borderRadius: 10,
+              border: "1.5px solid var(--warning)",
+              background: "var(--warning-weak)",
             }}
           >
-            <span
-              className="small"
-              style={{ fontFamily: "var(--font-mono)", color: "var(--text-2)" }}
-            >
-              {activeMod.fileName} · v{activeMod.version} · {activeMod.proposals.length} entities
-            </span>
-            <span style={{ flex: 1 }} />
-            {(
-              [
-                { id: "all" as const, label: `All (${activeMod.proposals.length})` },
-                { id: "low" as const, label: `Needs review (${lowCount})` },
-                { id: "unresolved" as const, label: `Unresolved (${unresolvedCount})` },
-              ] as const
-            ).map((f) => (
-              <button
-                key={f.id}
-                type="button"
-                onClick={() => {
-                  setFilter(f.id);
-                  setPage(0);
-                }}
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  padding: "3px 10px",
-                  borderRadius: 999,
-                  border: `1px solid ${filter === f.id ? "var(--accent)" : "var(--border)"}`,
-                  background: filter === f.id ? "var(--accent)" : "var(--surface-2)",
-                  color: filter === f.id ? "var(--text-invert)" : "var(--text-2)",
-                  cursor: "pointer",
-                }}
-              >
-                {f.label}
-              </button>
-            ))}
+            <div style={{ fontWeight: 800, fontSize: 13, color: "var(--text)", marginBottom: 4 }}>
+              New fields not in Plant Schema
+            </div>
+            <p className="small" style={{ margin: "0 0 10px", color: "var(--text-2)", lineHeight: 1.45 }}>
+              These were found in the Excel but are not on your master catalog yet.
+              Tick to <strong>add them to Plant Schema</strong> (they show on{" "}
+              <a href="/schema" style={{ color: "var(--accent)", fontWeight: 700 }}>
+                Plant Schema
+              </a>{" "}
+              immediately after confirm). Leave unticked to load numbers without changing the master schema.
+            </p>
+            {novel.stages.length > 0 && (
+              <NovelGroup
+                title="Stages"
+                items={novel.stages.map((s) => ({
+                  id: s.stageId,
+                  label: s.label || s.stageId,
+                  sub: s.stageId,
+                }))}
+                selected={acceptStages}
+                onToggle={(id) => setAcceptStages((s) => toggleId(s, id))}
+              />
+            )}
+            {novel.defects.length > 0 && (
+              <NovelGroup
+                title="Defects"
+                items={novel.defects.map((d) => ({
+                  id: d.defectCode,
+                  label: d.label || d.defectCode,
+                  sub: d.defectCode,
+                }))}
+                selected={acceptDefects}
+                onToggle={(id) => setAcceptDefects((s) => toggleId(s, id))}
+              />
+            )}
+            {novel.sizes.length > 0 && (
+              <NovelGroup
+                title="Sizes"
+                items={novel.sizes.map((s) => ({
+                  id: s.sizeId,
+                  label: s.label || s.sizeId,
+                  sub: s.sizeId,
+                }))}
+                selected={acceptSizes}
+                onToggle={(id) => setAcceptSizes((s) => toggleId(s, id))}
+              />
+            )}
           </div>
+        )}
+
+        {plantConfigured && novelTotal === 0 && diff && (
+          <p className="small" style={{ margin: "10px 0 0", color: "var(--positive)", fontWeight: 600 }}>
+            All resolved stages/defects/sizes already match Plant Schema
+            {diff.summary.matchedStageCount || diff.summary.matchedDefectCount
+              ? ` (${diff.summary.matchedStageCount} stages · ${diff.summary.matchedDefectCount} defects)`
+              : ""}
+            .
+          </p>
         )}
       </div>
 
-      {/* Scroll body — only this region grows; outer card is capped */}
-      <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
-        {!activeMod || filtered.length === 0 ? (
-          <div className="muted" style={{ padding: 28, textAlign: "center", fontSize: 13 }}>
-            {filter === "all" ? "No mappings on this file." : "No rows match this filter."}
-          </div>
-        ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead
+      {/* File tabs when multi-upload */}
+      {mods.length > 1 && (
+        <div
+          style={{
+            display: "flex",
+            gap: 6,
+            padding: "8px 12px",
+            borderBottom: "1px solid var(--border)",
+            overflowX: "auto",
+            flexShrink: 0,
+          }}
+        >
+          {mods.map((m) => (
+            <button
+              key={m.modId}
+              type="button"
+              onClick={() => {
+                setActiveModId(m.modId);
+                setPage(0);
+              }}
               style={{
-                position: "sticky",
-                top: 0,
-                zIndex: 1,
-                background: "var(--surface-2)",
+                padding: "6px 12px",
+                borderRadius: 999,
+                border: "1px solid var(--border-strong)",
+                background: m.modId === activeModId ? "var(--accent-weak)" : "var(--surface)",
+                fontWeight: 700,
+                fontSize: 12,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
               }}
             >
-              <tr style={{ color: "var(--text-3)", textAlign: "left", fontSize: 10, textTransform: "uppercase" }}>
-                <th style={th}>Source</th>
-                <th style={th}>Excel label</th>
-                <th style={th}>Canonical</th>
-                <th style={th}>Conf.</th>
-                <th style={th}>Reason</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pageSlice.map((p, i) => {
-                const tone = confidenceTone(p.confidence);
-                const value = edits[p.entityId] ?? p.canonical ?? "";
-                // A wide sheet holds several stage blocks side by side, and a
-                // column only means anything inside its own block. Heading each
-                // run of rows with its region is what lets a steward SEE that
-                // balloon's Checked landed under balloon — the misassignment
-                // this panel exists to catch.
-                const region = regionOf(p);
-                const newRegion = i === 0 || regionOf(pageSlice[i - 1]) !== region;
-                return (
-                  <React.Fragment key={p.entityId}>
-                  {newRegion && (
-                    <tr>
-                      <td colSpan={5} style={{ ...td, background: "var(--surface-2)", borderTop: "1px solid var(--border-strong)" }}>
-                        <span style={{ fontWeight: 700, fontSize: 11.5 }}>
-                          {regionLabelFor(activeMod!, p)}
-                        </span>
-                        <span className="muted" style={{ fontSize: 11, marginLeft: 8, fontFamily: "var(--font-mono)" }}>
-                          {p.original.sheet}
-                          {(p.original.tableId ?? "t1") !== "t1" ? ` · block ${p.original.tableId}` : ""}
-                        </span>
-                        {/* The real thing to verify is not whether a header
-                            "looks like" Checked, but whether reading it that
-                            way makes the sheet add up. */}
-                        {(() => {
-                          const ev = regionEvidence(activeMod!, p);
-                          if (!ev || ev.applicable === 0) return null;
-                          const agrees = Math.round(ev.agreement * ev.applicable);
-                          const clean = agrees === ev.applicable;
-                          return (
-                            <span
-                              style={{
-                                marginLeft: 10,
-                                fontSize: 11,
-                                fontWeight: 700,
-                                color: clean ? "var(--positive)" : "var(--status-warn, #d97706)",
-                              }}
-                              title={
-                                clean
-                                  ? "Every row satisfies checked = accepted + rework + rejected under this reading."
-                                  : `${ev.applicable - agrees} row(s) don't add up under this reading — either the mapping is wrong, or the spreadsheet is.`
-                              }
-                            >
-                              {clean ? "✓" : "▲"} {agrees}/{ev.applicable} rows add up
-                            </span>
-                          );
-                        })()}
-                      </td>
-                    </tr>
-                  )}
-                  <tr style={{ borderTop: "1px solid var(--border)" }}>
-                    <td
-                      style={{
-                        ...td,
-                        fontFamily: "var(--font-mono)",
-                        color: "var(--text-3)",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {p.original.sheet}
-                      {p.original.colLetter ? `!${p.original.colLetter}` : ""}
-                    </td>
-                    <td style={{ ...td, color: "var(--text)" }}>{p.original.header}</td>
-                    <td style={td}>
-                      <input
-                        value={value}
-                        disabled={!!published}
-                        placeholder="unresolved — name it"
-                        onChange={(e) =>
-                          setEdits((prev) => ({ ...prev, [p.entityId]: e.target.value }))
-                        }
-                        style={{
-                          fontFamily: "var(--font-mono)",
-                          fontSize: 12,
-                          padding: "5px 8px",
-                          minWidth: 160,
-                          width: "100%",
-                          maxWidth: 280,
-                          border: "1px solid var(--border)",
-                          borderRadius: "var(--radius-sm)",
-                          background: "var(--surface-2)",
-                          color: value ? "var(--text)" : "var(--text-3)",
-                        }}
-                      />
-                    </td>
-                    <td style={{ ...td, fontFamily: "var(--font-mono)", color: tone.color }}>
-                      {tone.label}
-                    </td>
-                    <td style={{ ...td, color: "var(--text-2)", maxWidth: 280 }}>
-                      <span style={{ display: "block", lineHeight: 1.4 }}>{p.reason}</span>
-                      <span style={{ color: "var(--text-3)", fontSize: 11 }}> · {p.resolvedBy}</span>
-                    </td>
-                  </tr>
-                  </React.Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
+              {m.fileName}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {/* Footer — pagination + secondary confirm (always reachable) */}
+      {/* Filters */}
       <div
         style={{
-          flexShrink: 0,
-          borderTop: "1px solid var(--border)",
-          padding: "10px 14px",
-          background: "var(--surface-2)",
           display: "flex",
+          gap: 8,
+          padding: "8px 12px",
+          borderBottom: "1px solid var(--border)",
+          flexShrink: 0,
           flexWrap: "wrap",
           alignItems: "center",
-          justifyContent: "space-between",
-          gap: 10,
         }}
       >
-        <span className="small" style={{ color: "var(--text-3)", fontFamily: "var(--font-mono)" }}>
-          {filtered.length === 0
-            ? "0 rows"
-            : `Showing ${from}–${to} of ${filtered.length.toLocaleString()}`}
-          {filter !== "all" && activeMod
-            ? ` · filtered from ${activeMod.proposals.length}`
-            : ""}
+        {(
+          [
+            { id: "all" as const, lab: "All" },
+            { id: "low" as const, lab: `Low confidence (${lowCount})` },
+            { id: "unresolved" as const, lab: `Unresolved (${unresolvedCount})` },
+          ] as const
+        ).map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            onClick={() => {
+              setFilter(f.id);
+              setPage(0);
+            }}
+            style={{
+              ...pgBtn(false),
+              background: filter === f.id ? "var(--accent-weak)" : "var(--surface)",
+              borderColor: filter === f.id ? "var(--accent)" : "var(--border-strong)",
+            }}
+          >
+            {f.lab}
+          </button>
+        ))}
+        <span className="small" style={{ marginLeft: "auto", color: "var(--text-3)" }}>
+          {from}–{to} of {filtered.length}
         </span>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {filtered.length > PAGE_SIZE && (
-            <>
-              <button
-                type="button"
-                disabled={safePage === 0}
-                onClick={() => setPage((p) => Math.max(0, p - 1))}
-                style={pgBtn(safePage === 0)}
-              >
-                ‹ Prev
-              </button>
-              <span style={{ fontSize: 11.5, fontWeight: 700, fontFamily: "var(--font-mono)" }}>
-                {safePage + 1} / {totalPages}
-              </span>
-              <button
-                type="button"
-                disabled={safePage >= totalPages - 1}
-                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                style={pgBtn(safePage >= totalPages - 1)}
-              >
-                Next ›
-              </button>
-              <button
-                type="button"
-                disabled={safePage >= totalPages - 1}
-                onClick={() => setPage(totalPages - 1)}
-                style={pgBtn(safePage >= totalPages - 1)}
-              >
-                Last
-              </button>
-            </>
-          )}
-          {activeMod && !published && (
-            <button
-              type="button"
-              onClick={() => publish(activeMod)}
-              disabled={busy !== null}
-              style={{
-                marginLeft: 4,
-                padding: "7px 14px",
-                borderRadius: 8,
-                border: "1px solid var(--accent)",
-                background: "var(--accent)",
-                color: "var(--text-invert)",
-                cursor: busy ? "wait" : "pointer",
-                fontSize: 12.5,
-                fontWeight: 700,
-              }}
-            >
-              {busy === activeMod.modId ? "Saving…" : "Confirm & load"}
-            </button>
-          )}
-        </div>
+      </div>
+
+      {/* Proposal table */}
+      <div style={{ overflow: "auto", flex: 1, minHeight: 0 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+          <thead>
+            <tr style={{ background: "var(--surface-2)", position: "sticky", top: 0, zIndex: 1 }}>
+              {["Sheet / region", "Excel header", "Maps to", "Confidence", "Why"].map((h) => (
+                <th
+                  key={h}
+                  style={{
+                    textAlign: "left",
+                    padding: "8px 10px",
+                    borderBottom: "1px solid var(--border)",
+                    fontWeight: 700,
+                    color: "var(--text-2)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {pageSlice.map((p) => {
+              const tone = confidenceTone(p.confidence);
+              const value = edits[p.entityId] !== undefined ? edits[p.entityId] : (p.canonical ?? "");
+              return (
+                <tr key={p.entityId} style={{ borderBottom: "1px solid var(--border)" }}>
+                  <td style={{ padding: "8px 10px", color: "var(--text-3)", maxWidth: 140 }}>
+                    <div style={{ fontWeight: 600, color: "var(--text-2)" }}>
+                      {regionLabelFor(activeMod!, p)}
+                    </div>
+                    <div style={{ fontSize: 11 }}>{p.original.sheet}</div>
+                  </td>
+                  <td style={{ padding: "8px 10px", fontFamily: "var(--font-mono)", fontSize: 12 }}>
+                    {p.original.header || "—"}
+                  </td>
+                  <td style={{ padding: "8px 10px" }}>
+                    <input
+                      value={value}
+                      onChange={(e) =>
+                        setEdits((prev) => ({ ...prev, [p.entityId]: e.target.value }))
+                      }
+                      placeholder="canonical id"
+                      style={{
+                        width: "100%",
+                        minWidth: 120,
+                        border: "1px solid var(--border-strong)",
+                        borderRadius: 6,
+                        padding: "6px 8px",
+                        fontSize: 12,
+                        fontFamily: "var(--font-mono)",
+                        background: "var(--bg)",
+                        color: "var(--text)",
+                      }}
+                    />
+                  </td>
+                  <td style={{ padding: "8px 10px", fontWeight: 700, color: tone.color }}>
+                    {tone.label}
+                  </td>
+                  <td style={{ padding: "8px 10px", color: "var(--text-3)", maxWidth: 220 }}>
+                    {p.reason || "—"}
+                    {regionEvidence(activeMod!, p) ? (
+                      <div style={{ fontSize: 10.5, marginTop: 2 }}>
+                        {String((regionEvidence(activeMod!, p) as { note?: string } | null)?.note ?? "")}
+                      </div>
+                    ) : null}
+                  </td>
+                </tr>
+              );
+            })}
+            {pageSlice.length === 0 && (
+              <tr>
+                <td colSpan={5} style={{ padding: 24, textAlign: "center", color: "var(--text-3)" }}>
+                  No mappings in this filter.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "8px 12px",
+          borderTop: "1px solid var(--border)",
+          flexShrink: 0,
+          background: "var(--surface-2)",
+        }}
+      >
+        <button
+          type="button"
+          disabled={safePage <= 0}
+          onClick={() => setPage((p) => Math.max(0, p - 1))}
+          style={pgBtn(safePage <= 0)}
+        >
+          Prev
+        </button>
+        <span className="small" style={{ color: "var(--text-3)" }}>
+          Page {safePage + 1} / {totalPages}
+        </span>
+        <button
+          type="button"
+          disabled={safePage >= totalPages - 1}
+          onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+          style={pgBtn(safePage >= totalPages - 1)}
+        >
+          Next
+        </button>
       </div>
     </section>
   );
 }
 
-const th: CSSProperties = {
-  padding: "8px 10px",
-  fontWeight: 600,
-  borderBottom: "1px solid var(--border)",
-};
-const td: CSSProperties = {
-  padding: "8px 10px",
-  verticalAlign: "middle",
-};
+function NovelGroup({
+  title,
+  items,
+  selected,
+  onToggle,
+}: {
+  title: string;
+  items: { id: string; label: string; sub: string }[];
+  selected: Set<string>;
+  onToggle: (id: string) => void;
+}) {
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 800,
+          letterSpacing: "0.04em",
+          textTransform: "uppercase",
+          color: "var(--text-3)",
+          marginBottom: 6,
+        }}
+      >
+        {title}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {items.map((it) => (
+          <label
+            key={it.id}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "8px 10px",
+              borderRadius: 8,
+              border: "1px solid var(--border-strong)",
+              background: selected.has(it.id) ? "var(--surface)" : "transparent",
+              cursor: "pointer",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={selected.has(it.id)}
+              onChange={() => onToggle(it.id)}
+            />
+            <span style={{ minWidth: 0 }}>
+              <span style={{ fontWeight: 700, fontSize: 13, display: "block" }}>{it.label}</span>
+              <span
+                className="small"
+                style={{ fontFamily: "var(--font-mono)", color: "var(--text-3)" }}
+              >
+                {it.sub}
+              </span>
+            </span>
+            <span
+              className="small"
+              style={{
+                marginLeft: "auto",
+                fontWeight: 700,
+                color: selected.has(it.id) ? "var(--positive)" : "var(--text-3)",
+              }}
+            >
+              {selected.has(it.id) ? "Add to schema" : "Skip"}
+            </span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}

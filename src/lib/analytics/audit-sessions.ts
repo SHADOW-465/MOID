@@ -289,6 +289,11 @@ export interface AuditEntryRow {
   commentCount: number;
   hasCorrection: boolean;
   /**
+   * How many distinct primary-event revisions contributed to this row
+   * (after last-write-wins). >1 means the entry was edited / re-saved.
+   */
+  revisionCount: number;
+  /**
    * Shift labels (`provenance.sheet`) behind this row — normally one. Carried
    * because DELETE /api/manual-entries scopes by date+shift, and without it the
    * only way to erase a displayed row is the far broader batch-wide purge.
@@ -343,20 +348,25 @@ function sizeOf(e: AuditEventLike): string | null {
 /**
  * Collapse atom events into Excel-like entry rows:
  * key = date | batch | stage | size
+ *
+ * Quantities use **last-write-wins** per semantic atom (production, each
+ * inspection disposition, each defect code) by `recordedAt`. Summing would
+ * double-count when re-saves leave multiple effective primaries (or when
+ * callers pass a slightly stale mix). Append-only history stays in the ledger;
+ * this surface always shows the current values.
  */
 export function buildEntryRows(
   events: AuditEventLike[],
   commentsMap: Map<string, string[]> = new Map()
 ): AuditEntryRow[] {
+  type Atom = { qty: number; ts: string; eventId: string };
   type Acc = {
     date: string;
     batch: string;
     stageId: string;
     size: string | null;
-    checked: number;
-    explicitAccepted: number;
-    rejected: number;
-    defects: Map<string, number>;
+    /** production | inspection:accepted | inspection:rejected | rejection:CODE */
+    atoms: Map<string, Atom>;
     manual: number;
     excel: number;
     fileLabel: string;
@@ -364,13 +374,62 @@ export function buildEntryRows(
     eventIds: string[];
     commentCount: number;
     hasCorrection: boolean;
+    /** Times a primary quantity was replaced by a newer event (edit signal). */
+    overwriteCount: number;
     shifts: Set<string>;
   };
 
   const map = new Map<string, Acc>();
 
+  const putAtom = (a: Acc, atomKey: string, qty: number, ts: string, eventId: string) => {
+    const prev = a.atoms.get(atomKey);
+    if (!prev || ts >= prev.ts) {
+      if (prev && prev.eventId && prev.eventId !== eventId) a.overwriteCount += 1;
+      a.atoms.set(atomKey, { qty, ts, eventId });
+    }
+  };
+
   for (const e of events) {
     if (e.eventType === "annotation") continue;
+    // Corrections do not carry quantities; they only flag history.
+    if (e.eventType === "correction") {
+      // Attach flag to matching slice when possible
+      const date = e.occurredOn?.start ?? e.recordedAt?.slice(0, 10) ?? "—";
+      const batch = batchOf(e) ?? "(no batch)";
+      const stageId = e.stageId ?? "(unknown stage)";
+      const size = sizeOf(e);
+      const key = `${date}|${batch}|${stageId}|${size ?? ""}`;
+      let a = map.get(key);
+      if (!a) {
+        a = {
+          date,
+          batch,
+          stageId,
+          size,
+          atoms: new Map(),
+          manual: 0,
+          excel: 0,
+          fileLabel: "Data Entry",
+          recordedAt: "",
+          eventIds: [],
+          commentCount: 0,
+          hasCorrection: true,
+          overwriteCount: 0,
+          shifts: new Set(),
+        };
+        map.set(key, a);
+      } else {
+        a.hasCorrection = true;
+      }
+      if (e.eventId) {
+        a.eventIds.push(e.eventId);
+        a.commentCount += (commentsMap.get(e.eventId) ?? []).length;
+      }
+      const ts = eventTs(e);
+      if (ts > a.recordedAt) a.recordedAt = ts;
+      continue;
+    }
+
     const date = e.occurredOn?.start ?? e.recordedAt?.slice(0, 10) ?? "—";
     const batch = batchOf(e) ?? "(no batch)";
     const stageId = e.stageId ?? "(unknown stage)";
@@ -384,10 +443,7 @@ export function buildEntryRows(
         batch,
         stageId,
         size,
-        checked: 0,
-        explicitAccepted: 0,
-        rejected: 0,
-        defects: new Map(),
+        atoms: new Map(),
         manual: 0,
         excel: 0,
         fileLabel: "Data Entry",
@@ -395,6 +451,7 @@ export function buildEntryRows(
         eventIds: [],
         commentCount: 0,
         hasCorrection: false,
+        overwriteCount: 0,
         shifts: new Set(),
       };
       map.set(key, a);
@@ -411,19 +468,24 @@ export function buildEntryRows(
     if (isDirectEntry(e)) a.manual++;
     else a.excel++;
 
-    if (e.eventType === "production") a.checked += Number(e.quantity ?? 0);
-    if (e.eventType === "inspection") {
+    const qty = Number(e.quantity ?? 0);
+    const eid = e.eventId ?? "";
+
+    if (e.eventType === "production") {
+      putAtom(a, "production", qty, ts, eid);
+    } else if (e.eventType === "inspection") {
       if (e.disposition === "accepted" || e.disposition === "good") {
-        a.explicitAccepted += Number(e.quantity ?? 0);
+        putAtom(a, "inspection:accepted", qty, ts, eid);
       } else if (e.disposition === "rejected") {
-        a.rejected += Number(e.quantity ?? 0);
+        putAtom(a, "inspection:rejected", qty, ts, eid);
+      } else if (e.disposition === "rework") {
+        putAtom(a, "inspection:rework", qty, ts, eid);
       }
-    }
-    if (e.eventType === "rejection") {
+    } else if (e.eventType === "rejection") {
       const code = e.defectCodeRaw || e.defectCode || "defect";
-      a.defects.set(code, (a.defects.get(code) ?? 0) + Number(e.quantity ?? 0));
+      putAtom(a, `rejection:${code}`, qty, ts, eid);
     }
-    if (e.eventType === "correction") a.hasCorrection = true;
+
     if (e.eventId) {
       a.commentCount += (commentsMap.get(e.eventId) ?? []).length;
     }
@@ -435,8 +497,20 @@ export function buildEntryRows(
     if (a.manual > 0 && a.excel === 0) source = "manual";
     else if (a.excel > 0 && a.manual === 0) source = "excel";
 
+    const checked = a.atoms.get("production")?.qty ?? 0;
+    const explicitAccepted = a.atoms.get("inspection:accepted")?.qty ?? 0;
+    const rejected = a.atoms.get("inspection:rejected")?.qty ?? 0;
     const accepted =
-      a.explicitAccepted > 0 ? a.explicitAccepted : Math.max(0, a.checked - a.rejected);
+      explicitAccepted > 0 ? explicitAccepted : Math.max(0, checked - rejected);
+
+    const defects: { code: string; qty: number }[] = [];
+    for (const [k, atom] of a.atoms) {
+      if (!k.startsWith("rejection:")) continue;
+      defects.push({ code: k.slice("rejection:".length), qty: atom.qty });
+    }
+    defects.sort((x, y) => y.qty - x.qty);
+
+    const revisionCount = 1 + a.overwriteCount + (a.hasCorrection ? 1 : 0);
 
     rows.push({
       id: `${a.date}|${a.batch}|${a.stageId}|${a.size ?? ""}`,
@@ -444,18 +518,17 @@ export function buildEntryRows(
       batch: a.batch,
       stageId: a.stageId,
       size: a.size,
-      checked: a.checked,
+      checked,
       accepted,
-      rejected: a.rejected,
-      defects: [...a.defects.entries()]
-        .map(([code, qty]) => ({ code, qty }))
-        .sort((x, y) => y.qty - x.qty),
+      rejected,
+      defects,
       source,
       fileLabel: source === "manual" ? "Data Entry" : a.fileLabel,
       recordedAt: a.recordedAt,
       eventIds: a.eventIds,
       commentCount: a.commentCount,
-      hasCorrection: a.hasCorrection,
+      hasCorrection: a.hasCorrection || a.overwriteCount > 0,
+      revisionCount,
       shifts: [...a.shifts],
     });
   }

@@ -28,6 +28,8 @@ import {
 } from "@/lib/analytics/audit-sessions";
 import { buildBatchProgress, progressFor } from "@/lib/analytics/batch-progress";
 import LotProgress from "@/components/LotProgress";
+import EntryRevisionHistory from "@/components/entry/EntryRevisionHistory";
+import Icon from "@/components/editorial/Icon";
 import { usePersona } from "@/components/app/PersonaContext";
 
 type SourceScope = "mine" | "all";
@@ -117,6 +119,7 @@ export default function EntryHistory({
   const [status, setStatus] = useState<StatusScope>(initialStatus);
   const [size, setSize] = useState("all");
   const [openBatch, setOpenBatch] = useState<string | null>(null);
+  const [historyRow, setHistoryRow] = useState<AuditEntryRow | null>(null);
 
   const progressMap = useMemo(() => buildBatchProgress(events), [events]);
 
@@ -317,10 +320,15 @@ export default function EntryHistory({
               onToggle={() => setOpenBatch((b) => (b === g.batch ? null : g.batch))}
               progress={progressFor(progressMap, g.batch)}
               onReuse={onReuse}
+              onHistory={setHistoryRow}
               canErase={canEraseLedger}
             />
           ))}
         </div>
+      )}
+
+      {historyRow && (
+        <EntryRevisionHistory row={historyRow} onClose={() => setHistoryRow(null)} />
       )}
     </section>
   );
@@ -334,6 +342,7 @@ function HistoryBatch({
   onToggle,
   progress,
   onReuse,
+  onHistory,
   canErase,
 }: {
   group: AuditBatchGroup;
@@ -341,6 +350,7 @@ function HistoryBatch({
   onToggle: () => void;
   progress: ReturnType<typeof progressFor>;
   onReuse?: (row: AuditEntryRow) => void;
+  onHistory?: (row: AuditEntryRow) => void;
   canErase: boolean;
 }) {
   const noBatch = g.batch === "(no batch)";
@@ -450,73 +460,126 @@ function HistoryBatch({
                 </span>
               </div>
 
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", minWidth: 620, borderCollapse: "collapse", fontSize: "var(--text-sm)" }}>
-                  <thead>
-                    <tr style={{ textAlign: "left", color: "var(--text-3)", fontSize: "var(--text-xs)" }}>
-                      <th style={th}>Date</th>
-                      <th style={th}>Size</th>
-                      <th style={{ ...th, textAlign: "right" }}>Checked</th>
-                      <th style={{ ...th, textAlign: "right" }}>Accepted</th>
-                      <th style={{ ...th, textAlign: "right" }}>Rejected</th>
-                      <th style={th}>Defects</th>
-                      <th style={th}>Saved</th>
-                      {onReuse && <th style={{ ...th, textAlign: "right" }}>Action</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {st.rows.map((r) => {
-                      const rate = r.checked ? (r.rejected / r.checked) * 100 : 0;
-                      return (
-                        <tr key={r.id} style={{ borderTop: "1px solid var(--border)" }}>
-                          <td style={{ ...td, color: "var(--text)", fontWeight: 600 }}>{fmtDate(r.date)}</td>
-                          <td style={{ ...td, fontFamily: "var(--font-mono)" }}>{r.size ?? "—"}</td>
-                          <td style={{ ...td, ...numCell }}>{r.checked.toLocaleString()}</td>
-                          <td style={{ ...td, ...numCell, color: "var(--positive)" }}>
+              <div style={{ display: "grid", gap: 8 }}>
+                {st.rows.map((r) => {
+                  const rate = r.checked ? (r.rejected / r.checked) * 100 : 0;
+                  const edited = r.hasCorrection || r.revisionCount > 1;
+                  return (
+                    <article
+                      key={r.id}
+                      style={{
+                        position: "relative",
+                        border: "1px solid var(--border-strong)",
+                        borderRadius: 10,
+                        background: "var(--bg)",
+                        padding: "12px 14px",
+                        paddingRight: 44,
+                      }}
+                    >
+                      {onHistory && (
+                        <button
+                          type="button"
+                          onClick={() => onHistory(r)}
+                          aria-label="View edit history"
+                          title="Edit history"
+                          style={{
+                            position: "absolute",
+                            top: 10,
+                            right: 10,
+                            width: 28,
+                            height: 28,
+                            padding: 0,
+                            borderRadius: 8,
+                            border: edited
+                              ? "1px solid color-mix(in srgb, var(--accent) 45%, var(--border-strong))"
+                              : "1px solid var(--border-strong)",
+                            background: edited ? "var(--accent-weak)" : "var(--surface)",
+                            color: edited ? "var(--accent)" : "var(--text-2)",
+                            display: "grid",
+                            placeItems: "center",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <Icon name="history" size={14} stroke={1.8} />
+                        </button>
+                      )}
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: "6px 14px",
+                          alignItems: "baseline",
+                          marginBottom: 8,
+                        }}
+                      >
+                        <span style={{ fontWeight: 700, color: "var(--text)" }}>{fmtDate(r.date)}</span>
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 12.5 }}>
+                          {r.size ?? "—"}
+                        </span>
+                        <span className="muted" style={{ fontSize: 12 }}>
+                          Saved {fmtStamp(r.recordedAt)}
+                          {edited ? " · edited" : ""}
+                        </span>
+                      </div>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                          gap: 8,
+                          marginBottom: r.defects.length ? 8 : 0,
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase" }}>
+                            Checked
+                          </div>
+                          <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700 }}>
+                            {r.checked.toLocaleString()}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase" }}>
+                            Accepted
+                          </div>
+                          <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--positive)" }}>
                             {r.accepted.toLocaleString()}
-                          </td>
-                          <td
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase" }}>
+                            Rejected
+                          </div>
+                          <div
                             style={{
-                              ...td,
-                              ...numCell,
+                              fontFamily: "var(--font-mono)",
+                              fontWeight: 700,
                               color: r.rejected > 0 ? "var(--critical)" : "var(--text-3)",
-                              fontWeight: r.rejected > 0 ? 700 : 400,
                             }}
                             title={r.checked ? `${rate.toFixed(2)}% of checked` : undefined}
                           >
                             {r.rejected.toLocaleString()}
-                          </td>
-                          <td style={{ ...td, maxWidth: 260 }}>
-                            {r.defects.length === 0 ? (
-                              <span style={{ color: "var(--text-3)" }}>—</span>
-                            ) : (
-                              <span style={{ display: "inline-flex", flexWrap: "wrap", gap: 4 }}>
-                                {r.defects.map((d) => (
-                                  <span key={d.code} style={defectChip}>
-                                    {d.code} <b style={{ fontFamily: "var(--font-mono)" }}>{d.qty}</b>
-                                  </span>
-                                ))}
-                              </span>
-                            )}
-                          </td>
-                          <td style={{ ...td, whiteSpace: "nowrap" }}>
-                            {fmtStamp(r.recordedAt)}
-                            {r.source !== "manual" && (
-                              <span style={{ ...defectChip, marginLeft: 6 }}>{r.fileLabel}</span>
-                            )}
-                          </td>
-                          {onReuse && (
-                            <td style={{ ...td, textAlign: "right" }}>
-                              <button type="button" onClick={() => onReuse(r)} style={linkBtn}>
-                                Reuse
-                              </button>
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                          </div>
+                        </div>
+                      </div>
+                      {r.defects.length > 0 && (
+                        <div style={{ display: "inline-flex", flexWrap: "wrap", gap: 4, marginBottom: onReuse ? 8 : 0 }}>
+                          {r.defects.map((d) => (
+                            <span key={d.code} style={defectChip}>
+                              {d.code} <b style={{ fontFamily: "var(--font-mono)" }}>{d.qty}</b>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {onReuse && (
+                        <div style={{ marginTop: 4 }}>
+                          <button type="button" onClick={() => onReuse(r)} style={linkBtn}>
+                            Reuse
+                          </button>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
               </div>
             </div>
           ))}
