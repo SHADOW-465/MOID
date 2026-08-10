@@ -1,10 +1,10 @@
 # MOID preset login credentials
 
 These are the **fixed logins** on `/login` — the same three roles as the topbar
-persona switcher. Enable sign-in by setting `MOID_AUTH_SECRET` (see below).
+persona switcher. **Auth is always on** (no env flag required).
 
-> **Change these before any real plant or production deploy.**  
-> Defaults are for local / pilot only.
+> **Change passwords before any real plant deploy** (via env overrides below).  
+> Defaults are for pilot / shared Vercel only.
 
 ## Accounts
 
@@ -14,38 +14,26 @@ persona switcher. Enable sign-in by setting `MOID_AUTH_SECRET` (see below).
 | Owner                       | `owner`          | `moid-owner`       |
 | Data Entry Operator         | `operator`       | `moid-operator`    |
 
-## Enable auth (copy into `.env.local` or `deploy/.env` or Vercel)
+## Optional overrides (`.env.local` / `deploy/.env` / Vercel)
 
 ```bash
-# Required — turns on /login (≥16 characters)
-MOID_AUTH_SECRET=change-me-to-a-long-random-string
+# Optional — custom session HMAC (built-in default is used if unset)
+# MOID_AUTH_SECRET=use-openssl-rand-hex-32
 
-# Optional — override defaults (recommended for plant)
-MOID_AUTH_PASSWORD_GM=moid-gm
-MOID_AUTH_PASSWORD_OWNER=moid-owner
-MOID_AUTH_PASSWORD_OPERATOR=moid-operator
-
-# Or one shared password for all three roles:
+# Optional — override pilot passwords
+# MOID_AUTH_PASSWORD_GM=...
+# MOID_AUTH_PASSWORD_OWNER=...
+# MOID_AUTH_PASSWORD_OPERATOR=...
+# Or one shared password for all three:
 # MOID_AUTH_PASSWORD=your-shared-password
-```
-
-Generate a secret:
-
-```bash
-openssl rand -hex 32
 ```
 
 ## How to sign in
 
-1. Open `/login` (or any page when auth is on — you are redirected).
+1. Open any page — you are redirected to `/login` until signed in.
 2. Select **GM**, **Owner**, or **Operator**.
 3. Enter that role’s password.
 4. Sign out from the topbar account menu when finished.
-
-## Without auth
-
-If `MOID_AUTH_SECRET` is **not** set, the app stays open and the topbar role
-switcher works without passwords (demo mode).
 
 ## Local override (optional)
 

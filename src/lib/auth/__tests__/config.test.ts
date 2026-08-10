@@ -1,8 +1,11 @@
 import {
   findUser,
+  getAuthSecret,
   getAuthUsers,
+  isAuthEnabled,
   listLoginOptions,
   passwordForRole,
+  DEFAULT_AUTH_SECRET,
   DEFAULT_PRESET_PASSWORDS,
 } from "../config";
 
@@ -11,6 +14,17 @@ describe("preset role logins", () => {
 
   afterEach(() => {
     process.env = { ...prev };
+  });
+
+  it("always requires sign-in with a session secret", () => {
+    delete process.env.MOID_AUTH_SECRET;
+    expect(isAuthEnabled()).toBe(true);
+    expect(getAuthSecret()).toBe(DEFAULT_AUTH_SECRET);
+  });
+
+  it("uses MOID_AUTH_SECRET when long enough", () => {
+    process.env.MOID_AUTH_SECRET = "plant-override-secret-32chars!!";
+    expect(getAuthSecret()).toBe("plant-override-secret-32chars!!");
   });
 
   it("exposes exactly gm, owner, operator", () => {

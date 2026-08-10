@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { findUser, isAuthEnabled } from "@/lib/auth/config";
+import { findUser } from "@/lib/auth/config";
 import {
   SESSION_COOKIE,
   createSessionToken,
@@ -8,16 +8,6 @@ import {
 import { PERSONAS } from "@/lib/persona";
 
 export async function POST(req: NextRequest) {
-  if (!isAuthEnabled()) {
-    return NextResponse.json(
-      {
-        error:
-          "Auth is not configured. Set MOID_AUTH_SECRET (≥16 characters) to enable sign-in.",
-      },
-      { status: 400 },
-    );
-  }
-
   let body: { username?: string; role?: string; password?: string };
   try {
     body = await req.json();

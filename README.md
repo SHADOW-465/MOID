@@ -155,11 +155,11 @@ server — see **[docs/deploy/on-prem.md](docs/deploy/on-prem.md)** and the
 `MOID_COMPANY_ID` scopes schema stores if you host more than one plant; it
 defaults to `default`.
 
-**Optional sign-in (Vercel + plant):** set `MOID_AUTH_SECRET` (≥16 chars). The
-login page lists the same three roles as the topbar (GM / Owner / Operator);
-pick one and enter its password. Defaults: `moid-gm`, `moid-owner`,
-`moid-operator` — override with `MOID_AUTH_PASSWORD_GM` etc. When the secret is
-unset, the app stays open and the topbar role switcher works as before.
+**Sign-in (always on):** every request hits `/login` until a session cookie is
+set. Roles match the topbar (GM / Owner / Operator); default passwords are
+hardcoded (`moid-gm`, `moid-owner`, `moid-operator`). Optional env overrides:
+`MOID_AUTH_PASSWORD_*` for passwords, `MOID_AUTH_SECRET` only if you want a
+custom session HMAC (a built-in default is used otherwise).
 
 **Move Data Entry between databases:** On Data Entry, topbar **Export entries**
 opens a panel to pick scope/dates/format → download JSON → Staging →

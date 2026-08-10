@@ -1,10 +1,8 @@
-// Next.js 16 proxy (formerly middleware). Optional auth gate — no-op when
-// MOID_AUTH_SECRET / MOID_AUTH_USERS are unset so Vercel demos and open local
-// dev keep working.
+// Next.js 16 proxy (formerly middleware). Auth is always on: unauthenticated
+// page requests go to /login; API routes get 401.
 
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { isAuthEnabled } from "@/lib/auth/config";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth/session";
 
 function isPublicPath(pathname: string): boolean {
@@ -17,10 +15,6 @@ function isPublicPath(pathname: string): boolean {
 }
 
 export async function proxy(request: NextRequest) {
-  if (!isAuthEnabled()) {
-    return NextResponse.next();
-  }
-
   const { pathname } = request.nextUrl;
   if (isPublicPath(pathname)) {
     return NextResponse.next();

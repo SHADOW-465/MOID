@@ -5,7 +5,7 @@
 // analytics page shares one copy instead of independently calling
 // DISPOSAFE_REGISTRY as a hardcoded default. Mirrors EventsContext exactly.
 //
-// Waits for auth session when MOID_AUTH_SECRET is set so signed-out shells
+// Waits for auth session so signed-out shells
 // do not log `schema 401`, and re-fetches immediately after sign-in.
 
 import {

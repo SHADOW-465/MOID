@@ -1,9 +1,10 @@
 // Preset plant logins = the same three roles as the topbar persona switcher
-// (GM, Owner, Operator). Operator picks a role on /login and enters that
-// role's password.
+// (GM, Owner, Operator). User picks a role on /login and enters that role's
+// password. Auth is always on — no env flag required.
 //
-// Auth is ON when MOID_AUTH_SECRET is set (≥16 chars). Without it the app
-// stays open and the topbar role switcher works as before (demo / Vercel).
+// Session HMAC secret defaults in-code; override with MOID_AUTH_SECRET if
+// you need plant-specific token invalidation. Passwords default to the
+// pilot strings below; override with MOID_AUTH_PASSWORD_* if needed.
 
 import {
   PERSONAS,
@@ -15,6 +16,14 @@ import {
 export const SESSION_COOKIE = "moid_session";
 /** Session lifetime (seconds). Default 12h plant shift. */
 export const SESSION_TTL_SEC = 60 * 60 * 12;
+
+/**
+ * Built-in session signing key when MOID_AUTH_SECRET is unset.
+ * Must be ≥16 chars. Change/override for production plants that need
+ * independent session invalidation across environments.
+ */
+export const DEFAULT_AUTH_SECRET =
+  "moid-built-in-session-hmac-v1-not-for-high-security-plants";
 
 /** Fixed login ids — identical to PersonaId / topbar roles. */
 export const PRESET_LOGIN_IDS: readonly PersonaId[] = PERSONA_ORDER;
@@ -46,9 +55,10 @@ export type LoginOption = {
   homeHref: string;
 };
 
-export function getAuthSecret(): string | null {
+/** Always returns a signing secret (env override or built-in default). */
+export function getAuthSecret(): string {
   const s = (process.env.MOID_AUTH_SECRET ?? "").trim();
-  return s.length >= 16 ? s : null;
+  return s.length >= 16 ? s : DEFAULT_AUTH_SECRET;
 }
 
 /** Password for a preset role: env override, else default pilot password. */
@@ -88,9 +98,9 @@ export function listLoginOptions(): LoginOption[] {
   });
 }
 
-/** True when MOID_AUTH_SECRET is set — presets are always available then. */
+/** Sign-in is always required (preset GM / Owner / Operator). */
 export function isAuthEnabled(): boolean {
-  return !!getAuthSecret();
+  return true;
 }
 
 /**

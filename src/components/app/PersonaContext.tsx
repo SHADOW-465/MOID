@@ -22,7 +22,7 @@ type PersonaCtx = {
   canConfigure: boolean;
   /** GM only — may permanently erase rows already in the ledger. */
   canEraseLedger: boolean;
-  /** True when MOID_AUTH_* is configured on the server. */
+  /** Always true — sign-in is required (hardcoded presets). */
   authEnabled: boolean;
   /** Signed-in user when auth is on; null when open or signed out. */
   authUser: AuthUser;

@@ -72,7 +72,6 @@ export async function createSessionToken(
   ttlSec: number = SESSION_TTL_SEC,
 ): Promise<string> {
   const secret = getAuthSecret();
-  if (!secret) throw new Error("MOID_AUTH_SECRET is not configured");
   const payload: SessionPayload = {
     u: user.username,
     r: user.role,
@@ -88,7 +87,6 @@ export async function verifySessionToken(
 ): Promise<SessionPayload | null> {
   if (!token || !token.includes(".")) return null;
   const secret = getAuthSecret();
-  if (!secret) return null;
   const [body, sig] = token.split(".");
   if (!body || !sig) return null;
   const expected = await sign(body, secret);
