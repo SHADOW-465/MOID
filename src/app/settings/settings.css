@@ -1117,31 +1117,6 @@
   color: var(--text-3);
 }
 
-/* ── The arithmetic, stated ── */
-.rules-formula {
-  display: block;
-  margin: 4px 0 0;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  line-height: 1.5;
-  color: var(--text-3);
-  overflow-wrap: anywhere;
-}
-
-.rules-formula--rule {
-  margin-top: 8px;
-  padding: 6px 9px;
-  border-left: 2px solid var(--accent);
-  background: var(--surface-2);
-  border-radius: 0 var(--radius-sm, 4px) var(--radius-sm, 4px) 0;
-  color: var(--text-2);
-  font-size: 11px;
-}
-
-.rules-choice.is-selected .rules-formula {
-  color: var(--text-2);
-}
-
 /* ── Worked example against the live ledger ── */
 /* 2-tier plant formula (settings → calculation rules) */
 .rules-tiers {
@@ -1202,6 +1177,44 @@
   margin: 0;
   font-size: 12px;
   line-height: 1.45;
+  color: var(--text-2);
+}
+
+.rules-locked {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 11px 13px;
+  margin-bottom: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.rules-locked-badge {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: var(--surface-3);
+  color: var(--text-2);
+}
+
+.rules-locked-title {
+  margin: 0 0 3px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.rules-locked-body {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
   color: var(--text-2);
 }
 

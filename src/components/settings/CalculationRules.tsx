@@ -28,15 +28,12 @@ import {
 } from "@/core/policy/policy";
 
 type RuleKey = keyof CalculationPolicyT;
-type SectionId = "rates" | "scope" | "targets" | "cost" | "history";
+type SectionId = "rates" | "targets" | "cost" | "history";
 
 interface Choice {
   value: string;
   label: string;
   hint: string;
-  /** The arithmetic, spelled out. Shown in mono under the option so nobody has
-   *  to infer the formula from the label. */
-  formula?: string;
   recommended?: boolean;
 }
 
@@ -54,8 +51,6 @@ interface RuleCard {
     prefix?: string;
     unitLabel: string;
   };
-  /** One-line statement of the rule this card governs, above the options. */
-  rule?: string;
   affects: string;
 }
 
@@ -67,77 +62,13 @@ interface BaselineMeta {
 }
 
 const SECTIONS: { id: SectionId; label: string; hint: string }[] = [
-  { id: "rates", label: "Rejection math", hint: "Headline % formula" },
-  { id: "scope", label: "Default scope", hint: "What “plant” means" },
+  { id: "rates", label: "Rejection math", hint: "The locked formula" },
   { id: "targets", label: "Targets", hint: "Green · amber · red" },
   { id: "cost", label: "Cost", hint: "Unit cost & weights" },
   { id: "history", label: "History", hint: "Audit trail" },
 ];
 
 const CARDS: RuleCard[] = [
-  {
-    key: "headlineRejection",
-    section: "rates",
-    title: "Plant rejection rate",
-    summary:
-      "Primary, Secondary and Assembly are separate populations — the same catheter is not counted in two of them. Each section is measured against its own checked qty, and the section rates add.",
-    rule: "rate = Σ over sections ( section rejected ÷ section checked )",
-    choices: [
-      {
-        value: "by-section",
-        label: "Per section, then added",
-        hint:
-          "Each section’s rejects over that section’s own checked qty. Gates inside a section share one denominator — their rejects are summed, their rates are not.",
-        formula: "(Assembly rejected ÷ Assembly checked) + (Primary rejected ÷ Primary checked)",
-        recommended: true,
-      },
-      {
-        value: "pooled",
-        label: "One fraction for everything",
-        hint:
-          "All rejects over a single checked qty. Fine while one section is in view; across sections it divides Assembly’s rejects by Primary’s checked.",
-        formula: "total rejected ÷ entry checked",
-      },
-      {
-        value: "sum-of-stage-rates",
-        label: "Every gate’s rate, added",
-        hint:
-          "Visual% + Balloon% + Valve% + Final%. The older YEARLY / REJECTION ANALYSIS sheet convention — counts the Assembly funnel once per gate.",
-        formula: "Σ over gates ( gate rejected ÷ gate checked )",
-      },
-    ],
-    affects: "Dashboard KPI, trends, reports, target status",
-  },
-  {
-    key: "checkedMeasuredAt",
-    section: "rates",
-    title: "Where “checked” is counted",
-    summary:
-      "Inside a section the gates are sequential — what Visual accepts is what Balloon then checks — so the section is measured once, at its first gate. Different sections are different units, so their counts add.",
-    rule: "checked = Σ over sections ( that section’s entry gate )",
-    choices: [
-      {
-        value: "section-entry",
-        label: "Each section once, then added",
-        hint: "Assembly at Visual, Primary at Production, and so on.",
-        formula: "Visual checked + Production checked",
-        recommended: true,
-      },
-      {
-        value: "most-upstream",
-        label: "One gate for everything",
-        hint: "A single entry point for the whole view. Under-counts once a second section is in scope.",
-        formula: "checked at the most upstream gate in view",
-      },
-      {
-        value: "sum-of-gates",
-        label: "Every gate added",
-        hint: "Only correct if gates inspect different units — inside a section they do not.",
-        formula: "Σ over gates ( gate checked )",
-      },
-    ],
-    affects: "Checked counts; the denominator of every rate",
-  },
   {
     key: "reworkCountsAs",
     section: "rates",
@@ -158,31 +89,8 @@ const CARDS: RuleCard[] = [
     ],
     affects: "Checked, rates, mass balance",
   },
-  {
-    key: "defaultSections",
-    section: "scope",
-    title: "Default floor areas",
-    summary: "What is in view before anyone filters. Plant reports usually mean Assembly only.",
-    choices: [
-      {
-        value: "assembly",
-        label: "Assembly only",
-        hint: "P15–P27 — matches plant reports.",
-        recommended: true,
-      },
-      {
-        value: "secondary,assembly",
-        label: "Secondary + Assembly",
-        hint: "From P10 onward.",
-      },
-      {
-        value: "primary,secondary,assembly",
-        label: "Whole plant",
-        hint: "Primary + Secondary + Assembly.",
-      },
-    ],
-    affects: "Starting scope on every screen",
-  },
+  // defaultSections lives in Settings → Display defaults. It changes no number,
+  // only which sections a screen opens on, so it is not a calculation rule.
   {
     key: "targetRejectionPct",
     section: "targets",
@@ -224,13 +132,6 @@ const STAGE_LABEL: Record<string, string> = Object.fromEntries(
 );
 const stageLabel = (id: string | null) => (id ? (STAGE_LABEL[id] ?? id) : "—");
 
-function sectionsToValue(v: string[]): string {
-  return [...v].sort().join(",");
-}
-function valueToSections(v: string): CalculationPolicyT["defaultSections"] {
-  return v.split(",") as CalculationPolicyT["defaultSections"];
-}
-
 function formatApiError(data: {
   error?: string;
   issues?: { path?: (string | number)[]; message?: string }[];
@@ -250,16 +151,7 @@ function sectionDirty(
   saved: CalculationPolicyT,
 ): boolean {
   if (section === "history") return false;
-  if (section === "rates") {
-    return (
-      draft.headlineRejection !== saved.headlineRejection ||
-      draft.checkedMeasuredAt !== saved.checkedMeasuredAt ||
-      draft.reworkCountsAs !== saved.reworkCountsAs
-    );
-  }
-  if (section === "scope") {
-    return sectionsToValue(draft.defaultSections) !== sectionsToValue(saved.defaultSections);
-  }
+  if (section === "rates") return draft.reworkCountsAs !== saved.reworkCountsAs;
   if (section === "targets") {
     return (
       draft.targetRejectionPct !== saved.targetRejectionPct ||
@@ -821,6 +713,22 @@ export default function CalculationRules() {
 
               {group.id === "rates" && (
                 <>
+                  <div className="rules-locked">
+                    <span className="rules-locked-badge" aria-hidden>
+                      Fixed
+                    </span>
+                    <div>
+                      <p className="rules-locked-title">This formula is fixed</p>
+                      <p className="rules-locked-body">
+                        It used to be two dropdowns. Between them, 8 of the 9 combinations were
+                        arithmetically incoherent — a headline % whose denominator disagreed with
+                        the Checked figure beside it — and changing one silently rewrote every
+                        past report with nothing on the page saying which convention produced it.
+                        Only <strong>rework handling</strong> below is still a plant choice.
+                      </p>
+                    </div>
+                  </div>
+
                   <div className="rules-tiers" aria-label="Plant rejection formula">
                     <div className="rules-tier">
                       <span className="rules-tier-step">1</span>
@@ -966,19 +874,13 @@ export default function CalculationRules() {
                       <header className="rules-decision-head">
                         <h4 className="rules-decision-title">{card.title}</h4>
                         <p className="rules-decision-summary">{card.summary}</p>
-                        {card.rule && (
-                          <p className="rules-formula rules-formula--rule">{card.rule}</p>
-                        )}
                       </header>
 
                       {card.choices && (
                         <fieldset className="rules-choices" disabled={!canConfigure}>
                           <legend className="sr-only">{card.title}</legend>
                           {card.choices.map((c) => {
-                            const selected =
-                              card.key === "defaultSections"
-                                ? sectionsToValue(draft.defaultSections) === c.value
-                                : current === c.value;
+                            const selected = current === c.value;
                             const choiceId = `rule-${card.key}-${c.value}`;
                             return (
                               <label
@@ -993,11 +895,7 @@ export default function CalculationRules() {
                                   className="rules-choice-input"
                                   checked={selected}
                                   disabled={!canConfigure}
-                                  onChange={() =>
-                                    card.key === "defaultSections"
-                                      ? set("defaultSections", valueToSections(c.value))
-                                      : set(card.key, c.value as never)
-                                  }
+                                  onChange={() => set(card.key, c.value as never)}
                                 />
                                 <span className="rules-choice-radio" aria-hidden>
                                   {selected && <Icon name="check" size={11} stroke={2.8} />}
@@ -1008,9 +906,6 @@ export default function CalculationRules() {
                                     {c.recommended && <span className="rules-pill">Usual</span>}
                                   </span>
                                   <span className="rules-choice-hint">{c.hint}</span>
-                                  {c.formula && (
-                                    <span className="rules-formula">{c.formula}</span>
-                                  )}
                                 </span>
                               </label>
                             );
@@ -1151,7 +1046,7 @@ export default function CalculationRules() {
         <section id="rules-grp-history" className="rules-group" aria-labelledby="rules-grp-history-title">
           <header className="rules-group-head">
             <span className="rules-group-idx" aria-hidden>
-              05
+              {String(SECTIONS.filter((s) => s.id !== "history").length + 1).padStart(2, "0")}
             </span>
             <div className="rules-group-copy">
               <h3 id="rules-grp-history-title" className="rules-group-title">

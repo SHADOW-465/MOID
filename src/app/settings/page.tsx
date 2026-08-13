@@ -16,6 +16,7 @@ import { useEvents } from "@/components/app/EventsContext";
 import { useRegistry } from "@/components/app/RegistryContext";
 import { usePersona } from "@/components/app/PersonaContext";
 import CalculationRules from "@/components/settings/CalculationRules";
+import DisplayDefaults from "@/components/settings/DisplayDefaults";
 import {
   DEFAULT_SHIFT_WINDOWS,
   readShiftWindowConfig,
@@ -30,10 +31,11 @@ import {
   type DataEntryExportConfig,
 } from "@/lib/entry/export-config";
 
-type SectionId = "rules" | "shifts" | "export" | "registry" | "custom" | "admin";
+type SectionId = "rules" | "display" | "shifts" | "export" | "registry" | "custom" | "admin";
 
 const SECTIONS: { id: SectionId; label: string; hint: string }[] = [
-  { id: "rules", label: "Calculation rules", hint: "Targets, costs, rejection math" },
+  { id: "rules", label: "Calculation rules", hint: "Targets, costs, rework handling" },
+  { id: "display", label: "Display defaults", hint: "What screens open on" },
   { id: "shifts", label: "Shift windows", hint: "When operators may edit freely" },
   { id: "export", label: "Data Entry export", hint: "Topbar Export on /data-entry" },
   { id: "registry", label: "Defect registry", hint: "Plant catalog (read-only)" },
@@ -258,6 +260,8 @@ export default function SettingsPage() {
               {section === "rules" && (
                 <CalculationRules />
               )}
+
+              {section === "display" && <DisplayDefaults />}
 
               {section === "shifts" && (
                 <div className="settings-field-stack">

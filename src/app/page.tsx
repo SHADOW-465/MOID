@@ -419,8 +419,15 @@ export default function Dashboard() {
     };
   }, [m]);
 
-  const worstStageRow = m ? [...m.stages].sort((a, b) => b.rejected - a.rejected)[0] ?? null : null;
-  const worstStageByRejs = worstStageRow?.label ?? "Visual Inspection";
+  // `.find(rejected > 0)`, not `[0]`: a stage that rejected nothing is not the
+  // "top rejecting stage". Sorting alone named the first gate in a scope where
+  // every gate was clean — and the fallback hardcoded this plant's own
+  // "Visual Inspection", so an empty scope invented a bottleneck that had no
+  // records behind it. No data ⇒ no answer.
+  const worstStageRow = m
+    ? [...m.stages].sort((a, b) => b.rejected - a.rejected).find((s) => s.rejected > 0) ?? null
+    : null;
+  const worstStageByRejs = worstStageRow?.label ?? "—";
 
   const getDefectRejRate = (defect: any) => {
     if (!m) return 0;
@@ -635,12 +642,14 @@ export default function Dashboard() {
               }
               sub={worstStageRow ? `${pct(worstStageRow.rejRate)} rejection rate` : "—"}
               tone={worstStageRow && worstStageRow.rejRate > targetRej ? "bad" : "warn"}
-              onClick={() => openModal(
-                `${worstStageByRejs} — Drill-down`,
-                kpiNarrative("bottleneck", `${worstStageByRejs} is the top bottleneck stage, contributing ${num(worstStageRow?.rejected ?? 0)} rejections (${worstStageRow ? pct(worstStageRow.rejRate) : "—"} rejection rate).`),
+              // No rejecting stage in scope → nothing to drill into. Opening a
+              // "— — Drill-down" on an empty trace is worse than not opening.
+              onClick={worstStageRow ? () => openModal(
+                `${worstStageRow.label} — Drill-down`,
+                kpiNarrative("bottleneck", `${worstStageRow.label} is the top bottleneck stage, contributing ${num(worstStageRow.rejected)} rejections (${pct(worstStageRow.rejRate)} rejection rate).`),
                 <div style={{ minHeight: 220, display: "flex", flexDirection: "column", justifyContent: "center" }}><ProcessFlow rows={m.stages} /></div>,
-                { rows: srcRows({ stageId: worstStageRow?.stageId, types: ["production", "inspection", "rejection"] }), value: worstStageRow ? pct(worstStageRow.rejRate) : "—" , metricKind: "rejection_rate"},
-              )}
+                { rows: srcRows({ stageId: worstStageRow.stageId, types: ["production", "inspection", "rejection"] }), value: pct(worstStageRow.rejRate), metricKind: "rejection_rate"},
+              ) : undefined}
             />
             <Kpi
               label="Top Defect"
@@ -1057,10 +1066,13 @@ export default function Dashboard() {
                     )}
                   </div>
 
-                  {/* Integrated Callout: Worst Stage Bottleneck & Recovery */}
-                  <div style={{ 
-                    display: "grid", 
-                    gridTemplateColumns: "1.2fr 1fr", 
+                  {/* Integrated Callout: Worst Stage Bottleneck & Recovery.
+                      Hidden with no rejecting stage in scope — "— Bottleneck …
+                      rate of —" is a claim about nothing. */}
+                  {worstStageRow && (
+                  <div style={{
+                    display: "grid",
+                    gridTemplateColumns: "1.2fr 1fr",
                     gap: 20,
                     paddingTop: 16,
                     borderTop: "1px solid var(--border)",
@@ -1076,11 +1088,11 @@ export default function Dashboard() {
                           boxShadow: "0 0 6px var(--critical)",
                         }} />
                         <span style={{ fontSize: "var(--text-md)", fontWeight: 600, fontFamily: "var(--font-display)", letterSpacing: "-0.01em" }}>
-                          {worstStageByRejs} Bottleneck
+                          {worstStageRow.label} Bottleneck
                         </span>
                       </div>
                       <p className="small" style={{ margin: 0, color: "var(--text-3)", lineHeight: 1.45 }}>
-                        Quality deviation is concentrated here at a rejection rate of <strong style={{ fontWeight: 600, color: "var(--text)" }}>{worstStageRow ? pct(worstStageRow.rejRate) : "—"}</strong>.
+                        Quality deviation is concentrated here at a rejection rate of <strong style={{ fontWeight: 600, color: "var(--text)" }}>{pct(worstStageRow.rejRate)}</strong>.
                       </p>
                     </div>
 
@@ -1096,6 +1108,7 @@ export default function Dashboard() {
                       </div>
                     </div>
                   </div>
+                  )}
                 </div>
 
                 {/* Vertical Divider Line */}

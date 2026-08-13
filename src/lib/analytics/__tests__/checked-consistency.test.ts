@@ -201,20 +201,42 @@ test("rejectionRateFromSummary: COMPUTED and HOW IT ADDS UP share one formula", 
   ];
   const s = summarizeSource(plant, "rejection_rate");
 
-  const bySection = rejectionRateFromSummary(s, "by-section");
-  expect((bySection.value * 100).toFixed(2)).toBe("9.44");
-  // Total row uses the same unrounded sum as the value.
-  expect(bySection.rows.reduce((t, r) => t + r.rate, 0)).toBeCloseTo(bySection.value, 12);
+  const proof = rejectionRateFromSummary(s);
+  expect((proof.value * 100).toFixed(2)).toBe("9.44");
+  // The displayed rows use the same unrounded sum as the headline value.
+  expect(proof.sections.reduce((t, r) => t + r.rate, 0)).toBeCloseTo(proof.value, 12);
 
-  // Pooled over the summary's entry checked (sections summed, same as
-  // checkedMeasuredAt: "section-entry"). 15,719 / (77,504 + 176,838) ≈ 6.18%.
-  // The infamous 20.28% is total rejects ÷ Primary only (most-upstream).
-  const pooled = rejectionRateFromSummary(s, "pooled");
-  expect((pooled.value * 100).toFixed(2)).toBe("6.18");
-  expect(pooled.value).toBeCloseTo(15_719 / (77_504 + 176_838), 8);
+  // The legacy comparison line: every gate's own rate, added.
+  expect(((proof.legacySumOfGateRates ?? 0) * 100).toFixed(2)).toBe("10.71");
+});
 
-  const summed = rejectionRateFromSummary(s, "sum-of-stage-rates");
-  expect((summed.value * 100).toFixed(2)).toBe("10.71");
+test("the gate rows in the proof panel actually sum to the numerator", () => {
+  // The old panel listed contributing gates in prose that did NOT add up to the
+  // rate's numerator. Every gate shown must now account for it exactly.
+  const plant = [
+    ...gate("production", "Production", 77_504, 757),
+    ...gate("visual", "Visual Inspection", 176_838, 9_243),
+    ...gate("balloon", "Balloon Inspection", 143_269, 650),
+    ...gate("valve-integrity", "Valve Integrity", 143_052, 2_668),
+    ...gate("final", "Final Inspection", 109_761, 2_401),
+  ];
+  const { sections } = rejectionRateFromSummary(summarizeSource(plant, "rejection_rate"));
+
+  const assembly = sections.find((s) => s.key === "assembly")!;
+  expect(assembly.gates.map((g) => g.key)).toEqual([
+    "visual",
+    "balloon",
+    "valve-integrity",
+    "final",
+  ]);
+  expect(assembly.gates.reduce((t, g) => t + g.rejectedQty, 0)).toBe(assembly.rejectedQty);
+  expect(assembly.rejectedQty).toBe(9_243 + 650 + 2_668 + 2_401);
+  // …and the division shown under them is the rate shown beside them.
+  expect(assembly.rejectedQty / assembly.checkedQty).toBeCloseTo(assembly.rate, 12);
+
+  for (const sec of sections) {
+    expect(sec.gates.reduce((t, g) => t + g.rejectedQty, 0)).toBe(sec.rejectedQty);
+  }
 });
 
 test("stageBreakdown is in process order, not by size", () => {

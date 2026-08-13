@@ -13,6 +13,7 @@ import {
   isPlantDefaultTweaks,
   type Scope,
 } from "../scope";
+import { byStage } from "../rejection";
 import type { Event } from "@/lib/store/types";
 
 function makeEv(partial: {
@@ -207,6 +208,53 @@ describe("source channel filter (Excel vs Data Entry)", () => {
     });
     expect(scope.sourceChannels).toBeUndefined();
     expect(scope.sourceFiles).toBeUndefined();
+  });
+
+  it("no channel selected yields NOTHING, not the full plant", () => {
+    const tweaks = {
+      grain: "month" as const,
+      datePreset: "all" as const,
+      dateFrom: "",
+      dateTo: "",
+      includeExcel: false,
+      includeDirectEntry: false,
+      excelFiles: [],
+    };
+    const scope = resolveScope([excel, manual], tweaks);
+    expect(scope.sourceChannels).toEqual([]);
+    expect(scopeEvents([excel, manual], scope)).toEqual([]);
+    // …and the "all channels" result must not be served from the same cache slot.
+    expect(
+      scopeEvents([excel, manual], resolveScope([excel, manual], { ...tweaks, includeExcel: true, includeDirectEntry: true })).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("an emptied scope leaves no stage that can be called the top rejecting one", () => {
+    // The dashboard's "Top Rejecting Stage" tile picks the highest-rejecting row
+    // out of byStage(). With no channel selected there must be no such row —
+    // otherwise the tile names a bottleneck that has no records behind it.
+    const scope = resolveScope([excel, manual], {
+      grain: "month",
+      datePreset: "all",
+      dateFrom: "",
+      dateTo: "",
+      includeExcel: false,
+      includeDirectEntry: false,
+      excelFiles: [],
+    });
+    expect(byStage([excel, manual], scope).filter((s) => s.rejected > 0)).toEqual([]);
+  });
+
+  it("no section selected yields NOTHING", () => {
+    const scope = resolveScope([excel, manual], {
+      grain: "month",
+      datePreset: "all",
+      dateFrom: "",
+      dateTo: "",
+      stageCategories: [],
+    });
+    expect(scope.stageIds).toEqual([]);
+    expect(scopeEvents([excel, manual], scope)).toEqual([]);
   });
 });
 

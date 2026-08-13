@@ -154,9 +154,54 @@ describe("company catalog store", () => {
       },
     });
     const cat = await store.mergeFromMod(mod2);
-    expect(cat.stages.map((s) => s.stageId).sort()).toEqual(["final", "visual"]);
+
+    // A code the plant already knows still unions its gates and aliases — that
+    // is what stops a second workbook inventing PINH-2.
     expect(cat.defects).toHaveLength(1);
     expect(cat.defects[0].stages.sort()).toEqual(["final", "visual"]);
     expect(cat.defects[0].aliases).toEqual(expect.arrayContaining(["pinhole", "pin hole"]));
+
+    // But "final" is a stage no verified MOD has described before, and the plant
+    // is already configured — so it does NOT join the master schema on its own.
+    // (This assertion used to read ["final", "visual"]; the acceptNovel gate in
+    // catalog-diff.ts made silent growth an explicit operator decision instead.)
+    expect(cat.stages.map((s) => s.stageId)).toEqual(["visual"]);
+  });
+
+  it("a novel stage joins the catalog once the operator accepts it", async () => {
+    // Invariant 4: the catalog outlives the workbooks, so a later MOD must be
+    // able to add a gate the first one never described. The gate is consent,
+    // not refusal — this is the path /api/mods takes with the verify panel's
+    // acceptNovel checkboxes.
+    const store = getCatalogStore();
+    await store.mergeFromMod(fakeMod({ modId: "snap-1" }));
+
+    const baseDoc = fakeMod({ modId: "x" }).document;
+    const withFinal = fakeMod({
+      modId: "snap-2",
+      document: {
+        ...baseDoc,
+        stages: [
+          {
+            stageId: "final",
+            label: "Final",
+            effectiveFrom: null,
+            effectiveTo: null,
+            upstream: ["visual"],
+            captures: ["checked", "rejected"],
+          },
+        ],
+        defects: [],
+        sizes: [],
+      },
+    });
+
+    const rejected = await store.mergeFromMod(withFinal);
+    expect(rejected.stages.map((s) => s.stageId)).toEqual(["visual"]);
+
+    const accepted = await store.mergeFromMod(withFinal, {
+      acceptNovel: { stageIds: ["final"] },
+    });
+    expect(accepted.stages.map((s) => s.stageId).sort()).toEqual(["final", "visual"]);
   });
 });

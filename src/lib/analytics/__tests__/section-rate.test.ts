@@ -11,7 +11,13 @@
 //   20.28% = 15,719 / 77,504        (everything ÷ Primary's checked)
 //   10.71% = Σ each gate's own rate (Assembly's funnel counted four times)
 
-import { rejectionRate, totalChecked, totalRejected, bySection } from "../rejection";
+import {
+  rejectionRate,
+  totalChecked,
+  totalRejected,
+  bySection,
+  legacySumOfGateRates,
+} from "../rejection";
 import type { Scope } from "../scope";
 import { DEFAULT_POLICY, type CalculationPolicyT } from "@/core/policy/policy";
 import type { Event } from "@/lib/store/types";
@@ -109,12 +115,12 @@ test("bySection exposes each section's own numerator and denominator", () => {
   expect(pct(byKey.assembly.rate)).toBe("8.46");
 });
 
-test("the legacy conventions stay available and still produce their old figures", () => {
+test("the legacy sheet figure stays reachable for comparison only", () => {
   const all = [...PRIMARY, ...ASSEMBLY];
-  expect(pct(rejectionRate(all, scope({ headlineRejection: "pooled", checkedMeasuredAt: "most-upstream" }), REGISTRY).value))
-    .toBe("20.28");
-  expect(pct(rejectionRate(all, scope({ headlineRejection: "sum-of-stage-rates" }), REGISTRY).value))
-    .toBe("10.71");
+  // What the plant rule says…
+  expect(pct(rejectionRate(all, scope(), REGISTRY).value)).toBe("9.44");
+  // …vs what the old YEARLY sheet printed. Never wired to a KPI.
+  expect(pct(legacySumOfGateRates(all, scope(), REGISTRY))).toBe("10.71");
 });
 
 test("an unclassified stage becomes its own section rather than joining another's denominator", () => {

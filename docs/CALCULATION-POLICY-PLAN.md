@@ -1,6 +1,29 @@
 # Calculation Policy ("Rules") — plan
 
-**Status:** draft for review. Nothing built yet.
+> **Amendment (2026-08-13) — the rejection formula is no longer a policy key.**
+>
+> This plan shipped, and two of its rules were then withdrawn: `headlineRejection`
+> and `checkedMeasuredAt`. The plan's core insight holds — a convention buried in
+> a code comment is a defect — but making the *formula itself* configurable was
+> the wrong remedy for these two:
+>
+> - They are not independent axes. `by-section` already implies section-entry
+>   denominators, so 8 of the 9 combinations produced a headline % whose
+>   denominator disagreed with the Checked KPI beside it.
+> - Two of three options on each were arithmetically indefensible, and the UI
+>   said so in its own hint text. A setting where most values are wrong is a
+>   trap, not a choice.
+> - Policy is a read-time lens, so flipping one silently rewrote every past
+>   report with nothing on the page recording which convention produced it —
+>   unacceptable for a medical-device plant.
+>
+> The locked rule now lives in `core/policy/policy.ts`; reconciling against the
+> legacy YEARLY sheet is a comparison line in the drill-down
+> (`rejection.ts` → `legacySumOfGateRates`), not a global switch. `reworkCountsAs`
+> stayed configurable: it is a fact about the floor, not a maths opinion. The
+> remaining five keys (targets, cost, weights, default sections) are unchanged.
+
+**Status:** shipped, then amended — see above.
 **Problem it solves:** the 9.73% vs 8.46% argument, permanently — and every
 future instance of it.
 

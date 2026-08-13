@@ -9,35 +9,32 @@
 
 import { z } from "zod";
 
+/**
+ * NOT configurable — the rejection formula itself is locked. See
+ * `docs/CALCULATION-POLICY-PLAN.md`.
+ *
+ *   rate    = Σ over sections ( section rejected ÷ section checked )
+ *   checked = Σ over sections ( that section's entry gate )
+ *
+ * Sections (Primary / Secondary / Assembly) are separate populations, so their
+ * rates add. Gates INSIDE a section are sequential — what Visual accepts is what
+ * Balloon checks — so the section is measured once at its entry gate, gate
+ * rejects are summed, and gate rates are never added.
+ *
+ * This used to be two enum settings (`headlineRejection`, `checkedMeasuredAt`).
+ * Between them, 8 of the 9 combinations were arithmetically incoherent — a
+ * headline % whose denominator disagreed with the Checked KPI beside it — and
+ * because policy is a read-time lens, flipping one silently rewrote every
+ * historical report with nothing on the page saying which convention produced
+ * it. Old stored policies still load: z.object drops the removed keys.
+ *
+ * Reconciling against the legacy YEARLY / REJECTION ANALYSIS sheet (which added
+ * each gate's rate) belongs in the drill-down as a comparison line, not as a
+ * global switch.
+ */
+
 /** Phase 1 rules only. Add a key here + a card in /settings/rules to ship more. */
 export const CalculationPolicy = z.object({
-  /**
-   * A1 — what "the plant's rejection rate" means.
-   *
-   *  by-section (plant rule): each section's total rejected ÷ that section's
-   *    own checked, then the section rates are added.
-   *      Assembly           14,962 ÷ 176,838            = 8.46%
-   *      Primary + Assembly (757÷77,504) + (14,962÷176,838) = 9.44%
-   *    Sections are separate populations; gates inside one are not.
-   *
-   *  pooled: total rejected ÷ one entry count. Fine for a single section;
-   *    across sections it divides Assembly's rejects by Primary's checked.
-   *
-   *  sum-of-stage-rates: every gate against its own denominator, added — the
-   *    older REJECTION ANALYSIS / YEARLY sheet convention.
-   */
-  headlineRejection: z.enum(["by-section", "pooled", "sum-of-stage-rates"]),
-
-  /**
-   * A2 — where "checked / entered" is measured.
-   *  section-entry: each section once at its own entry gate, then added.
-   *    Gates inside a section are sequential, so the section is measured once.
-   *  most-upstream: a single entry gate for the whole scope.
-   *  sum-of-gates: add every gate. Only correct if gates inspect DIFFERENT
-   *    units; double-counts within a section.
-   */
-  checkedMeasuredAt: z.enum(["section-entry", "most-upstream", "sum-of-gates"]),
-
   /** A3 — units pulled out at a gate for rework/hold. */
   reworkCountsAs: z.enum(["excluded", "checked"]),
 
@@ -64,8 +61,6 @@ export type CalculationPolicyT = z.infer<typeof CalculationPolicy>;
  * shipping the feature a no-op until somebody deliberately changes a rule.
  */
 export const DEFAULT_POLICY: CalculationPolicyT = {
-  headlineRejection: "by-section",         // rejection.ts rejectionRate()
-  checkedMeasuredAt: "section-entry",      // rejection.ts totalChecked()
   reworkCountsAs: "excluded",              // rejection.ts aggregate()
   defaultSections: ["assembly"],           // plant-catalog DEFAULT_STAGE_CATEGORIES
   targetRejectionPct: 10,                  // was localStorage rais_settings_target_rejection

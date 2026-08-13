@@ -18,6 +18,7 @@ import {
   groupSourceRows,
   summarizeSource,
   rejectionRateFromSummary,
+  type RejectionProof,
   resolvedRejectedQty,
   defaultSourceFilters,
   stageOptionsFromRows,
@@ -25,8 +26,6 @@ import {
   fileBasename,
   DETAIL_PAGE_SIZE,
 } from "@/lib/analytics/source-trace";
-import { STAGE_CATEGORY as SECTION_OF } from "@/core/ontology/plant-catalog";
-import { usePolicy } from "@/components/app/RegistryContext";
 
 export type { SourceRow, SourceMetricKind };
 
@@ -122,7 +121,8 @@ export default function FloatingDetailModal({
   periodGrain: _periodGrain = "month",
 }: FloatingDetailModalProps) {
   void _periodGrain; // retained on the public prop surface; grouping modes removed
-  const policy = usePolicy();
+  // No usePolicy() here any more: the rejection formula is locked, so the proof
+  // panel renders one shape regardless of policy.
   const [showSource, setShowSource] = useState(false);
   const [isInsightExpanded, setIsInsightExpanded] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -218,8 +218,8 @@ export default function FloatingDetailModal({
     ) {
       return null;
     }
-    return rejectionRateFromSummary(summary, policy.headlineRejection);
-  }, [metricKind, summary, policy.headlineRejection]);
+    return rejectionRateFromSummary(summary);
+  }, [metricKind, summary]);
 
   const computedDisplay = useMemo(() => {
     if (rejectionProof) {
@@ -741,115 +741,8 @@ export default function FloatingDetailModal({
                   </div>
                 )}
 
-                {/* Plant rule (by-section): one row per SECTION with its own
-                    denominator; rates add. Never total-rejects ÷ Primary-checked. */}
-                {rejectionProof && rejectionProof.rows.length > 0 && (
-                  <div
-                    style={{
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                      padding: "10px 12px",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 8,
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.04em",
-                        color: "var(--text-3)",
-                      }}
-                    >
-                      How it adds up
-                    </div>
-
-                    {rejectionProof.rows.map((row) => {
-                      const gates =
-                        policy.headlineRejection === "by-section"
-                          ? summary.stageBreakdown.filter(
-                              (g) => (SECTION_OF[g.key] ?? g.key) === row.key,
-                            )
-                          : [];
-                      return (
-                        <div key={row.key} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                          <div
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              gap: 10,
-                              fontSize: 11.5,
-                              fontFamily: "var(--font-mono)",
-                            }}
-                          >
-                            <span style={{ flex: 1, color: "var(--text)", fontWeight: 600 }}>
-                              {row.label}
-                            </span>
-                            <span className="muted">{row.detail.split(" · ")[0]}</span>
-                            <span
-                              style={{
-                                color: "var(--text)",
-                                fontWeight: 700,
-                                minWidth: 52,
-                                textAlign: "right",
-                              }}
-                            >
-                              {(row.rate * 100).toFixed(2)}%
-                            </span>
-                          </div>
-                          {row.detail.includes(" · ") && (
-                            <div className="muted" style={{ fontSize: 10, paddingLeft: 8 }}>
-                              {row.detail.split(" · ").slice(1).join(" · ")}
-                              {gates.length > 1 && (
-                                <>
-                                  {" · rejects from "}
-                                  {gates
-                                    .filter((g) => g.rejectedQty > 0)
-                                    .map((g) => `${g.label} ${fmtQty(g.rejectedQty)}`)
-                                    .join(", ")}
-                                </>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 10,
-                        fontSize: 11.5,
-                        fontFamily: "var(--font-mono)",
-                        borderTop: "1px solid var(--border)",
-                        paddingTop: 6,
-                      }}
-                    >
-                      <span style={{ flex: 1, fontWeight: 700, color: "var(--text)" }}>Total</span>
-                      <span
-                        style={{
-                          color: "var(--accent)",
-                          fontWeight: 700,
-                          minWidth: 52,
-                          textAlign: "right",
-                        }}
-                      >
-                        {computedDisplay}
-                      </span>
-                    </div>
-                    <p className="muted" style={{ fontSize: 10.5, lineHeight: 1.45, margin: "2px 0 0" }}>
-                      {policy.headlineRejection === "by-section"
-                        ? rejectionProof.rows.length > 1
-                          ? "Each section is a separate population with its own denominator — section rates add. Gates inside a section share that section’s checked count."
-                          : "Every gate in this section shares one denominator (entry checked). Gate rejects are summed; gate rates are not."
-                        : policy.headlineRejection === "sum-of-stage-rates"
-                          ? "Each gate’s own rate, then added. Counts the funnel once per gate."
-                          : "One fraction: all rejects over a single entry count. Across sections this mixes populations."}
-                    </p>
-                  </div>
+                {rejectionProof && rejectionProof.sections.length > 0 && (
+                  <RejectionProofPanel proof={rejectionProof} total={computedDisplay} />
                 )}
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -1279,6 +1172,223 @@ export default function FloatingDetailModal({
 function fmtQty(n: number): string {
   if (!n) return "0";
   return n.toLocaleString(undefined, { maximumFractionDigits: 0 });
+}
+
+/**
+ * "How it adds up" — the arithmetic, written out.
+ *
+ * The old version printed `67,464 / 508,282  13.27%` on one line with the
+ * contributing gates crammed into a grey run-on sentence underneath that did NOT
+ * visibly sum to the numerator. You had to take the number on faith.
+ *
+ * Now each section shows: its denominator (named at its entry gate), every gate
+ * that rejected anything, a ruled subtotal proving those gates ARE the
+ * numerator, and the division spelled out. Layout is a 2-column grid so the
+ * quantities align into a column you can add with your eye.
+ */
+function RejectionProofPanel({
+  proof,
+  total,
+}: {
+  proof: RejectionProof;
+  total: string;
+}) {
+  const multi = proof.sections.length > 1;
+  const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
+
+  return (
+    <div
+      style={{
+        border: "1px solid var(--border)",
+        borderRadius: 8,
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          gap: 8,
+          padding: "9px 12px",
+          borderBottom: "1px solid var(--border)",
+          background: "var(--surface-2)",
+        }}
+      >
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            textTransform: "uppercase",
+            letterSpacing: "0.04em",
+            color: "var(--text-3)",
+          }}
+        >
+          How it adds up
+        </span>
+        <span className="muted" style={{ fontSize: 10.5 }}>
+          {multi ? `${proof.sections.length} sections · rates add` : "1 section"}
+        </span>
+      </div>
+
+      {proof.sections.map((sec) => (
+        <div
+          key={sec.key}
+          style={{
+            padding: "10px 12px",
+            borderBottom: "1px solid var(--border)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 7,
+          }}
+        >
+          {multi && (
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>{sec.label}</div>
+          )}
+
+          {/* Denominator first — you cannot read a rate without it. */}
+          <ProofLine
+            label={`Entered at ${sec.entryLabel}`}
+            value={fmtQty(sec.checkedQty)}
+            hint="the denominator"
+          />
+
+          {sec.gates.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              <div
+                className="muted"
+                style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.03em" }}
+              >
+                Rejected at
+              </div>
+              {sec.gates.map((g) => (
+                <ProofLine key={g.key} label={g.label} value={fmtQty(g.rejectedQty)} indent />
+              ))}
+              <ProofLine
+                label={sec.gates.length > 1 ? `Total rejected · ${sec.gates.length} gates` : "Total rejected"}
+                value={fmtQty(sec.rejectedQty)}
+                rule
+                strong
+              />
+            </div>
+          )}
+
+          {/* The division, in full. No inference required. */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              justifyContent: "space-between",
+              gap: 10,
+              fontFamily: "var(--font-mono)",
+              fontSize: 11.5,
+              padding: "7px 9px",
+              borderRadius: 6,
+              background: "var(--surface-2)",
+            }}
+          >
+            <span style={{ color: "var(--text-2)" }}>
+              {fmtQty(sec.rejectedQty)} ÷ {fmtQty(sec.checkedQty)}
+            </span>
+            <span style={{ fontWeight: 700, color: multi ? "var(--text)" : "var(--accent)" }}>
+              {pct(sec.rate)}
+            </span>
+          </div>
+        </div>
+      ))}
+
+      {/* Only earns a row when there is actually an addition to show. */}
+      {multi && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            justifyContent: "space-between",
+            gap: 10,
+            padding: "9px 12px",
+            borderBottom: "1px solid var(--border)",
+            fontFamily: "var(--font-mono)",
+            fontSize: 11.5,
+          }}
+        >
+          <span style={{ color: "var(--text-2)" }}>
+            {proof.sections.map((s) => pct(s.rate)).join(" + ")}
+          </span>
+          <span style={{ fontWeight: 700, color: "var(--accent)" }}>{total}</span>
+        </div>
+      )}
+
+      <div style={{ padding: "8px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
+        <p className="muted" style={{ fontSize: 10.5, lineHeight: 1.5, margin: 0 }}>
+          {multi
+            ? "Each section is a separate population measured at its own entry gate, so the section rates add. Inside a section the gates are sequential — they share one denominator, so their rejects are summed and their rates are not."
+            : "The gates here are sequential — what one accepts, the next checks — so they share one denominator. Rejects are summed across gates; gate rates are never added."}
+        </p>
+        {proof.legacySumOfGateRates != null && (
+          <p className="muted" style={{ fontSize: 10.5, lineHeight: 1.5, margin: 0 }}>
+            The old YEARLY / REJECTION ANALYSIS sheet printed{" "}
+            <strong style={{ color: "var(--text-2)", fontFamily: "var(--font-mono)" }}>
+              {pct(proof.legacySumOfGateRates)}
+            </strong>{" "}
+            for these rows — it added each gate&rsquo;s own rate, counting the same units once per
+            gate.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** One `label ………… qty` row. `rule` draws the add-up line above the subtotal. */
+function ProofLine({
+  label,
+  value,
+  hint,
+  indent,
+  rule,
+  strong,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  indent?: boolean;
+  rule?: boolean;
+  strong?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "baseline",
+        justifyContent: "space-between",
+        gap: 10,
+        fontSize: 11.5,
+        paddingLeft: indent ? 10 : 0,
+        paddingTop: rule ? 4 : 0,
+        marginTop: rule ? 2 : 0,
+        borderTop: rule ? "1px solid var(--border)" : undefined,
+      }}
+    >
+      <span style={{ color: strong ? "var(--text)" : "var(--text-2)", fontWeight: strong ? 700 : 400 }}>
+        {label}
+        {hint && (
+          <span className="muted" style={{ fontSize: 10, marginLeft: 5 }}>
+            {hint}
+          </span>
+        )}
+      </span>
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontWeight: strong ? 700 : 600,
+          color: "var(--text)",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {value}
+      </span>
+    </div>
+  );
 }
 
 function MiniStat({ label, value }: { label: string; value: string }) {

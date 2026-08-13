@@ -326,9 +326,9 @@ function scopeCacheKey(scope: Scope): string {
     scope.grain ?? "",
     scope.dateFrom ?? "",
     scope.dateTo ?? "",
-    (scope.stageIds ?? []).join(","),
+    scope.stageIds ? scope.stageIds.join(",") : "*",
     (scope.sizes ?? []).join(","),
-    (scope.sourceChannels ?? []).join(","),
+    scope.sourceChannels ? scope.sourceChannels.join(",") : "*", // "" (none) ≠ "*" (all)
     (scope.sourceFiles ?? []).join("\u001f"),
     (scope.batchIds ?? []).join(","),
     scope.shift ?? "",
@@ -352,9 +352,10 @@ export function scopeEvents(events: Event[], scope: Scope): Event[] {
     if (hit) return hit;
   }
 
-  const channels = scope.sourceChannels?.length
-    ? new Set(scope.sourceChannels)
-    : null;
+  // `undefined` = no channel restriction. `[]` = the user switched BOTH channels
+  // off, which must yield nothing — not "all". (Was `?.length`, so [] read as
+  // "unfiltered" and every KPI kept showing the full plant.)
+  const channels = scope.sourceChannels ? new Set(scope.sourceChannels) : null;
   const files =
     scope.sourceFiles?.length && (!channels || channels.has("excel"))
       ? new Set(scope.sourceFiles)
@@ -366,7 +367,9 @@ export function scopeEvents(events: Event[], scope: Scope): Event[] {
   const filtered = events.filter((e) => {
     if (scope.dateFrom && e.occurredOn.end < scope.dateFrom) return false;
     if (scope.dateTo && e.occurredOn.start > scope.dateTo) return false;
-    if (scope.stageIds?.length) {
+    // Same rule as channels: `undefined` = no restriction, `[]` = the user
+    // deselected every section, so nothing qualifies.
+    if (scope.stageIds) {
       const s = stageOf(e);
       if (s != null && !scope.stageIds.includes(s)) return false;
     }

@@ -116,6 +116,10 @@ export interface SourceSummary {
     checkedQty: number;
     rejectedQty: number;
     rate: number;
+    /** Every gate in the section that rejected anything. Σ gate.rejectedQty ===
+     *  the section's `rejectedQty`, so the drill-down can show the numerator
+     *  being built instead of asserting it. */
+    gates: { key: string; label: string; rejectedQty: number }[];
   }[];
 }
 
@@ -774,14 +778,22 @@ export function summarizeSource(
   const SECTION_LABEL: Record<string, string> = Object.fromEntries(
     STAGE_CATEGORIES.map((c) => [c.id, c.label.replace(/\s*\(.*\)$/, "")]),
   );
-  const sectionRejected = new Map<string, number>();
-  for (const g of stageGroups) {
+  // Gates carry the numerator, so build the section total BY SUMMING THEM —
+  // the panel then shows the same addition the number came from.
+  // Walks stageBreakdown, not stageGroups: that one is already in PROCESS order,
+  // so the panel reads down the line (Visual → Balloon → Valve → Final) instead
+  // of by whichever gate happened to scrap the most.
+  const sectionGates = new Map<string, { key: string; label: string; rejectedQty: number }[]>();
+  for (const g of stageBreakdown) {
+    if (g.rejectedQty <= 0) continue;
     const section = STAGE_CATEGORY[g.key] ?? g.key;
-    const rejectedQty = resolvedRejectedQty(g.rejectedQty, g.defectQty);
-    sectionRejected.set(section, (sectionRejected.get(section) ?? 0) + rejectedQty);
+    const list = sectionGates.get(section) ?? [];
+    list.push({ key: g.key, label: g.label, rejectedQty: g.rejectedQty });
+    sectionGates.set(section, list);
   }
   const sectionBreakdown = r.entrySections.map((sec) => {
-    const rejectedQty = sectionRejected.get(sec.section) ?? 0;
+    const gates = sectionGates.get(sec.section) ?? [];
+    const rejectedQty = gates.reduce((t, g) => t + g.rejectedQty, 0);
     return {
       key: sec.section,
       label: SECTION_LABEL[sec.section] ?? sec.entryLabel,
@@ -789,6 +801,7 @@ export function summarizeSource(
       checkedQty: sec.checked,
       rejectedQty,
       rate: sec.checked > 0 ? rejectedQty / sec.checked : 0,
+      gates,
     };
   });
 
@@ -831,56 +844,41 @@ export function sizeOptionsFromRows(rows: SourceRow[]): string[] {
 
 export const DETAIL_PAGE_SIZE = 50;
 
+export interface RejectionProof {
+  /** The headline rate — Σ section rates. Same formula as `rejectionRate`. */
+  value: number;
+  sections: SourceSummary["sectionBreakdown"];
+  /** What the legacy YEARLY / REJECTION ANALYSIS sheet would print for the same
+   *  rows: every gate's own rate, added. Shown as a comparison line so "why
+   *  doesn't this match last year's report?" is answered in place. Null when
+   *  it's the same number (one gate) or there's nothing to compare. */
+  legacySumOfGateRates: number | null;
+}
+
 /**
- * Headline rejection % from a source summary, using the same three conventions
- * as rejection.ts `rejectionRate`. Keeps COMPUTED VALUE and HOW IT ADDS UP on
- * one formula so the modal never shows 20.28% (pooled) next to a 9.44% section sum.
+ * The headline rejection % rebuilt from a source summary, so COMPUTED VALUE and
+ * HOW IT ADDS UP can never print two different answers.
+ *
+ * One formula, locked: Σ over sections ( section rejected ÷ section entry
+ * checked ). See the note at the top of `core/policy/policy.ts`.
  */
 export function rejectionRateFromSummary(
-  summary: Pick<
-    SourceSummary,
-    "sectionBreakdown" | "stageBreakdown" | "checkedQty" | "rejectedQty" | "defectQty"
-  >,
-  mode: "by-section" | "pooled" | "sum-of-stage-rates" = "by-section",
-): { value: number; rows: { key: string; label: string; detail: string; rate: number }[] } {
-  if (mode === "sum-of-stage-rates") {
-    const rows = summary.stageBreakdown
-      .filter((g) => g.checkedQty > 0)
-      .map((g) => ({
-        key: g.key,
-        label: g.label,
-        detail: `${g.rejectedQty.toLocaleString()} / ${g.checkedQty.toLocaleString()}`,
-        rate: g.rate,
-      }));
-    return { value: rows.reduce((t, r) => t + r.rate, 0), rows };
-  }
+  summary: Pick<SourceSummary, "sectionBreakdown" | "stageBreakdown">,
+): RejectionProof {
+  const sections = summary.sectionBreakdown.filter(
+    (s) => s.checkedQty > 0 || s.rejectedQty > 0,
+  );
+  const value = sections.reduce((t, s) => t + s.rate, 0);
 
-  if (mode === "pooled") {
-    const rejected = resolvedRejectedQty(summary.rejectedQty, summary.defectQty);
-    const checked = summary.checkedQty;
-    const rate = checked > 0 ? rejected / checked : 0;
-    return {
-      value: rate,
-      rows: [
-        {
-          key: "pooled",
-          label: "All rejects ÷ entry checked",
-          detail: `${rejected.toLocaleString()} / ${checked.toLocaleString()}`,
-          rate,
-        },
-      ],
-    };
-  }
+  const gates = summary.stageBreakdown.filter((g) => g.checkedQty > 0);
+  const legacy = gates.reduce((t, g) => t + g.rate, 0);
 
-  // by-section (plant rule): each section's own rate, then add.
-  const rows = summary.sectionBreakdown
-    .filter((s) => s.checkedQty > 0 || s.rejectedQty > 0)
-    .map((s) => ({
-      key: s.key,
-      label: s.label,
-      detail: `${s.rejectedQty.toLocaleString()} / ${s.checkedQty.toLocaleString()} · at ${s.entryLabel}`,
-      rate: s.rate,
-    }));
-  return { value: rows.reduce((t, r) => t + r.rate, 0), rows };
+  return {
+    value,
+    sections,
+    // Within rounding of the real number → nothing to explain, so don't clutter.
+    legacySumOfGateRates:
+      gates.length > 1 && Math.abs(legacy - value) > 0.00005 ? legacy : null,
+  };
 }
 

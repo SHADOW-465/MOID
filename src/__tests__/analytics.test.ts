@@ -22,6 +22,7 @@ import { DEFAULT_POLICY } from "@/core/policy/policy";
 import type { RawSheet } from "@/types/dashboard";
 import {
   rejectionRate, totalRejected, totalChecked, fpy, byStage, trend, stageTrend, stageBySize,
+  legacySumOfGateRates,
 } from "@/lib/analytics/rejection";
 import { byDefect, bySize } from "@/lib/analytics/defect";
 import { prevWindow, periodKey, type Scope } from "@/lib/analytics/scope";
@@ -75,12 +76,8 @@ describe("analytics — rejection selectors", () => {
     expect(r).toBeCloseTo(assemblyRejected / assemblyChecked, 9);
   });
 
-  test("the older Σ-per-gate convention is still selectable", () => {
-    const legacy = rejectionRate(
-      events,
-      { ...FY, policy: { ...DEFAULT_POLICY, headlineRejection: "sum-of-stage-rates" } },
-      REG,
-    ).value;
+  test("the older Σ-per-gate convention stays reachable for comparison", () => {
+    const legacy = legacySumOfGateRates(events, FY, REG);
     const visualRate = (1054 + 828 + 451) / (10982 + 11054 + 8346);
     const valveRate = 129 / 9612;
     expect(legacy).toBeCloseTo(visualRate + valveRate, 9);

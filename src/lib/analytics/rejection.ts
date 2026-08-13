@@ -243,30 +243,36 @@ export function bySection(
   });
 }
 
-/** Headline "Total Rejection %". Default is the plant's rule: each section's
- *  own rejected ÷ its own checked, summed across sections. */
+/**
+ * Headline "Total Rejection %" — the plant's locked rule: each section's own
+ * rejected ÷ its own checked, then the section rates add.
+ *
+ *   Assembly alone:     14,962 / 176,838                     = 8.46%
+ *   Primary + Assembly: (757/77,504) + (14,962/176,838)      = 9.44%
+ *
+ * Not configurable; see the note at the top of `core/policy/policy.ts`.
+ */
 export function rejectionRate(events: Event[], scope: Scope, registry: Registry = DERIVED_REGISTRY): MetricValue {
   const ev = scopeEvents(events, scope);
-  const policy = policyOf(scope);
-
-  let value = 0;
-  if (policy.headlineRejection === "by-section") {
-    // The plant's rule. Assembly alone: 14,962 / 176,838 = 8.46%.
-    // Primary + Assembly: 0.98% + 8.46% = 9.44%.
-    value = bySection(events, scope, registry).reduce((sum, s) => sum + s.rate, 0);
-  } else if (policy.headlineRejection === "pooled") {
-    // Every rejected unit over ONE denominator. Only defensible when a single
-    // section is in scope — across sections it divides Assembly's rejects by
-    // Primary's checked.
-    const entered = totalChecked(events, scope, registry).value;
-    value = entered > 0 ? aggregate(ev, policy).rejected / entered : 0;
-  } else {
-    // Every gate against its own denominator, summed — the plant's older
-    // REJECTION ANALYSIS / YEARLY sheet convention. Counts Assembly's funnel
-    // four times over.
-    value = perStageAgg(ev, registry, policy).reduce((sum, s) => sum + s.rate, 0);
-  }
+  const value = bySection(events, scope, registry).reduce((sum, s) => sum + s.rate, 0);
   return { value, sourceEventIds: ids(ev, (e) => isProd(e) || isRej(e)) };
+}
+
+/**
+ * The same rate, computed the way the plant's legacy YEARLY / REJECTION
+ * ANALYSIS sheet did it: every gate against its own denominator, added. Counts
+ * the Assembly funnel once per gate, so it always reads high.
+ *
+ * Exists ONLY so the drill-down can show "the old sheet said X" beside the real
+ * number. Never wire this to a KPI.
+ */
+export function legacySumOfGateRates(
+  events: Event[],
+  scope: Scope,
+  registry: Registry = DERIVED_REGISTRY,
+): number {
+  const ev = scopeEvents(events, scope);
+  return perStageAgg(ev, registry, policyOf(scope)).reduce((sum, s) => sum + s.rate, 0);
 }
 
 /** Total rejected units across every stage (a raw count, not a rate). */
@@ -292,29 +298,8 @@ export function totalRejected(events: Event[], scope: Scope): MetricValue {
  */
 export function totalChecked(events: Event[], scope: Scope, registry: Registry = DERIVED_REGISTRY): MetricValue {
   const ev = scopeEvents(events, scope);
-  const policy = policyOf(scope);
-  const stages = perStageAgg(ev, registry, policy);
-
-  // Every gate added together. Only correct if gates inspect DIFFERENT units;
-  // within a section they do not.
-  if (policy.checkedMeasuredAt === "sum-of-gates") {
-    return {
-      value: stages.reduce((sum, s) => sum + s.checked, 0),
-      sourceEventIds: ids(ev, isProd),
-    };
-  }
-
-  // One denominator for the whole scope — the most upstream gate anywhere.
-  // Correct only while a single section is in view.
-  if (policy.checkedMeasuredAt === "most-upstream") {
-    const entry = stages.find((s) => s.checked > 0);
-    return {
-      value: entry?.checked ?? 0,
-      sourceEventIds: ids(ev, (e) => isProd(e) && stageOf(e) === (entry?.stageId ?? null)),
-    };
-  }
-
-  // Default — each section measured once at its own entry gate, then added.
+  // Each section measured once at its own entry gate, then added — the
+  // denominator `rejectionRate` divides by, so the two can never disagree.
   const sections = bySection(events, scope, registry);
   const entryIds = new Set(sections.map((s) => s.entryStageId).filter(Boolean) as string[]);
   return {

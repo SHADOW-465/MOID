@@ -3,9 +3,9 @@
 //
 // Numbers mirror the real ledger shape (batch 26G04-14 assembly gates).
 
-import { rejectionRate, totalChecked, aggregate } from "../rejection";
+import { rejectionRate, totalChecked, aggregate, legacySumOfGateRates } from "../rejection";
 import { resolveScope, policyOf, type Scope } from "../scope";
-import { DEFAULT_POLICY, CalculationPolicy, type CalculationPolicyT } from "@/core/policy/policy";
+import { DEFAULT_POLICY, CalculationPolicy, parsePolicy, type CalculationPolicyT } from "@/core/policy/policy";
 import type { Event } from "@/lib/store/types";
 
 const REGISTRY = {
@@ -65,36 +65,31 @@ test("no policy on the scope = the shipped defaults (feature is a no-op until se
   );
 });
 
-// A1 — the three conventions, on an Assembly-only ledger.
-test("A1: the default is the section rule; the legacy conventions still differ", () => {
-  const bySectionRate = rejectionRate(LEDGER, scope(), REGISTRY).value;
-  const summed = rejectionRate(LEDGER, withRule("headlineRejection", "sum-of-stage-rates"), REGISTRY).value;
-  const pooled = rejectionRate(LEDGER, withRule("headlineRejection", "pooled"), REGISTRY).value;
-
+// The locked formula. No policy key reaches either of these — that's the point.
+test("the rate is Σ section ( section rejected ÷ section entry checked )", () => {
   // 346 / 5930 — Assembly's rejects over Assembly's entry gate
-  expect((bySectionRate * 100).toFixed(2)).toBe("5.83");
-  // 4.82 + 0.73 + 0.22 + 0.15 — every gate against its own denominator
-  expect((summed * 100).toFixed(2)).toBe("5.93");
-  expect(summed).not.toBeCloseTo(bySectionRate, 4);
-
-  // With ONE section in scope, by-section and pooled necessarily agree — they
-  // only diverge once a second section brings its own denominator.
-  expect((pooled * 100).toFixed(2)).toBe("5.83");
-  expect(pooled).toBeCloseTo(bySectionRate, 10);
+  expect((rejectionRate(LEDGER, scope(), REGISTRY).value * 100).toFixed(2)).toBe("5.83");
 });
 
-test("A1: pooled divides by units ENTERED, not by the sum of every gate", () => {
-  const pooled = rejectionRate(LEDGER, withRule("headlineRejection", "pooled"), REGISTRY).value;
-  expect(pooled).toBeCloseTo(346 / 5930, 10);
-  expect(pooled).not.toBeCloseTo(346 / (5930 + 5459 + 5376 + 5300), 6);
-});
-
-// A2 — the bug that started all this, now an explicit choice.
-test("A2: a section is measured once; sum-of-gates adds every gate", () => {
+test("a section is measured ONCE, at its entry gate — gates are never added", () => {
   expect(totalChecked(LEDGER, scope(), REGISTRY).value).toBe(5930);
-  expect(totalChecked(LEDGER, withRule("checkedMeasuredAt", "sum-of-gates"), REGISTRY).value).toBe(
-    5930 + 5459 + 5376 + 5300,
-  );
+  expect(totalChecked(LEDGER, scope(), REGISTRY).value).not.toBe(5930 + 5459 + 5376 + 5300);
+});
+
+test("headline rate and Checked KPI always share one denominator", () => {
+  // The failure mode the two removed settings allowed: a rate computed against
+  // one denominator displayed next to a Checked figure computed against another.
+  const rate = rejectionRate(LEDGER, scope(), REGISTRY).value;
+  const checked = totalChecked(LEDGER, scope(), REGISTRY).value;
+  expect(rate).toBeCloseTo(346 / checked, 10);
+});
+
+test("the legacy sheet convention is available for comparison, and does differ", () => {
+  const real = rejectionRate(LEDGER, scope(), REGISTRY).value;
+  const legacy = legacySumOfGateRates(LEDGER, scope(), REGISTRY);
+  // 4.82 + 0.73 + 0.22 + 0.15 — every gate against its own denominator
+  expect((legacy * 100).toFixed(2)).toBe("5.93");
+  expect(legacy).toBeGreaterThan(real);
 });
 
 // A3 — held units.
@@ -143,13 +138,21 @@ test("B1: an explicit user pick still beats the policy default", () => {
 });
 
 test("resolveScope stamps the policy onto the scope so selectors inherit it", () => {
-  const p = { ...DEFAULT_POLICY, headlineRejection: "pooled" as const };
+  const p = { ...DEFAULT_POLICY, reworkCountsAs: "checked" as const };
   expect(resolveScope([], tweaks, p).policy).toEqual(p);
 });
 
 // Guard the storage boundary: a bad policy must never reach a selector.
 test("an invalid policy is rejected, and a corrupt stored one falls back", () => {
-  expect(CalculationPolicy.safeParse({ ...DEFAULT_POLICY, headlineRejection: "vibes" }).success).toBe(false);
+  expect(CalculationPolicy.safeParse({ ...DEFAULT_POLICY, reworkCountsAs: "vibes" }).success).toBe(false);
   expect(CalculationPolicy.safeParse({ ...DEFAULT_POLICY, defaultSections: [] }).success).toBe(false);
   expect(CalculationPolicy.safeParse({ ...DEFAULT_POLICY, targetRejectionPct: 150 }).success).toBe(false);
+});
+
+test("a policy saved before the formula was locked still loads", () => {
+  // Old rows carry headlineRejection / checkedMeasuredAt. They must parse (the
+  // keys are simply dropped), not fall back and wipe the GM's target and cost.
+  const legacyRow = { ...DEFAULT_POLICY, headlineRejection: "pooled", checkedMeasuredAt: "sum-of-gates", targetRejectionPct: 7.5 };
+  expect(parsePolicy(legacyRow).targetRejectionPct).toBe(7.5);
+  expect(parsePolicy(legacyRow)).not.toHaveProperty("headlineRejection");
 });

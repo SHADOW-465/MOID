@@ -19,14 +19,14 @@ test("saves append versions and the latest one wins", async () => {
   await store.save("acme", { ...DEFAULT_POLICY, targetRejectionPct: 8 }, { changedBy: "GM", note: "FY26 plan" });
   const v2 = await store.save(
     "acme",
-    { ...DEFAULT_POLICY, headlineRejection: "pooled" },
+    { ...DEFAULT_POLICY, reworkCountsAs: "checked" },
     { changedBy: "GM", note: "match the audit" },
   );
 
   expect(v2.version).toBe(2);
   const cur = await store.current("acme");
   expect(cur.version).toBe(2);
-  expect(cur.policy.headlineRejection).toBe("pooled");
+  expect(cur.policy.reworkCountsAs).toBe("checked");
   // v2 was built from DEFAULT_POLICY, so the v1 target is not carried forward.
   expect(cur.policy.targetRejectionPct).toBe(DEFAULT_POLICY.targetRejectionPct);
 });
@@ -45,13 +45,13 @@ test("history is newest-first and keeps the note for the audit trail", async () 
 test("reverting is just saving the old values again", async () => {
   const store = getPolicyStore();
   const v1 = await store.save("acme", DEFAULT_POLICY, { changedBy: "GM", note: "baseline" });
-  await store.save("acme", { ...DEFAULT_POLICY, headlineRejection: "pooled" }, { changedBy: "GM", note: "try pooled" });
+  await store.save("acme", { ...DEFAULT_POLICY, reworkCountsAs: "checked" }, { changedBy: "GM", note: "try counting rework" });
   const v3 = await store.save("acme", v1.policy, { changedBy: "GM", note: "revert to v1" });
 
   expect(v3.version).toBe(3);
   expect((await store.current("acme")).policy).toEqual(DEFAULT_POLICY);
   // History is never rewritten — the experiment stays visible.
-  expect((await store.history("acme")).map((r) => r.note)).toEqual(["revert to v1", "try pooled", "baseline"]);
+  expect((await store.history("acme")).map((r) => r.note)).toEqual(["revert to v1", "try counting rework", "baseline"]);
 });
 
 test("policy is per company", async () => {
