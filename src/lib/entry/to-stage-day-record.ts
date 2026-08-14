@@ -42,11 +42,10 @@ export function toStageDayRecord(rec: ShiftBatchRecord, ingestionId: string): St
     checked: rec.checked > 0 ? sv(rec.checked, "ENTRY!checked", qtyHeaderFor(rec.macro)) : null,
     acceptedGood:
       !isSecondary && rec.accept > 0 ? sv(rec.accept, "ENTRY!accept", "Good Qty") : null,
-    // Hold is Visual only — never balloon / valve / final / primary / secondary.
-    rework:
-      rec.stageId === "visual" && rec.hold > 0
-        ? sv(rec.hold, "ENTRY!hold", "Rework Qty")
-        : null,
+    // Hold is whatever the form captured. The form only shows Hold when the
+    // catalog (or builtin seed) lists it on this stage — do not re-gate here
+    // with a stageId literal.
+    rework: rec.hold > 0 ? sv(rec.hold, "ENTRY!hold", "Rework Qty") : null,
     rejected:
       !isSecondary && rec.reject > 0 ? sv(rec.reject, "ENTRY!reject", "Rejected Qty") : null,
     defects,

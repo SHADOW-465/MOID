@@ -7,14 +7,13 @@
 // progress IS the ledger, read back. No status column to drift, no state machine
 // to keep in sync, and a purge/correction moves the bar automatically.
 
-import { MATRIX_STAGES } from "@/lib/entry/disposafe-matrix";
+import { STAGES } from "@/core/ontology/plant-catalog";
 import { batchOf, type AuditEventLike } from "./audit-sessions";
 
-/** Ordered Assembly quality gates a lot must clear, from the entry matrix. */
-export const ASSEMBLY_GATES: { stageId: string; label: string }[] =
-  MATRIX_STAGES.assembly.processes
-    .filter((p) => p.stageId && p.interactive)
-    .map((p) => ({ stageId: p.stageId as string, label: p.name }));
+/** Ordered Assembly quality gates a lot must clear, from the authored catalog. */
+export const ASSEMBLY_GATES: { stageId: string; label: string }[] = STAGES
+  .filter((s) => s.category === "assembly" && s.isQualityGate)
+  .map((s) => ({ stageId: s.stageId, label: s.label }));
 
 export interface BatchGateStep {
   stageId: string;

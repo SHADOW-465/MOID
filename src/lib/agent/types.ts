@@ -25,7 +25,10 @@ export type TaskStatus =
 /** Slots for enter_data. All optional until validated. */
 export interface EntrySlots {
   macro?: MacroId;
-  /** Assembly micro process id e.g. p15-visual */
+  /**
+   * @deprecated Retired local process id. Readers should use `stageId`.
+   * Still accepted on inbound drafts/prefills for one release.
+   */
   micro?: string;
   stageId?: string;
   processName?: string;
@@ -58,7 +61,6 @@ export interface EntryDraft {
     Pick<
       EntrySlots,
       | "macro"
-      | "micro"
       | "stageId"
       | "processName"
       | "checked"

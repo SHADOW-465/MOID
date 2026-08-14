@@ -45,3 +45,54 @@ test("a lot opened in one month and finished in the next keeps its month letter"
   expect(parseBatchId(code)!.monthIndex).toBe(5);
   expect(buildBatchId("2026-07-02", "16Fr")).toBe("26G02-16"); // a genuinely different lot
 });
+
+// The duplicate-entry half of the same invariant: one slot, one ledger entry.
+import { isValidBatchId } from "../batch-id";
+import { existingLedgerEntry } from "../validate-entry";
+
+const slot = { date: "2026-08-08", stageId: "p17-visual", size: "Fr18", batchId: "26H25-18" };
+const ledger = [
+  {
+    eventType: "production",
+    extractedBy: "direct-entry",
+    occurredOn: { start: "2026-08-08" },
+    stageId: "p17-visual",
+    size: "Fr18",
+    batchNo: "26H2518", // a spelling that folds onto the canonical code
+    quantity: 1326,
+    provenance: { sheet: "Day Shift" },
+  },
+  {
+    eventType: "inspection",
+    disposition: "rejected",
+    extractedBy: "direct-entry",
+    occurredOn: { start: "2026-08-08" },
+    stageId: "p17-visual",
+    size: "Fr18",
+    batchNo: "26H25-18",
+    quantity: 39,
+    provenance: { sheet: "Day Shift" },
+  },
+];
+
+test("a second save on the same lot·gate·size·day is detected before it overwrites", () => {
+  expect(existingLedgerEntry(ledger, slot)).toEqual({
+    checked: 1326,
+    rejected: 39,
+    shift: "Day Shift",
+  });
+});
+
+test("a different lot, gate, size or day is a different entry — no false alarm", () => {
+  expect(existingLedgerEntry(ledger, { ...slot, batchId: "26H26-18" })).toBeNull();
+  expect(existingLedgerEntry(ledger, { ...slot, stageId: "p18-balloon" })).toBeNull();
+  expect(existingLedgerEntry(ledger, { ...slot, size: "Fr14" })).toBeNull();
+  expect(existingLedgerEntry(ledger, { ...slot, date: "2026-08-09" })).toBeNull();
+});
+
+test("an unparseable lot code is rejected at save — it can never fold onto its twin", () => {
+  expect(isValidBatchId("26025-18")).toBe(false); // digit where the month letter goes
+  expect(isValidBatchId("26H25-18")).toBe(true);
+  // and the unparseable twin never matches the real lot's entry
+  expect(existingLedgerEntry(ledger, { ...slot, batchId: "26025-18" })).toBeNull();
+});

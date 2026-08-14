@@ -64,7 +64,7 @@ describe("inferAssemblyProcessFromDefects", () => {
   it("maps COAG/SD/BL to visual", () => {
     const r = inferAssemblyProcessFromDefects(["COAG", "SD", "BL"]);
     expect(r?.stageId).toBe("visual");
-    expect(r?.micro).toBe("p15-visual");
+    expect(r?.processName).toMatch(/Visual/i);
   });
 });
 
@@ -143,7 +143,6 @@ describe("buildEntryDraft", () => {
   it("builds a draft with plant shape fields", () => {
     const draft = buildEntryDraft({
       macro: "assembly",
-      micro: "p15-visual",
       stageId: "visual",
       processName: "Visual (P17)",
       checked: 400,

@@ -1,11 +1,10 @@
 // Build confirm drafts from complete slots.
 
 import {
-  processLabel,
-  resolveStageId,
   type MacroId,
   type ShiftBatchRecord,
 } from "@/lib/entry/disposafe-matrix";
+import { migrateToStageId, seedProcessLabel } from "@/lib/entry/entry-schema";
 import { toCanonicalSize, toDisplaySize } from "@/lib/entry/batch-id";
 import { ENTRY_ROLES } from "@/lib/entry/disposafe-matrix";
 import type { EntryDraft, EntrySlots, ReportDraft, ReportSlots } from "./types";
@@ -38,21 +37,15 @@ export function finalizeEntrySlots(slots: EntrySlots): EntrySlots {
   if (!next.productType) next.productType = "2 way";
   if (!next.hold) next.hold = 0;
 
-  if (next.macro === "assembly" && next.micro && !next.stageId) {
-    next.stageId = resolveStageId("assembly", next.micro);
+  if (next.stageId || next.micro) {
+    next.stageId = migrateToStageId(next);
+  } else if (next.macro === "primary") {
+    next.stageId = "production";
+  } else if (next.macro === "secondary") {
+    next.stageId = "secondary";
   }
-  if (next.macro === "assembly" && next.micro && !next.processName) {
-    next.processName = processLabel("assembly", next.micro);
-  }
-  if (next.macro === "primary") {
-    next.micro = next.micro ?? "primary";
-    next.stageId = next.stageId ?? "production";
-    next.processName = next.processName ?? "Primary Production";
-  }
-  if (next.macro === "secondary") {
-    next.micro = next.micro ?? "secondary";
-    next.stageId = next.stageId ?? "secondary";
-    next.processName = next.processName ?? "Secondary Production";
+  if (next.stageId && !next.processName) {
+    next.processName = seedProcessLabel(next.stageId);
   }
 
   if (next.size) {
@@ -68,7 +61,6 @@ export function buildEntryDraft(slots: EntrySlots): EntryDraft | null {
   if (
     !s.macro ||
     !s.stageId ||
-    !s.micro ||
     s.checked == null ||
     !s.date ||
     !s.batchId ||
@@ -113,7 +105,6 @@ export function buildEntryDraft(slots: EntrySlots): EntryDraft | null {
     slots: {
       ...s,
       macro: s.macro,
-      micro: s.micro,
       stageId: s.stageId,
       processName: s.processName ?? s.stageId,
       checked: s.checked,
@@ -140,7 +131,7 @@ export function draftToShiftRecord(draft: EntryDraft): ShiftBatchRecord {
     date: s.date!,
     operator: s.operator ?? ENTRY_ROLES[0],
     macro: s.macro as MacroId,
-    micro: s.micro!,
+    micro: s.stageId!,
     stageId: s.stageId!,
     stageName: s.processName ?? s.stageId!,
     processName: s.processName ?? s.stageId!,

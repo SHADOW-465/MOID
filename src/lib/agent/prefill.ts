@@ -6,7 +6,8 @@ export const PREFILL_STORAGE_KEY = "moid_agent_entry_prefill";
 
 export interface EntryPrefillPayload {
   macro: string;
-  micro: string;
+  /** @deprecated Retired local process id. Prefer `stageId`. */
+  micro?: string;
   stageId: string;
   date: string;
   batchId: string;
@@ -27,7 +28,6 @@ export function prefillFromDraft(draft: EntryDraft): EntryPrefillPayload {
   const s = draft.slots;
   return {
     macro: s.macro,
-    micro: s.micro,
     stageId: s.stageId,
     date: s.date,
     batchId: s.batchId,

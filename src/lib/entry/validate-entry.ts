@@ -8,6 +8,8 @@
 // Tone: asking, never accusing. Messages are plain language.
 
 import type { StageDayRecord } from "@/lib/ingest/emit";
+import type { AuditEventLike } from "@/lib/analytics/audit-sessions";
+import { canonicalBatchId } from "@/lib/entry/batch-id";
 
 export type ClarificationSeverity = "critical" | "warning" | "info";
 
@@ -68,6 +70,47 @@ export function checkRecord(rec: StageDayRecord): ClarificationIssue[] {
   }
 
   return issues;
+}
+
+/** The cell a direct entry owns: one lot, at one gate, in one size, on one day. */
+export interface EntrySlot {
+  date: string;
+  stageId: string;
+  size: string | null;
+  batchId: string;
+}
+
+/**
+ * The entry ALREADY on the ledger for this slot, if any.
+ *
+ * /api/ingest keys direct entry by exactly (day · stage · size · batch), so a
+ * second save on the same slot supersedes the first instead of adding to it.
+ * That happened silently: two rows looked saved, one existed. Callers use this
+ * to say so before the overwrite, not after.
+ */
+export function existingLedgerEntry(
+  events: AuditEventLike[],
+  slot: EntrySlot,
+): { checked: number; rejected: number; shift: string | null } | null {
+  const batch = canonicalBatchId(slot.batchId);
+  if (!batch) return null;
+  let found = false;
+  let checked = 0;
+  let rejected = 0;
+  let shift: string | null = null;
+  for (const e of events) {
+    const isDirect = e.extractedBy === "direct-entry" || e.isDirectEntry === true;
+    if (!isDirect) continue;
+    if (e.occurredOn?.start !== slot.date) continue;
+    if (e.stageId !== slot.stageId) continue;
+    if ((e.size ?? null) !== (slot.size ?? null)) continue;
+    if (canonicalBatchId(e.batchNo ?? null) !== batch) continue;
+    found = true;
+    shift ??= e.provenance?.sheet ?? null;
+    if (e.eventType === "production") checked += e.quantity ?? 0;
+    else if (e.eventType === "inspection" && e.disposition === "rejected") rejected += e.quantity ?? 0;
+  }
+  return found ? { checked, rejected, shift } : null;
 }
 
 /**

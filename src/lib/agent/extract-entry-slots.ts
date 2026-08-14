@@ -1,10 +1,7 @@
 // Pure slot extraction from free text for enter_data tasks.
 
-import {
-  MATRIX_STAGES,
-  defectsFor,
-  type MacroId,
-} from "@/lib/entry/disposafe-matrix";
+import { type MacroId } from "@/lib/entry/disposafe-matrix";
+import { seedDefectsForStage, seedProcessLabel } from "@/lib/entry/entry-schema";
 import { toDisplaySize, frDigitsFromSize } from "@/lib/entry/batch-id";
 import type { EntrySlots } from "./types";
 
@@ -141,11 +138,13 @@ function extractProductType(t: string): string | undefined {
   return undefined;
 }
 
-function extractProcessHint(t: string): { micro?: string; stageId?: string } {
-  if (/\bvisual\b/i.test(t)) return { micro: "p15-visual", stageId: "visual" };
-  if (/\bballoon\b/i.test(t)) return { micro: "p16-balloon", stageId: "balloon" };
-  if (/\bvalve\b/i.test(t)) return { micro: "p17-valve", stageId: "valve-integrity" };
-  if (/\bfinal\b/i.test(t)) return { micro: "p18-final", stageId: "final" };
+function extractProcessHint(t: string): { stageId?: string; processName?: string } {
+  if (/\bvisual\b/i.test(t)) return { stageId: "visual", processName: seedProcessLabel("visual") };
+  if (/\bballoon\b/i.test(t)) return { stageId: "balloon", processName: seedProcessLabel("balloon") };
+  if (/\bvalve\b/i.test(t)) {
+    return { stageId: "valve-integrity", processName: seedProcessLabel("valve-integrity") };
+  }
+  if (/\bfinal\b/i.test(t)) return { stageId: "final", processName: seedProcessLabel("final") };
   return {};
 }
 
@@ -189,13 +188,9 @@ export function extractEntrySlots(text: string, todayIso: string): EntrySlots {
   if (productType) slots.productType = productType;
 
   const proc = extractProcessHint(t);
-  if (proc.micro) {
-    slots.micro = proc.micro;
+  if (proc.stageId) {
     slots.stageId = proc.stageId;
-    if (proc.micro) {
-      const p = MATRIX_STAGES.assembly.processes.find((x) => x.id === proc.micro);
-      if (p) slots.processName = p.name;
-    }
+    if (proc.processName) slots.processName = proc.processName;
   }
 
   if (/\bday\s*shift\b/i.test(t)) slots.shift = "Day Shift";
@@ -215,13 +210,13 @@ export function extractEntrySlots(text: string, todayIso: string): EntrySlots {
   return slots;
 }
 
-/** Normalize defect keys to plant schema for a given process. */
+/** Normalize defect keys to the seed vocabulary for a given stage. */
 export function normalizeDefectKeys(
   defects: Record<string, number>,
-  macro: MacroId,
-  micro: string,
+  _macro: MacroId,
+  stageId: string,
 ): { defects: Record<string, number>; unknown: string[] } {
-  const schema = defectsFor(macro, micro);
+  const schema = seedDefectsForStage(stageId);
   const allowed = new Map(schema.map((d) => [d.key.toUpperCase(), d.key]));
   const out: Record<string, number> = {};
   const unknown: string[] = [];

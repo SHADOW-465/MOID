@@ -17,11 +17,7 @@ import {
   PRODUCT_TYPES,
   PRODUCT_TYPE_STORAGE_KEY,
   CATHETER_CATEGORIES,
-  defectsFor,
   defectDisplayLabel,
-  processLabel,
-  resolveStageId,
-  previousAssemblyStageId,
   sizesFor,
   typeIsSelectable,
   productTypeFor,
@@ -33,13 +29,24 @@ import {
   type ShiftBatchRecord,
 } from "@/lib/entry/disposafe-matrix";
 import {
+  migrateToStageId,
+  previousAcceptedStageId,
+  resolveEntrySchema,
+  schemaCategories,
+  stationById,
+  stationsIn,
+  type ResolvedEntrySchema,
+} from "@/lib/entry/entry-schema";
+import {
   buildBatchId,
   parseBatchId,
   formatBatchIdInput,
   frDigitsFromSize,
+  isValidBatchId,
   toCanonicalSize,
   toDisplaySize,
 } from "@/lib/entry/batch-id";
+import { existingLedgerEntry } from "@/lib/entry/validate-entry";
 import {
   describeShiftWindow,
   isWithinShiftWindow,
@@ -72,7 +79,12 @@ function shortEntryDate(iso: string | null): string {
 const DRAFT_KEY = "moid_entry_draft_batch";
 
 interface BatchDraft {
-  macro: MacroId; micro: string; date: string; size: string;
+  macro: MacroId;
+  /** Ledger stageId. Older drafts stored `micro` (p15-visual, …) instead. */
+  stageId?: string;
+  /** @deprecated Retired local process id — still read on restore. */
+  micro?: string;
+  date: string; size: string;
   productType?: string;
   operator: string; shift: string; batchId: string; batchDate: string;
   checked: number; trolleys: number; bin: string;
@@ -111,7 +123,7 @@ export default function BatchMatrixEntry({
   const { canWrite, canConfigure, canEraseLedger, persona } = usePersona();
 
   const [macro, setMacro] = useState<MacroId>("assembly");
-  const [micro, setMicro] = useState("p15-visual");
+  const [stageId, setStageId] = useState("visual");
   const [date, setDate] = useState(today);
   const [size, setSize] = useState("14Fr");
   const [productType, setProductType] = useState<ProductType | string>("2 way");
@@ -184,11 +196,7 @@ export default function BatchMatrixEntry({
   const userTouchedQty = useRef(false);
   /** Prefill key already applied for this (batch, size, station) context. */
   const prefillAppliedKey = useRef<string | null>(null);
-  /** Defects per stageId from the company catalog (entry-template). Empty = built-in defaults. */
-  const [templateDefects, setTemplateDefects] = useState<Record<string, { key: string; name: string }[]>>({});
-  /** Capture columns per stageId — which quantity fields this station records. */
-  const [templateColumns, setTemplateColumns] = useState<Record<string, string[]>>({});
-  const [schemaSource, setSchemaSource] = useState<"catalog" | "builtin" | "loading">("loading");
+  const [schema, setSchema] = useState<ResolvedEntrySchema | null>(null);
 
   /** Draft restored (or confirmed absent) — gate the autosave so the empty
    *  initial render can't wipe a stored draft before it is read back. */
@@ -205,7 +213,9 @@ export default function BatchMatrixEntry({
 
     const d = loadDraft<BatchDraft>(DRAFT_KEY);
     if (d) {
-      setMacro(d.macro); setMicro(d.micro); setDate(d.date); setSize(d.size);
+      setMacro(d.macro);
+      setStageId(migrateToStageId(d));
+      setDate(d.date); setSize(d.size);
       if (d.productType) applyProductType(d.productType);
       if (d.operator) setOperator(toEntryRole(d.operator));
       if (d.shift) setShift(d.shift);
@@ -224,7 +234,7 @@ export default function BatchMatrixEntry({
       if (agent) {
         const m = agent.macro as MacroId;
         if (m === "primary" || m === "secondary" || m === "assembly") setMacro(m);
-        if (agent.micro) setMicro(agent.micro);
+        setStageId(migrateToStageId(agent));
         if (agent.date) setDate(agent.date);
         if (agent.size) setSize(agent.size);
         if (agent.productType) applyProductType(agent.productType);
@@ -274,52 +284,26 @@ export default function BatchMatrixEntry({
       DRAFT_KEY,
       empty
         ? null
-        : { macro, micro, date, size, productType, operator, shift, batchId, batchDate,
+        : { macro, stageId, date, size, productType, operator, shift, batchId, batchDate,
             checked, trolleys, bin, accept, hold, reject, defects, remarks },
     );
-  }, [macro, micro, date, size, productType, operator, shift, batchId, batchDate,
+  }, [macro, stageId, date, size, productType, operator, shift, batchId, batchDate,
       checked, trolleys, bin, accept, hold, reject, defects, remarks]);
 
   // Schema from the company catalog (Data Schema), projected by /api/entry-template.
+  // Total replacement: a live template drives every station / defect / column,
+  // or the seed does. Never mix per-field.
   useEffect(() => {
     let cancelled = false;
     fetch("/api/entry-template", { cache: "no-store" })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
-        // The route answers { template: { stages } } — reading data.stages made
-        // this always fall back to the built-in defect list, so Data Schema
-        // edits never showed up here.
-        const tplStages = data.template?.stages;
-        if (!res.ok || !tplStages?.length) {
-          if (!cancelled) setSchemaSource("builtin");
-          return;
-        }
-        const map: Record<string, { key: string; name: string }[]> = {};
-        const cols: Record<string, string[]> = {};
-        let any = false;
-        type TplStage = {
-          stageId: string;
-          defects?: { defectCode: string; label: string }[];
-          columns?: { key: string }[];
-        };
-        for (const st of tplStages as TplStage[]) {
-          cols[st.stageId] = (st.columns ?? []).map((c) => c.key);
-          if (st.defects?.length) {
-            any = true;
-            map[st.stageId] = st.defects.map((d) => ({
-              key: d.defectCode,
-              name: d.label || d.defectCode,
-            }));
-          }
-        }
-        if (!cancelled) {
-          setTemplateDefects(map);
-          setTemplateColumns(cols);
-          setSchemaSource(any ? "catalog" : "builtin");
-        }
+        const tpl = res.ok ? data.template : null;
+        if (cancelled) return;
+        setSchema(resolveEntrySchema(tpl?.stages?.length ? tpl : null));
       })
       .catch(() => {
-        if (!cancelled) setSchemaSource("builtin");
+        if (!cancelled) setSchema(resolveEntrySchema(null));
       });
     return () => {
       cancelled = true;
@@ -338,21 +322,22 @@ export default function BatchMatrixEntry({
   const isPrimary = macro === "primary";
   const isSecondary = macro === "secondary";
   const isAssembly = macro === "assembly";
-  const stageId = resolveStageId(macro, micro);
-  const resolvedDefects = useMemo(() => {
-    const fromMod = templateDefects[stageId];
-    if (fromMod?.length) return fromMod;
-    return defectsFor(macro, micro);
-  }, [templateDefects, stageId, macro, micro]);
+  const schemaSource = schema?.source ?? "loading";
+  const station = schema ? stationById(schema, stageId) : undefined;
+  const processName = station?.label ?? stageId;
+  const columns = station?.columns ?? [];
+  const capturesHold = columns.includes("hold");
+  const showChecked = !station || columns.includes("checked");
+  const showAccept = columns.includes("accepted");
+  const showReject = columns.includes("rejected");
+  const showTrolleys = station?.extras.includes("trolleys") ?? false;
+  const showBin = station?.extras.includes("bin") ?? false;
+  const resolvedDefects = station?.defects ?? [];
   // Freeze the defect column set once the operator starts typing so a late
-  // /api/entry-template response can't swap keys mid-entry (looks like values
-  // "changed" or vanished under a different column label) — but only while
+  // /api/entry-template response can't swap keys mid-entry — but only while
   // staying on the SAME stage. A restored draft or an Ask MOID prefill sets
-  // `micro` to the batch's real stage and marks userTouchedQty in the same
-  // effect, before this one ever runs; without the stage check that permanently
-  // froze activeDefects at whatever stage was on screen at first paint
-  // ("p15-visual", the default) — Valve Integrity would render Visual's 21
-  // codes forever, no matter which tab was actually selected.
+  // `stageId` to the batch's real stage and marks userTouchedQty in the same
+  // effect, before this one ever runs.
   const activeDefectsStageRef = useRef<string | null>(null);
   const [activeDefects, setActiveDefects] = useState(resolvedDefects);
   useEffect(() => {
@@ -361,16 +346,27 @@ export default function BatchMatrixEntry({
     activeDefectsStageRef.current = stageId;
     setActiveDefects(resolvedDefects);
   }, [resolvedDefects, stageId]);
-  const usingModDefects = !!(templateDefects[stageId]?.length);
 
-  const hideDefects = MATRIX_STAGES[macro].hideDefects;
+  const hideDefects = resolvedDefects.length === 0 && activeDefects.length === 0;
   const parsed = useMemo(() => parseBatchId(batchId), [batchId]);
   const sizeCanon = useMemo(() => toCanonicalSize(size), [size]);
   const catheterSizeOptions = useMemo(() => sizesFor(category, catheterType), [category, catheterType]);
   const prevStageId = useMemo(
-    () => (isAssembly ? previousAssemblyStageId(micro) : null),
-    [isAssembly, micro],
+    () => (schema ? previousAcceptedStageId(schema, stageId) : null),
+    [schema, stageId],
   );
+
+  // If the live schema doesn't include the current station (renamed / deleted),
+  // land on the first station of this section rather than rendering an empty form.
+  useEffect(() => {
+    if (!schema) return;
+    if (stationById(schema, stageId)) return;
+    const first = stationsIn(schema, macro)[0] ?? schema.stations[0];
+    if (first) {
+      setStageId(first.stageId);
+      setMacro(first.category);
+    }
+  }, [schema, stageId, macro]);
 
   // Lot completion, read straight off the ledger — a lot spans several days, so
   // the operator needs to see which gates this batch already cleared before
@@ -410,23 +406,16 @@ export default function BatchMatrixEntry({
       setChecked(qty);
       prefillAppliedKey.current = ctxKey;
       const prevLabel =
-        MATRIX_STAGES.assembly.processes.find((p) => p.stageId === prevStageId)?.name ?? prevStageId;
+        (schema && stationById(schema, prevStageId)?.label) || prevStageId;
       setPrefillNote(`Auto-filled from ${prevLabel} accepted (${qty}) for batch ${batchKey}. Clear or edit freely — it will not overwrite again.`);
     }
-  }, [isAssembly, prevStageId, batchId, sizeCanon, events]);
+  }, [isAssembly, prevStageId, batchId, sizeCanon, events, schema]);
   const defectSum = useMemo(
     () => Object.values(defects).reduce((a, b) => a + (Number(b) || 0), 0),
     [defects],
   );
 
-  /**
-   * HOLD is Visual only (plant rule / WI). Other gates pass or reject — never
-   * hold. Do not trust catalog "rework" on balloon/valve/final; those columns
-   * on old sheets are legacy, not entry fields.
-   */
-  const capturesHold = stageId === "visual";
-
-  // Leaving Visual must not carry a stale Hold into balloon/valve/final.
+  // Leaving a Hold-capturing station must not carry a stale Hold downstream.
   useEffect(() => {
     if (!capturesHold) setHold((cur) => (cur === 0 ? cur : 0));
   }, [capturesHold]);
@@ -440,14 +429,13 @@ export default function BatchMatrixEntry({
   const impliedRejectFromBalance = Math.max(0, checked - accept - holdPart);
 
   /**
-   * Reject is auto-derived (read-only display) for Primary / Assembly:
+   * Reject is auto-derived when this station captures it:
    *  1. Defect reasons win when any defect qty is entered (sum → Rejected)
    *  2. Otherwise balance remainder from Checked − Accept (− Hold)
-   * Secondary is qty-only and has no reject.
    */
-  const defectsDriveReject = !isSecondary && !hideDefects && defectSum > 0;
-  const rejectIsDerived = !isSecondary;
-  const rejectSource: "defects" | "balance" | null = isSecondary
+  const defectsDriveReject = showReject && !hideDefects && defectSum > 0;
+  const rejectIsDerived = showReject;
+  const rejectSource: "defects" | "balance" | null = !showReject
     ? null
     : defectsDriveReject
       ? "defects"
@@ -456,14 +444,14 @@ export default function BatchMatrixEntry({
         : null;
 
   useEffect(() => {
-    if (isSecondary) return;
+    if (!showReject) return;
     const next = defectsDriveReject
       ? defectSum
       : checked > 0
         ? impliedRejectFromBalance
         : 0;
     setReject((cur) => (cur === next ? cur : next));
-  }, [isSecondary, defectsDriveReject, defectSum, checked, impliedRejectFromBalance]);
+  }, [showReject, defectsDriveReject, defectSum, checked, impliedRejectFromBalance]);
 
   /** Filtered tiles, carrying their ORIGINAL index so the numbering keeps
    *  matching the schema order the operator counts by. */
@@ -474,26 +462,21 @@ export default function BatchMatrixEntry({
       .filter(({ d }) => !q || d.key.toLowerCase().includes(q) || (d.name ?? "").toLowerCase().includes(q));
   }, [activeDefects, defectFilter]);
 
-  // Balance: Checked = Accept + Hold + Reject (Primary omits Hold; Secondary is qty-only).
-  const sumParts = isSecondary
-    ? checked
-    : isPrimary
-      ? accept + reject
-      : accept + holdPart + reject;
-  const qtyMismatch = !isSecondary && (checked !== sumParts || checked === 0);
+  // Balance: Checked = Accept + Hold + Reject for whatever this station captures.
+  const sumParts =
+    (showAccept ? accept : 0) + holdPart + (showReject ? reject : 0);
+  const qtyMismatch = showReject && (checked !== sumParts || checked === 0);
   const defectMismatch =
-    !hideDefects && !isSecondary && (reject > 0 || defectSum > 0) && defectSum !== reject;
+    !hideDefects && showReject && (reject > 0 || defectSum > 0) && defectSum !== reject;
   const qtyLabel = isPrimary ? "Quantity Produced" : isSecondary ? "Quantity" : "Checked";
 
   /** Live equation under Checked — shows the correct split, not only "mismatch". */
   const balanceHint =
-    isSecondary || checked <= 0
+    !showReject || checked <= 0
       ? null
-      : isPrimary
-        ? `${checked} = Accept ${accept} + Reject ${reject}`
-        : capturesHold
-          ? `${checked} = Accept ${accept} + Hold ${hold} + Reject ${reject}`
-          : `${checked} = Accept ${accept} + Reject ${reject}`;
+      : capturesHold
+        ? `${checked} = Accept ${accept} + Hold ${hold} + Reject ${reject}`
+        : `${checked} = Accept ${accept} + Reject ${reject}`;
 
   const shiftConfig = useMemo(() => readShiftWindowConfig(), [tick]);
   const withinShift = useMemo(
@@ -520,13 +503,14 @@ export default function BatchMatrixEntry({
     canWrite && (persona !== "operator" || withinShift || hasGrant);
 
   const identityCols = "minmax(150px, 1.1fr) minmax(110px, 0.9fr) minmax(140px, 1fr)";
-  const countCols = isPrimary
-    ? "repeat(4, minmax(88px, 1fr))"
-    : isSecondary
-      ? "minmax(100px, 1fr) minmax(120px, 1.1fr)"
-      : capturesHold
-        ? "repeat(4, minmax(88px, 1fr))"
-        : "repeat(3, minmax(88px, 1fr))";
+  const fieldCount =
+    (showChecked ? 1 : 0) +
+    (showTrolleys ? 1 : 0) +
+    (showBin ? 1 : 0) +
+    (showAccept ? 1 : 0) +
+    (capturesHold ? 1 : 0) +
+    (showReject ? 1 : 0);
+  const countCols = `repeat(${Math.max(fieldCount, 1)}, minmax(88px, 1fr))`;
 
   const saveLabel = saving
     ? "Saving…"
@@ -560,13 +544,16 @@ export default function BatchMatrixEntry({
 
   const selectMacro = (id: MacroId) => {
     setMacro(id);
-    setMicro(id === "assembly" ? "p15-visual" : "");
+    const first = schema ? stationsIn(schema, id)[0] : undefined;
+    setStageId(first?.stageId ?? migrateToStageId({ macro: id }));
     resetQtys();
   };
 
-  const selectMicro = (id: string) => {
-    if (macro !== "assembly") return;
-    setMicro(id);
+  const selectStation = (id: string) => {
+    if (id === stageId) return;
+    setStageId(id);
+    const st = schema ? stationById(schema, id) : undefined;
+    if (st) setMacro(st.category);
     resetQtys();
   };
 
@@ -670,9 +657,6 @@ export default function BatchMatrixEntry({
   }
 
   function buildPendingRecord(overrideReject?: number): ShiftBatchRecord {
-    const stageId = resolveStageId(macro, micro);
-    const stageName = MATRIX_STAGES[macro].name;
-    const procName = processLabel(macro, micro);
     const canon = toCanonicalSize(size) ?? size;
 
     return {
@@ -681,21 +665,21 @@ export default function BatchMatrixEntry({
       date,
       operator: operator.trim(),
       macro,
-      micro,
+      micro: stageId,
       stageId,
-      stageName,
-      processName: procName,
+      stageName: processName,
+      processName,
       size: toDisplaySize(size) ?? size,
       sizeCanonical: canon,
       productType: productType || "2 way",
       batchId: batchId.trim().toUpperCase(),
       checked,
-      accept: isSecondary ? 0 : accept,
-      hold: isPrimary || isSecondary ? 0 : hold,
-      reject: isSecondary ? 0 : (overrideReject ?? reject),
-      trolleys: isPrimary ? trolleys : undefined,
-      bin: isSecondary ? bin.trim() : undefined,
-      defects: isSecondary ? {} : { ...defects },
+      accept: showAccept ? accept : 0,
+      hold: capturesHold ? hold : 0,
+      reject: showReject ? (overrideReject ?? reject) : 0,
+      trolleys: showTrolleys ? trolleys : undefined,
+      bin: showBin ? bin.trim() : undefined,
+      defects: hideDefects ? {} : { ...defects },
       remarks: remarks.trim(),
       shift,
       savedAt: new Date().toISOString(),
@@ -835,7 +819,7 @@ export default function BatchMatrixEntry({
         : "Entry saved with defect exception";
     const body =
       `${operator.trim() || "Operator"} saved ${batchId.trim().toUpperCase() || "(no batch)"} · ` +
-      `${processLabel(macro, micro)} · ${size} · ${date}. ` +
+      `${processName} · ${size} · ${date}. ` +
       (opts.kind === "qty_mismatch" ? balanceLine : `Defects ${dSum ?? "?"} vs Rejected ${rej}`) +
       `. Reason: ${opts.reason}`;
 
@@ -850,8 +834,8 @@ export default function BatchMatrixEntry({
         date,
         batchId: batchId.trim().toUpperCase(),
         stageId,
-        stageName: MATRIX_STAGES[macro].name,
-        processName: processLabel(macro, micro),
+        stageName: processName,
+        processName,
         size,
         productType,
         operator: operator.trim(),
@@ -876,7 +860,7 @@ export default function BatchMatrixEntry({
       await postNotification({
         type: "edit_request",
         title: "Edit permission requested",
-        body: `${operator.trim() || "Operator"} wants to edit ${batchId} (${processLabel(macro, micro)}, ${size}) outside ${describeShiftWindow(shift, shiftConfig)}.`,
+        body: `${operator.trim() || "Operator"} wants to edit ${batchId} (${processName}, ${size}) outside ${describeShiftWindow(shift, shiftConfig)}.`,
         createdBy: operator.trim() || "operator",
         targetPersona: "gm",
         payload: {
@@ -884,7 +868,7 @@ export default function BatchMatrixEntry({
           date,
           batchId: batchId.trim().toUpperCase(),
           stageId,
-          stageName: MATRIX_STAGES[macro].name,
+          stageName: processName,
           size: sizeCanon ?? size,
           productType,
           operator: operator.trim(),
@@ -913,16 +897,27 @@ export default function BatchMatrixEntry({
       return;
     }
 
+    // A lot code that isn't a lot code can never fold onto its twin: "26025-18"
+    // and "26H25-18" are the same physical lot, but only one parses, so the
+    // ledger carries both and every batch-keyed view counts the lot twice.
+    const batchKey = batchId.trim().toUpperCase();
+    if (!isValidBatchId(batchKey)) {
+      setErr(
+        `"${batchKey || "(empty)"}" isn't a lot code. Expected YY + month letter (A–L) + DD + size — ` +
+          `e.g. ${buildBatchId(batchDate, size) ?? "26H25-18"}.`,
+      );
+      return;
+    }
+
     // /api/ingest supersedes direct entry by date · stage · size · batch. If a
     // revision changes any of those, the OLD ledger row keys differently and
     // survives — the edit would double-count instead of replacing. Say so.
     if (editingId) {
       const orig = saved.find((b) => b.id === editingId);
-      const sid = resolveStageId(macro, micro);
       if (
         orig &&
         (orig.date !== date ||
-          orig.stageId !== sid ||
+          orig.stageId !== stageId ||
           orig.sizeCanonical !== (toCanonicalSize(size) ?? size) ||
           orig.batchId !== batchId.trim().toUpperCase())
       ) {
@@ -940,9 +935,32 @@ export default function BatchMatrixEntry({
       }
     }
 
+    // Same slot, saved twice. The ledger keeps ONE entry per lot·gate·size·day,
+    // so this save replaces the earlier one — the operator sees two entries in
+    // the shift log but the second quietly overwrote the first. Say it first.
+    if (!editingId) {
+      const prior = existingLedgerEntry((events ?? []) as AuditEventLike[], {
+        date,
+        stageId,
+        size: sizeCanon ?? size,
+        batchId: batchKey,
+      });
+      if (
+        prior &&
+        !confirm(
+          `${batchKey} · ${processName} · ${size} on ${date} is already on the ledger ` +
+            `(${prior.checked} checked, ${prior.rejected} rejected${prior.shift ? `, ${prior.shift}` : ""}).\n\n` +
+            `Saving REPLACES it — the ledger keeps one entry per lot, gate, size and day.\n\n` +
+            `Replace it? Cancel and change the Batch ID or date if this is a different run.`,
+        )
+      ) {
+        return;
+      }
+    }
+
     // Balance check — popup + mandatory reason; never rewrite fields silently.
     // qtyMismatch with checked===0 is blocked by the save button.
-    if (!isSecondary && checked > 0 && checked !== sumParts) {
+    if (showReject && checked > 0 && checked !== sumParts) {
       setExceptionKind("qty");
       setExceptionReason("");
       setExceptionOpen(true);
@@ -1035,7 +1053,7 @@ export default function BatchMatrixEntry({
       return;
     }
     setMacro(rec.macro);
-    setMicro(rec.micro);
+    setStageId(migrateToStageId(rec));
     setDate(rec.date);
     setSize(rec.size);
     if (rec.productType) applyProductType(rec.productType);
@@ -1262,21 +1280,13 @@ export default function BatchMatrixEntry({
           <span style={statusPill("neutral")}>Loading schema…</span>
         )}
         {schemaSource === "catalog" && (
-          <span style={statusPill("good")} title={usingModDefects ? `${activeDefects.length} defect codes` : "Defaults for defects"}>
+          <span style={statusPill("good")} title={`${activeDefects.length} defect codes from Data Schema`}>
             Schema · plant
-            {usingModDefects ? ` · ${activeDefects.length} defects` : ""}
+            {activeDefects.length ? ` · ${activeDefects.length} defects` : ""}
           </span>
         )}
         {schemaSource === "builtin" && (
-          <span style={statusPill("neutral")}>
-            Schema · built-in
-            {canConfigure && (
-              <>
-                {" · "}
-                <a href="/schema" style={{ color: "var(--accent)", fontWeight: 600 }}>Set up plant schema</a>
-              </>
-            )}
-          </span>
+          <span style={statusPill("warn")}>Schema · built-in</span>
         )}
         {canConfigure && schemaSource === "catalog" && (
           <a href="/schema" className="small" style={{ color: "var(--text-3)", marginLeft: "auto", fontWeight: 500 }}>
@@ -1284,6 +1294,31 @@ export default function BatchMatrixEntry({
           </a>
         )}
       </div>
+
+      {schemaSource === "builtin" && (
+        <div
+          style={{
+            marginBottom: 14,
+            padding: "10px 14px",
+            borderRadius: 10,
+            border: "1px solid var(--status-warn, #d97706)",
+            background: "color-mix(in srgb, var(--status-warn, #d97706) 12%, var(--surface))",
+            fontSize: 13,
+            lineHeight: 1.45,
+          }}
+        >
+          <strong>Using the built-in station list.</strong> Plant schema did not load — every
+          station, quantity field, and defect tile on this form is the default, not Data Schema.
+          {canConfigure && (
+            <>
+              {" "}
+              <a href="/schema" style={{ color: "var(--accent)", fontWeight: 600 }}>
+                Set up plant schema
+              </a>
+            </>
+          )}
+        </div>
+      )}
 
       {editingId && (
         <div
@@ -1333,34 +1368,34 @@ export default function BatchMatrixEntry({
         </div>
       )}
 
-      {/* Station selection — full-width steps, plant language */}
+      {/* Station selection — tabs from schema categories, chips from template.stages */}
       <div style={{ marginBottom: 16 }}>
         <div style={sectionLabel}>Where is this batch?</div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: isAssembly ? 10 : 0 }}>
-          {(Object.keys(MATRIX_STAGES) as MacroId[]).map((id) => (
-            <button key={id} type="button" onClick={() => selectMacro(id)} style={macro === id ? chipOn : chipOff}>
-              {MATRIX_STAGES[id].shortLabel}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+          {(schema ? schemaCategories(schema) : []).map((c) => (
+            <button key={c.id} type="button" onClick={() => selectMacro(c.id)} style={macro === c.id ? chipOn : chipOff}>
+              {c.label}
             </button>
           ))}
         </div>
-        {isAssembly && (
+        {schema && stationsIn(schema, macro).length > 1 && (
           <>
             <div style={{ ...sectionLabel, marginTop: 4 }}>Which station?</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {MATRIX_STAGES.assembly.processes.map((p) => (
+              {stationsIn(schema, macro).map((s) => (
                 <button
-                  key={p.id}
+                  key={s.stageId}
                   type="button"
-                  onClick={() => selectMicro(p.id)}
-                  style={micro === p.id ? chipOn : chipOff}
+                  onClick={() => selectStation(s.stageId)}
+                  style={stageId === s.stageId ? chipOn : chipOff}
                 >
-                  {p.name}
+                  {s.label}
                 </button>
               ))}
             </div>
           </>
         )}
-        {!isAssembly && MATRIX_STAGES[macro].processes.length > 0 && (
+        {schemaSource === "builtin" && !isAssembly && MATRIX_STAGES[macro].processes.length > 0 && (
           <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
             {MATRIX_STAGES[macro].processes.map((p) => (
               <span key={p.id} style={chipBadge}>{p.name}</span>
@@ -1513,199 +1548,129 @@ export default function BatchMatrixEntry({
             style={{ display: "grid", gridTemplateColumns: countCols, gap: 12, alignItems: "start" }}
             className="batch-matrix-counts"
           >
-            {isSecondary && (
-              <>
-                <FieldCol label="Quantity *" align="center">
-                  <QtyInput
-                    value={checked || null}
-                    onChange={(n) => setQty("checked", n)}
-                    style={qtyInputStyle()}
-                    aria-label="Quantity"
-                  />
-                </FieldCol>
-                <FieldCol label="Bin *">
-                  <input
-                    list="secondary-bin-options"
-                    value={bin}
-                    onChange={(e) => setBin(e.target.value)}
-                    placeholder="e.g. Bin A"
-                    style={{ ...inp, fontWeight: 600 }}
-                  />
-                  <datalist id="secondary-bin-options">
-                    {SECONDARY_BINS.map((b) => (
-                      <option key={b} value={b} />
-                    ))}
-                  </datalist>
-                </FieldCol>
-              </>
-            )}
-
-            {isPrimary && (
-              <>
-                <FieldCol label={qtyLabel} align="center">
-                  <QtyInput
-                    value={checked || null}
-                    onChange={(n) => setQty("checked", n)}
-                    style={qtyInputStyle({ mismatch: qtyMismatch && checked > 0 })}
-                    aria-label={qtyLabel}
-                  />
-                  {balanceHint && (
-                    <div
-                      className="small"
-                      style={{
-                        marginTop: 6,
-                        fontFamily: "var(--font-mono)",
-                        fontSize: 11,
-                        fontWeight: 600,
-                        textAlign: "center",
-                        lineHeight: 1.35,
-                        color: qtyMismatch ? "var(--status-warn, #d97706)" : "var(--status-good)",
-                      }}
-                    >
-                      {balanceHint}
-                      {qtyMismatch ? " · fix parts" : " · ok"}
-                    </div>
-                  )}
-                </FieldCol>
-                <FieldCol label="Trolleys" align="center">
-                  <QtyInput
-                    value={trolleys || null}
-                    onChange={(n) => setQty("trolleys", n)}
-                    style={qtyInputStyle()}
-                    aria-label="Trolleys"
-                  />
-                </FieldCol>
-                <FieldCol label="Accept" align="center">
-                  <QtyInput
-                    value={accept || null}
-                    onChange={(n) => setQty("accept", n)}
-                    style={qtyInputStyle({ emphasize: accept > 0 ? "good" : null })}
-                    aria-label="Accept"
-                  />
-                </FieldCol>
-                <FieldCol label="Reject" align="center">
+            {showChecked && (
+              <FieldCol label={showBin ? `${qtyLabel} *` : qtyLabel} align="center">
+                <QtyInput
+                  value={checked || null}
+                  onChange={(n) => setQty("checked", n)}
+                  style={qtyInputStyle({ mismatch: qtyMismatch && checked > 0 })}
+                  aria-label={qtyLabel}
+                />
+                {balanceHint && (
                   <div
-                    aria-label="Reject"
-                    aria-readonly="true"
+                    className="small"
                     style={{
-                      ...qtyInputStyle({ emphasize: reject > 0 ? "bad" : null }),
-                      background: "var(--surface-2)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
+                      marginTop: 6,
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      textAlign: "center",
+                      lineHeight: 1.35,
+                      color: qtyMismatch ? "var(--status-warn, #d97706)" : "var(--status-good)",
                     }}
-                    title={
-                      rejectSource === "defects"
-                        ? "From defect reasons below"
-                        : "Auto: Quantity − Accept"
-                    }
                   >
-                    {reject}
+                    {balanceHint}
+                    {qtyMismatch ? " · fix parts" : " · ok"}
                   </div>
-                  <div className="small" style={{ marginTop: 6, color: "var(--text-3)", textAlign: "center", fontSize: 11, lineHeight: 1.3 }}>
-                    {rejectSource === "defects"
-                      ? "= defect sum"
-                      : checked > 0
-                        ? `= ${checked} − ${accept}`
-                        : "auto"}
-                  </div>
-                </FieldCol>
-              </>
-            )}
-
-            {isAssembly && (
-              <>
-                <FieldCol label={qtyLabel} align="center">
-                  <QtyInput
-                    value={checked || null}
-                    onChange={(n) => setQty("checked", n)}
-                    style={qtyInputStyle({ mismatch: qtyMismatch && checked > 0 })}
-                    aria-label={qtyLabel}
-                  />
-                  {balanceHint && (
-                    <div
-                      className="small"
-                      style={{
-                        marginTop: 6,
-                        fontFamily: "var(--font-mono)",
-                        fontSize: 11,
-                        fontWeight: 600,
-                        textAlign: "center",
-                        lineHeight: 1.35,
-                        color: qtyMismatch ? "var(--status-warn, #d97706)" : "var(--status-good)",
-                      }}
-                    >
-                      {balanceHint}
-                      {qtyMismatch ? " · fix parts" : " · ok"}
-                    </div>
-                  )}
-                  {prefillNote && (
-                    <button
-                      type="button"
-                      onClick={() => setPrefillNote(null)}
-                      title={prefillNote}
-                      style={{
-                        ...badge("blue"),
-                        marginTop: 6,
-                        width: "100%",
-                        cursor: "pointer",
-                        border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)",
-                        textAlign: "left",
-                        lineHeight: 1.3,
-                      }}
-                    >
-                      From prior station · dismiss
-                    </button>
-                  )}
-                </FieldCol>
-                <FieldCol label="Accept" align="center">
-                  <QtyInput
-                    value={accept || null}
-                    onChange={(n) => setQty("accept", n)}
-                    style={qtyInputStyle({ emphasize: accept > 0 ? "good" : null })}
-                    aria-label="Accept"
-                  />
-                </FieldCol>
-                {capturesHold && (
-                  <FieldCol label="Hold" align="center">
-                    <QtyInput
-                      value={hold || null}
-                      onChange={(n) => setQty("hold", n)}
-                      style={qtyInputStyle({ emphasize: hold > 0 ? "warn" : null })}
-                      aria-label="Hold"
-                    />
-                  </FieldCol>
                 )}
-                <FieldCol label="Reject" align="center">
-                  <div
-                    aria-label="Reject"
-                    aria-readonly="true"
+                {prefillNote && (
+                  <button
+                    type="button"
+                    onClick={() => setPrefillNote(null)}
+                    title={prefillNote}
                     style={{
-                      ...qtyInputStyle({ emphasize: reject > 0 ? "bad" : null }),
-                      background: "var(--surface-2)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
+                      ...badge("blue"),
+                      marginTop: 6,
+                      width: "100%",
+                      cursor: "pointer",
+                      border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)",
+                      textAlign: "left",
+                      lineHeight: 1.3,
                     }}
-                    title={
-                      rejectSource === "defects"
-                        ? "Sum of the defect counts below"
-                        : "Auto: Checked − Accept − Hold"
-                    }
                   >
-                    {reject}
-                  </div>
-                  <div className="small" style={{ marginTop: 6, color: "var(--text-3)", textAlign: "center", fontSize: 11, lineHeight: 1.3 }}>
-                    {rejectSource === "defects"
-                      ? "= defect sum"
-                      : checked > 0
-                        ? capturesHold
-                          ? `= ${checked} − ${accept} − ${hold}`
-                          : `= ${checked} − ${accept}`
-                        : "auto"}
-                  </div>
-                </FieldCol>
-              </>
+                    From prior station · dismiss
+                  </button>
+                )}
+              </FieldCol>
+            )}
+            {showTrolleys && (
+              <FieldCol label="Trolleys" align="center">
+                <QtyInput
+                  value={trolleys || null}
+                  onChange={(n) => setQty("trolleys", n)}
+                  style={qtyInputStyle()}
+                  aria-label="Trolleys"
+                />
+              </FieldCol>
+            )}
+            {showBin && (
+              <FieldCol label="Bin *">
+                <input
+                  list="secondary-bin-options"
+                  value={bin}
+                  onChange={(e) => setBin(e.target.value)}
+                  placeholder="e.g. Bin A"
+                  style={{ ...inp, fontWeight: 600 }}
+                />
+                <datalist id="secondary-bin-options">
+                  {SECONDARY_BINS.map((b) => (
+                    <option key={b} value={b} />
+                  ))}
+                </datalist>
+              </FieldCol>
+            )}
+            {showAccept && (
+              <FieldCol label="Accept" align="center">
+                <QtyInput
+                  value={accept || null}
+                  onChange={(n) => setQty("accept", n)}
+                  style={qtyInputStyle({ emphasize: accept > 0 ? "good" : null })}
+                  aria-label="Accept"
+                />
+              </FieldCol>
+            )}
+            {capturesHold && (
+              <FieldCol label="Hold" align="center">
+                <QtyInput
+                  value={hold || null}
+                  onChange={(n) => setQty("hold", n)}
+                  style={qtyInputStyle({ emphasize: hold > 0 ? "warn" : null })}
+                  aria-label="Hold"
+                />
+              </FieldCol>
+            )}
+            {showReject && (
+              <FieldCol label="Reject" align="center">
+                <div
+                  aria-label="Reject"
+                  aria-readonly="true"
+                  style={{
+                    ...qtyInputStyle({ emphasize: reject > 0 ? "bad" : null }),
+                    background: "var(--surface-2)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                  title={
+                    rejectSource === "defects"
+                      ? "Sum of the defect counts below"
+                      : capturesHold
+                        ? "Auto: Checked − Accept − Hold"
+                        : "Auto: Checked − Accept"
+                  }
+                >
+                  {reject}
+                </div>
+                <div className="small" style={{ marginTop: 6, color: "var(--text-3)", textAlign: "center", fontSize: 11, lineHeight: 1.3 }}>
+                  {rejectSource === "defects"
+                    ? "= defect sum"
+                    : checked > 0
+                      ? capturesHold
+                        ? `= ${checked} − ${accept} − ${hold}`
+                        : `= ${checked} − ${accept}`
+                      : "auto"}
+                </div>
+              </FieldCol>
             )}
           </div>
         </div>
@@ -1757,7 +1722,7 @@ export default function BatchMatrixEntry({
                 )}
               </div>
               <div className="small" style={{ color: "var(--text-3)", fontWeight: 500, fontSize: 12 }}>
-                {processLabel(macro, micro)}
+                {processName}
               </div>
             </div>
             <input
@@ -1799,7 +1764,7 @@ export default function BatchMatrixEntry({
               // collapses "Coagulant" back to "COAG" (it treats the code as the
               // canonical card title), which silently undoes a Data Schema
               // rename — right for the built-in list, wrong for a schema label.
-              const title = usingModDefects ? d.name || d.key : defectDisplayLabel(d);
+              const title = schemaSource === "catalog" ? d.name || d.key : defectDisplayLabel(d);
               return (
                 <div
                   key={d.key}
@@ -1882,7 +1847,7 @@ export default function BatchMatrixEntry({
       </div>
 
       {/* Live balance strip — shows the correct split, not only a mismatch flag */}
-      {!isSecondary && (
+      {showReject && (
         <div
           style={{
             marginBottom: 12,
@@ -1912,9 +1877,7 @@ export default function BatchMatrixEntry({
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", justifyContent: "space-between" }}>
             <span>
               {qtyLabel} {checked} ={" "}
-              {isPrimary ? (
-                <>Accept {accept} + Reject {reject}</>
-              ) : capturesHold ? (
+              {capturesHold ? (
                 <>Accept {accept} + Hold {hold} + Reject {reject}</>
               ) : (
                 <>Accept {accept} + Reject {reject}</>
@@ -2044,14 +2007,14 @@ export default function BatchMatrixEntry({
             <>Enter {qtyLabel} to save.</>
           ) : (
             <>
-              <strong style={{ fontFamily: "var(--font-mono)" }}>{batchId}</strong> · {processLabel(macro, micro)} ·{" "}
+              <strong style={{ fontFamily: "var(--font-mono)" }}>{batchId}</strong> · {processName} ·{" "}
               {size} · {qtyLabel} {checked}
-              {!isSecondary && (
+              {showReject && (
                 <span style={{ color: qtyMismatch ? "var(--status-warn, #d97706)" : "var(--status-good)", fontWeight: 600 }}>
                   {" "}· {qtyMismatch ? "mismatch" : "balanced"}
                 </span>
               )}
-              {!isSecondary && defectMismatch && (
+              {showReject && defectMismatch && (
                 <span style={{ color: "var(--status-bad)", fontWeight: 700 }}>
                   {" "}· defects {defectSum} of {reject}
                 </span>

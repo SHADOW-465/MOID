@@ -71,6 +71,15 @@ test("throughput-only stages get one column and no defects", () => {
   expect(t.stages[0].defects).toEqual([]);
 });
 
+test("each stage carries the shop-floor category Data Entry tabs filter on", () => {
+  const t = templateFrom(plantCatalog());
+  const byId = Object.fromEntries(t.stages.map((s) => [s.stageId, s]));
+  expect(byId["production"].category).toBe("primary");
+  expect(byId["secondary"].category).toBe("secondary");
+  expect(byId["visual"].category).toBe("assembly");
+  expect(byId["primary-pack-inspection"].category).toBe("assembly");
+});
+
 test("the authored plant catalog projects into a usable grid", () => {
   const t = templateFrom(plantCatalog());
   const byId = Object.fromEntries(t.stages.map((s) => [s.stageId, s]));

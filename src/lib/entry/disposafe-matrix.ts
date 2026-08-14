@@ -1,6 +1,12 @@
-// Shop-floor Data Entry Matrix — stage hierarchy + defect schemas.
-// Source of truth: Disposafe_Data_Entry_System_Documentation.md
-// stageId values map into the Disposafe registry / event ledger.
+// Offline seed for Data Entry + shop-floor helpers that are not schema
+// (catheter cascade, roles, persisted ShiftBatchRecord).
+//
+// Live stations, defects, and quantity columns come from /api/entry-template
+// via lib/entry/entry-schema.ts. This file is the total fallback when that
+// projection is unavailable — same role plant-catalog.ts plays for analytics.
+// Do not read MATRIX_STAGES as a per-field overlay on a live catalog.
+//
+// Source of truth for the seed lists: Disposafe_Data_Entry_System_Documentation.md
 
 export type MacroId = "primary" | "secondary" | "assembly";
 
@@ -193,8 +199,9 @@ export const MATRIX_STAGES: Record<MacroId, MacroStage> = {
     // P19 Valve Fixing is a flow-through operation, P20 Valve Integrity is the
     // inspection gate that actually gets recorded here.
     //
-    // The `id` values are opaque local keys (they persist in the shift list and
-    // the entry draft); they are NOT P-codes and never lined up with them.
+    // The `id` values are retired local keys. New writes store `stageId`.
+    // migrateToStageId() in entry-schema.ts still maps these for in-flight
+    // drafts / shift rows / Ask MOID prefills.
     processes: [
       { id: "p15-visual", name: "Visual (P17)", stageId: "visual", interactive: true },
       { id: "p16-balloon", name: "Balloon Inspection (P18)", stageId: "balloon", interactive: true },
@@ -275,9 +282,11 @@ export function processLabel(macro: MacroId, micro: string): string {
  * Accepted qty for the same batch — units physically flow forward.
  */
 export function previousAssemblyStageId(micro: string): string | null {
-  const idx = MATRIX_STAGES.assembly.processes.findIndex((p) => p.id === micro);
+  const processes = MATRIX_STAGES.assembly.processes;
+  let idx = processes.findIndex((p) => p.id === micro);
+  if (idx < 0) idx = processes.findIndex((p) => p.stageId === micro);
   if (idx <= 0) return null;
-  return MATRIX_STAGES.assembly.processes[idx - 1].stageId;
+  return processes[idx - 1].stageId;
 }
 
 export type ShiftBatchRecord = {
@@ -285,6 +294,11 @@ export type ShiftBatchRecord = {
   date: string;
   operator: string;
   macro: MacroId;
+  /**
+   * @deprecated Retired local process id (p15-visual, …). New writes store
+   * the ledger `stageId` here too so old readers still have a value.
+   * Prefer `stageId`. migrateToStageId() accepts either.
+   */
   micro: string;
   stageId: string;
   stageName: string;

@@ -173,12 +173,12 @@ function processEntrySlots(
   slots = inferred.slots;
   if (inferred.note && !notes.includes(inferred.note)) notes.push(inferred.note);
 
-  // Normalize defect keys once we know micro
-  if (slots.defects && slots.macro && slots.micro) {
+  // Normalize defect keys once we know the station
+  if (slots.defects && slots.macro && slots.stageId) {
     const { defects, unknown } = normalizeDefectKeys(
       slots.defects,
       slots.macro,
-      slots.micro,
+      slots.stageId,
     );
     slots.defects = defects;
     if (unknown.length) {
