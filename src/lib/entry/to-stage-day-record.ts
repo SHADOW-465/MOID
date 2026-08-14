@@ -63,6 +63,9 @@ export function toStageDayRecord(rec: ShiftBatchRecord, ingestionId: string): St
       macro: rec.macro,
       process: rec.processName,
       matrixId: rec.id,
+      ...(rec.duplicateConfirmedOf
+        ? { confirmedDistinctFrom: rec.duplicateConfirmedOf }
+        : {}),
       ...(isPrimary && rec.trolleys != null && rec.trolleys > 0
         ? { trolleysProduced: rec.trolleys, "No. of Trolleys Produced": rec.trolleys }
         : {}),

@@ -1022,6 +1022,26 @@ export default function FloatingDetailModal({
                                   }}
                                 >
                                   {e.batch || "—"}
+                                  {e.confirmedDistinctFrom && (
+                                    <div
+                                      title={`Confirmed a different lot from ${e.confirmedDistinctFrom} despite matching checked/accepted/rejected counts — not a duplicate entry.`}
+                                      style={{
+                                        display: "inline-block",
+                                        marginLeft: 6,
+                                        padding: "0px 5px",
+                                        borderRadius: 999,
+                                        fontSize: 9.5,
+                                        fontWeight: 700,
+                                        fontFamily: "var(--font-sans)",
+                                        letterSpacing: 0.2,
+                                        color: "var(--accent)",
+                                        background: "color-mix(in srgb, var(--accent) 14%, transparent)",
+                                        border: "1px solid color-mix(in srgb, var(--accent) 35%, transparent)",
+                                      }}
+                                    >
+                                      Confirmed distinct
+                                    </div>
+                                  )}
                                 </td>
                                 <td style={td}>{e.size || "—"}</td>
                                 <td style={{ ...td, textAlign: "right", fontFamily: "var(--font-mono)", fontWeight: 600 }}>

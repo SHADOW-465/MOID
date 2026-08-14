@@ -62,3 +62,10 @@ describe("consolidateEntries", () => {
     ]);
   });
 });
+
+it("carries confirmedDistinctFrom through so the modal can badge it", () => {
+  const out = consolidateEntries([
+    { ...row("checked", 1326, "ENTRY!checked"), confirmedDistinctFrom: "26H25-18" },
+  ]);
+  expect(out[0].confirmedDistinctFrom).toBe("26H25-18");
+});

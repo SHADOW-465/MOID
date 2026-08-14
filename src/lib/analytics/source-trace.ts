@@ -55,6 +55,10 @@ export interface SourceRow {
   sheet?: string;
   cell: string;
   isDirect?: boolean;
+  /** Set when the operator confirmed this batch as genuinely distinct from
+   *  another batch despite matching checked/accepted/rejected counts — carries
+   *  that other batch's code so the row can be badged, not flagged as an error. */
+  confirmedDistinctFrom?: string | null;
 }
 
 export interface SourceRowFilter {
@@ -192,6 +196,7 @@ export interface SourceEntryRow {
   batch?: string | null;
   file: string;
   isDirect?: boolean;
+  confirmedDistinctFrom?: string | null;
   checkedQty: number;
   acceptedQty: number;
   rejectedQty: number;
@@ -221,6 +226,7 @@ export function consolidateEntries(rows: SourceRow[]): SourceEntryRow[] {
         batch: r.batch,
         file: r.file,
         isDirect: r.isDirect,
+        confirmedDistinctFrom: r.confirmedDistinctFrom,
         checkedQty: 0,
         acceptedQty: 0,
         rejectedQty: 0,
@@ -383,6 +389,10 @@ export function toSourceRows(
         prov.is_direct_entry === true ||
         raw.extractedBy === "direct-entry" ||
         raw.isDirectEntry === true,
+      confirmedDistinctFrom:
+        typeof raw.customFields?.confirmedDistinctFrom === "string"
+          ? raw.customFields.confirmedDistinctFrom
+          : null,
     });
   }
   return sortSourceDetail(out);

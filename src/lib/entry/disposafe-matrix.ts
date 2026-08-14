@@ -329,6 +329,14 @@ export type ShiftBatchRecord = {
   savedAt: string;
   /** Set after successful POST /api/ingest */
   synced?: boolean;
+  /**
+   * Set when the operator explicitly confirmed this batch as a genuinely
+   * separate lot despite matching another batch's checked/accepted/rejected
+   * counts (see suspectedDuplicateBatch). Carries the OTHER batch's code so
+   * every later view can mark both as "confirmed distinct" instead of the
+   * operator (or an auditor) mistaking the coincidence for a data-entry error.
+   */
+  duplicateConfirmedOf?: string | null;
 };
 
 /** Common bin labels for Secondary Production (operators may also free-type). */

@@ -189,6 +189,9 @@ export default function BatchMatrixEntry({
     editingIdRef.current = id;
     setEditingId(id);
   }, []);
+  /** Twin batch code the operator confirmed this one is genuinely distinct
+   *  from (matching numbers, different lot) — stamped onto the next save. */
+  const duplicateConfirmedOfRef = useRef<string | null>(null);
   /** Defect sum ≠ Rejected — operator must choose before save (never silent). */
   const [a12, setA12] = useState<{ defectSum: number; reject: number } | null>(null);
   const [a12Choice, setA12Choice] = useState<A12Choice>(null);
@@ -532,6 +535,7 @@ export default function BatchMatrixEntry({
     setA12Choice(null);
     userTouchedQty.current = false;
     prefillAppliedKey.current = null;
+    duplicateConfirmedOfRef.current = null;
   }, []);
 
   const touchQty = useCallback(() => {
@@ -684,6 +688,7 @@ export default function BatchMatrixEntry({
       shift,
       savedAt: new Date().toISOString(),
       synced: false,
+      duplicateConfirmedOf: duplicateConfirmedOfRef.current,
     };
   }
 
@@ -985,6 +990,11 @@ export default function BatchMatrixEntry({
       ) {
         return;
       }
+      // Stamp the twin's code so every later view (shift list, View Source,
+      // audit) can badge both rows as a confirmed coincidence — not a mistake.
+      duplicateConfirmedOfRef.current = dupe ? dupe.batch : null;
+    } else {
+      duplicateConfirmedOfRef.current = null;
     }
 
     // Balance check — popup + mandatory reason; never rewrite fields silently.
@@ -2200,7 +2210,29 @@ export default function BatchMatrixEntry({
                         <div className="small" style={{ color: "var(--text-3)", fontSize: 12 }}>{rec.stageName}</div>
                       </td>
                       <td style={tdCell}>{rec.productType || "2 way"}</td>
-                      <td style={{ ...tdCell, fontFamily: "var(--font-mono)", fontWeight: 700 }}>{rec.batchId}</td>
+                      <td style={{ ...tdCell, fontFamily: "var(--font-mono)", fontWeight: 700 }}>
+                        {rec.batchId}
+                        {rec.duplicateConfirmedOf && (
+                          <div
+                            title={`Confirmed a different lot from ${rec.duplicateConfirmedOf} despite matching checked/accepted/rejected counts — not a duplicate entry.`}
+                            style={{
+                              display: "inline-block",
+                              marginLeft: 6,
+                              padding: "1px 6px",
+                              borderRadius: 999,
+                              fontSize: 10,
+                              fontWeight: 700,
+                              fontFamily: "var(--font-sans)",
+                              letterSpacing: 0.2,
+                              color: "var(--accent)",
+                              background: "color-mix(in srgb, var(--accent) 14%, transparent)",
+                              border: "1px solid color-mix(in srgb, var(--accent) 35%, transparent)",
+                            }}
+                          >
+                            Confirmed distinct
+                          </div>
+                        )}
+                      </td>
                       <td style={{ ...tdCell, textAlign: "center" }}>{rec.checked}</td>
                       <td style={{ ...tdCell, textAlign: "center" }}>{primaryRow ? (rec.trolleys ?? 0) : "—"}</td>
                       <td style={tdCell}>{secondaryRow ? (rec.bin || "—") : "—"}</td>
