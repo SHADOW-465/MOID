@@ -346,12 +346,21 @@ export default function BatchMatrixEntry({
   }, [templateDefects, stageId, macro, micro]);
   // Freeze the defect column set once the operator starts typing so a late
   // /api/entry-template response can't swap keys mid-entry (looks like values
-  // "changed" or vanished under a different column label).
+  // "changed" or vanished under a different column label) — but only while
+  // staying on the SAME stage. A restored draft or an Ask MOID prefill sets
+  // `micro` to the batch's real stage and marks userTouchedQty in the same
+  // effect, before this one ever runs; without the stage check that permanently
+  // froze activeDefects at whatever stage was on screen at first paint
+  // ("p15-visual", the default) — Valve Integrity would render Visual's 21
+  // codes forever, no matter which tab was actually selected.
+  const activeDefectsStageRef = useRef<string | null>(null);
   const [activeDefects, setActiveDefects] = useState(resolvedDefects);
   useEffect(() => {
-    if (userTouchedQty.current) return;
+    const stageChanged = activeDefectsStageRef.current !== stageId;
+    if (!stageChanged && userTouchedQty.current) return;
+    activeDefectsStageRef.current = stageId;
     setActiveDefects(resolvedDefects);
-  }, [resolvedDefects]);
+  }, [resolvedDefects, stageId]);
   const usingModDefects = !!(templateDefects[stageId]?.length);
 
   const hideDefects = MATRIX_STAGES[macro].hideDefects;
