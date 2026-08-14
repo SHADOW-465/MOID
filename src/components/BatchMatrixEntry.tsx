@@ -46,7 +46,7 @@ import {
   toCanonicalSize,
   toDisplaySize,
 } from "@/lib/entry/batch-id";
-import { existingLedgerEntry } from "@/lib/entry/validate-entry";
+import { existingLedgerEntry, suspectedDuplicateBatch } from "@/lib/entry/validate-entry";
 import {
   describeShiftWindow,
   isWithinShiftWindow,
@@ -952,6 +952,35 @@ export default function BatchMatrixEntry({
             `(${prior.checked} checked, ${prior.rejected} rejected${prior.shift ? `, ${prior.shift}` : ""}).\n\n` +
             `Saving REPLACES it — the ledger keeps one entry per lot, gate, size and day.\n\n` +
             `Replace it? Cancel and change the Batch ID or date if this is a different run.`,
+        )
+      ) {
+        return;
+      }
+    }
+
+    // Same size, same gate, same day, same three numbers, but a DIFFERENT lot
+    // code — almost always the same physical lot entered twice with the month
+    // letter or day mistyped the second time. Both codes are individually
+    // valid, so they never collide as the same ledger slot; this is the only
+    // place that catches it.
+    if (!editingId) {
+      const dupe = suspectedDuplicateBatch((events ?? []) as AuditEventLike[], {
+        date,
+        stageId,
+        size: sizeCanon ?? size,
+        batchId: batchKey,
+        checked,
+        accepted: showAccept ? accept : 0,
+        rejected: showReject ? reject : 0,
+      });
+      if (
+        dupe &&
+        !confirm(
+          `Batch ${dupe.batch} on the ledger (${processName} · ${size} · ${date}) has the exact same ` +
+            `checked/accepted/rejected counts as ${batchKey}.\n\n` +
+            `This usually means the same lot was typed twice with the batch code slightly wrong the ` +
+            `second time (e.g. a different month letter or day).\n\n` +
+            `Save anyway as a separate lot? Cancel to fix the Batch ID instead.`,
         )
       ) {
         return;

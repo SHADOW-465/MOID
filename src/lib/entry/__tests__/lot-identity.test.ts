@@ -96,3 +96,32 @@ test("an unparseable lot code is rejected at save — it can never fold onto its
   // and the unparseable twin never matches the real lot's entry
   expect(existingLedgerEntry(ledger, { ...slot, batchId: "26025-18" })).toBeNull();
 });
+
+// The real bug: two DIFFERENT, individually valid batch codes for what's
+// almost certainly the same lot re-entered with a typo'd month letter.
+import { suspectedDuplicateBatch } from "../validate-entry";
+
+test("a different but valid batch code with identical checked/accepted/rejected is flagged", () => {
+  const ledger = [
+    { eventType: "production", extractedBy: "direct-entry", occurredOn: { start: "2026-08-08" }, stageId: "visual", size: "Fr18", batchNo: "26H25-18", quantity: 1326 },
+    { eventType: "inspection", disposition: "accepted", extractedBy: "direct-entry", occurredOn: { start: "2026-08-08" }, stageId: "visual", size: "Fr18", batchNo: "26H25-18", quantity: 1163 },
+    { eventType: "inspection", disposition: "rejected", extractedBy: "direct-entry", occurredOn: { start: "2026-08-08" }, stageId: "visual", size: "Fr18", batchNo: "26H25-18", quantity: 39 },
+  ];
+  const result = suspectedDuplicateBatch(ledger, {
+    date: "2026-08-08", stageId: "visual", size: "Fr18", batchId: "26G25-18",
+    checked: 1326, accepted: 1163, rejected: 39,
+  });
+  expect(result).toEqual({ batch: "26H25-18" });
+});
+
+test("different numbers on a different batch is not flagged — real lots vary", () => {
+  const ledger = [
+    { eventType: "production", extractedBy: "direct-entry", occurredOn: { start: "2026-08-08" }, stageId: "visual", size: "Fr18", batchNo: "26H25-18", quantity: 1326 },
+  ];
+  expect(
+    suspectedDuplicateBatch(ledger, {
+      date: "2026-08-08", stageId: "visual", size: "Fr18", batchId: "26G25-18",
+      checked: 1400, accepted: 1200, rejected: 50,
+    }),
+  ).toBeNull();
+});

@@ -114,6 +114,50 @@ export function existingLedgerEntry(
 }
 
 /**
+ * A DIFFERENT, individually valid batch code on the same date/stage/size whose
+ * checked/accepted/rejected all match the one being saved — the fingerprint of
+ * a lot entered twice with the month letter or day mistyped the second time.
+ *
+ * `existingLedgerEntry` above only catches a re-save landing on the exact same
+ * canonical batch; two syntactically valid codes (26H25-18 vs 26G25-18) are
+ * different slots to the ledger and never collide there. This is the fuzzy
+ * check for that case: same size, same day, same gate, same three numbers,
+ * different lot code — coincidence is possible but rare enough to ask about.
+ */
+export function suspectedDuplicateBatch(
+  events: AuditEventLike[],
+  slot: EntrySlot & { checked: number; accepted: number; rejected: number },
+): { batch: string } | null {
+  const ownBatch = canonicalBatchId(slot.batchId);
+  if (slot.checked <= 0) return null;
+  const byBatch = new Map<string, { checked: number; accepted: number; rejected: number }>();
+  for (const e of events) {
+    const isDirect = e.extractedBy === "direct-entry" || e.isDirectEntry === true;
+    if (!isDirect) continue;
+    if (e.occurredOn?.start !== slot.date) continue;
+    if (e.stageId !== slot.stageId) continue;
+    if ((e.size ?? null) !== (slot.size ?? null)) continue;
+    const batch = canonicalBatchId(e.batchNo ?? null);
+    if (!batch || batch === ownBatch) continue;
+    const agg = byBatch.get(batch) ?? { checked: 0, accepted: 0, rejected: 0 };
+    if (e.eventType === "production") agg.checked += e.quantity ?? 0;
+    else if (e.eventType === "inspection" && e.disposition === "accepted") agg.accepted += e.quantity ?? 0;
+    else if (e.eventType === "inspection" && e.disposition === "rejected") agg.rejected += e.quantity ?? 0;
+    byBatch.set(batch, agg);
+  }
+  for (const [batch, agg] of byBatch) {
+    if (
+      agg.checked === slot.checked &&
+      agg.accepted === slot.accepted &&
+      agg.rejected === slot.rejected
+    ) {
+      return { batch };
+    }
+  }
+  return null;
+}
+
+/**
  * Across-collection spike check: compare this record's rejection rate against a
  * baseline mean (e.g. the period-to-date mean for the same stage). `sigmaMult`
  * of 3 ≈ "3× the average" the GM cares about.
