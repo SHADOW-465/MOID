@@ -34,20 +34,29 @@ they happen. Same data, same mutations, better shape.
 
 ## Locked structure
 
-Category folders (`primary`, `secondary`, `assembly`) are **not user-editable** —
-neither their labels nor their membership. They are authored in
-`core/ontology/plant-catalog.ts` and owned by the code.
+The three category folders — **Production Dipping** (`primary`), **Secondary**
+(`secondary`), **Assembly** (`assembly`) — are fixed. They cannot be renamed,
+added to, or deleted. They are authored in `core/ontology/plant-catalog.ts` and
+owned by the code.
 
 The reason is ownership, not simplicity. The schema is the plant's process
 written down; a deployment could otherwise be reorganised and re-pointed at a
-different plant without the owner's involvement. Locking the structural spine
-keeps the catalog recognisable as *this* plant's process while leaving the
-contents — stages, defects, sizes, aliases — fully editable.
+different plant without the owner's involvement. Locking the three folders keeps
+the catalog recognisable as *this* plant's process.
 
-Consequence: a stage's `category` becomes a **read-only** property in the
-detail panel. It is displayed, never edited. Everything else about a stage
-(label, captures, upstream, quality-gate flag, effective dates) stays editable
-exactly as today.
+Everything **inside** those folders is fully editable, addable and deletable:
+stages, the defects scoped to them, sizes, and aliases. That includes which
+category a stage sits in — you have to be able to say where a new stage goes,
+and moving a stage between two fixed folders does not change the plant's
+structural spine.
+
+| Thing | Edit | Add | Delete |
+|---|---|---|---|
+| Category folder | no | no | no |
+| Stage (incl. its category) | yes | yes | yes |
+| Defect (incl. its stage scoping) | yes | yes | yes |
+| Size | yes | yes | yes |
+| Alias / mapping | yes | yes | yes |
 
 ### Authored structure changes
 
@@ -69,11 +78,11 @@ Resulting membership:
 
 Already-seeded plants hold their own stored catalog and will not pick these up
 on their own, because the existing backfill only inserts missing stages and
-repairs empty fields — it never overwrites a populated `category`. Since
-category assignment is now code-owned rather than a per-plant preference, the
-backfill in `load-catalog.ts` is extended to realign `category` for **authored**
-stages (stages the plant did not invent), gated behind a bumped `SEED_TAG`.
-Hand-added stages keep whatever category they were given.
+repairs empty fields — it never overwrites a populated `category`. The backfill
+in `load-catalog.ts` is extended to realign `category` for the two moved stages,
+gated behind a bumped `SEED_TAG` so it runs exactly once. Stage category stays
+user-editable afterwards; this is a one-time correction of the authored
+structure, not an ongoing override.
 
 ## Tree shape
 
@@ -135,7 +144,11 @@ action — no new endpoints.
 | Stage | Confirm names defects left orphaned | `delete-stage` |
 | Size | Unchanged from today | `delete-size` |
 | Alias / mapping | Unchanged from today | `delete-mapping` |
-| Category folder | Not deletable (locked) | — |
+| Category folder | Not deletable (fixed) | — |
+
+Adding follows the same routes: a "New stage" action on a category folder
+pre-fills that category, and "New defect" on a stage folder pre-fills that
+stage's scope. Both are the existing `upsert-stage` / `upsert-defect` actions.
 
 ## Architecture
 
