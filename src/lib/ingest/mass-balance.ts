@@ -36,9 +36,28 @@ function available(rec: StageDayRecord): number | null {
  * `stageOrder`, or groups missing either side of a hop, are skipped — we only
  * ever compare numbers that were actually stated.
  */
+/**
+ * What a stage already passed forward, read back from the ledger.
+ *
+ * Direct entry saves ONE station per submission, so comparing only within a
+ * payload meant the check never had two gates to compare and silently passed
+ * every manual entry — precisely the path where a mis-keyed count is most
+ * likely. Callers supply the previous gate's stored numbers through this so the
+ * hop can be checked against what is actually on the ledger.
+ */
+export interface PriorGateQty {
+  stageId: string;
+  date: string;
+  size: string | null;
+  batch: string;
+  /** Units this gate made available downstream (accepted, else checked − rejected). */
+  available: number;
+}
+
 export function massBalanceIssues(
   records: StageDayRecord[],
-  stageOrder: readonly string[] = GATE_CHAIN
+  stageOrder: readonly string[] = GATE_CHAIN,
+  priors: PriorGateQty[] = [],
 ): MassBalanceIssue[] {
   const rank = new Map(stageOrder.map((s, i) => [s, i]));
   // Group by the physical flow identity: same day, same size, same batch/lot.
@@ -51,8 +70,17 @@ export function massBalanceIssues(
     if (arr) arr.push(r); else groups.set(key, [r]);
   }
 
+  // Index what the ledger already holds, by the same flow identity.
+  const priorsByGroup = new Map<string, PriorGateQty[]>();
+  for (const p of priors) {
+    if (!rank.has(p.stageId)) continue;
+    const key = `${p.date}|${p.size ?? ""}|${p.batch}`;
+    const arr = priorsByGroup.get(key);
+    if (arr) arr.push(p); else priorsByGroup.set(key, [p]);
+  }
+
   const issues: MassBalanceIssue[] = [];
-  for (const group of groups.values()) {
+  for (const [groupKey, group] of groups) {
     // One aggregate per stage in this group (a stage can appear as several
     // rows, e.g. multiple sheets covering the same day·size·batch).
     const byStage = new Map<string, { avail: number; checked: number; hasAvail: boolean; hasChecked: boolean }>();
@@ -62,6 +90,18 @@ export function massBalanceIssues(
       if (a != null) { s.avail += a; s.hasAvail = true; }
       if (r.checked?.value != null) { s.checked += r.checked.value; s.hasChecked = true; }
       byStage.set(r.stageId, s);
+    }
+
+    // Fold in gates already on the ledger for this lot. A stage in the payload
+    // always wins — it is the newer statement of the same fact.
+    for (const p of priorsByGroup.get(groupKey) ?? []) {
+      if (byStage.has(p.stageId)) continue;
+      byStage.set(p.stageId, {
+        avail: p.available,
+        checked: 0,
+        hasAvail: true,
+        hasChecked: false,
+      });
     }
 
     const present = [...byStage.keys()].sort((a, b) => rank.get(a)! - rank.get(b)!);

@@ -81,3 +81,62 @@ describe("massBalanceIssues", () => {
     expect(issues).toEqual([]);
   });
 });
+
+// Direct entry submits ONE station per save, so the hop can only be checked
+// against what the ledger already holds for the lot.
+describe("mass balance against stored gates", () => {
+  const rec = (stageId: string, checked: number, accepted: number): any => ({
+    occurredOn: { kind: "day", start: "2026-08-08", end: "2026-08-08" },
+    stageId,
+    size: "Fr18",
+    source: { file: "Manual Entry", fileHash: "h", sheet: "Day Shift", tableId: "t" },
+    checked: { value: checked, cell: "ENTRY!checked", header: "Checked" },
+    acceptedGood: accepted ? { value: accepted, cell: "ENTRY!accept", header: "Good" } : null,
+    rework: null,
+    rejected: null,
+    defects: [],
+    statedPct: null,
+    extractedBy: "direct-entry",
+    ingestionId: "i1",
+    customFields: { batch: "26H25-18" },
+  });
+
+  it("catches a gate that checked more than the previous gate passed forward", () => {
+    const issues = massBalanceIssues(
+      [rec("balloon", 1400, 1400)],
+      undefined,
+      [{ stageId: "visual", date: "2026-08-08", size: "Fr18", batch: "26H25-18", available: 1163 }],
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].code).toBe("V-014");
+    expect(issues[0].stageId).toBe("balloon");
+    expect(issues[0].message).toContain("237");
+  });
+
+  it("stays quiet when the hop is consistent", () => {
+    const issues = massBalanceIssues(
+      [rec("balloon", 1100, 1100)],
+      undefined,
+      [{ stageId: "visual", date: "2026-08-08", size: "Fr18", batch: "26H25-18", available: 1163 }],
+    );
+    expect(issues).toEqual([]);
+  });
+
+  it("does not compare across different lots", () => {
+    const issues = massBalanceIssues(
+      [rec("balloon", 1400, 1400)],
+      undefined,
+      [{ stageId: "visual", date: "2026-08-08", size: "Fr18", batch: "26H26-18", available: 10 }],
+    );
+    expect(issues).toEqual([]);
+  });
+
+  it("lets a stage in the payload win over the same stage on the ledger", () => {
+    const issues = massBalanceIssues(
+      [rec("visual", 2000, 2000), rec("balloon", 1400, 1400)],
+      undefined,
+      [{ stageId: "visual", date: "2026-08-08", size: "Fr18", batch: "26H25-18", available: 10 }],
+    );
+    expect(issues).toEqual([]);
+  });
+});

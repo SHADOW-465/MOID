@@ -40,16 +40,6 @@ export async function POST(req: NextRequest) {
       };
     });
 
-    // 1. Live clarification checks (point-in-time) — surfaced, never blocking.
-    const issues = [
-      ...recordsWithComments.flatMap((r) =>
-        checkRecord(r).map((i) => ({ ...i, stageId: r.stageId, date: r.occurredOn.start }))
-      ),
-      // Cross-stage mass balance (V-014): checked(N+1) must not exceed what
-      // stage N passed forward — Disposafe's data-tampering tripwire.
-      ...massBalanceIssues(recordsWithComments),
-    ];
-
     // Query existing events in the date range of the incoming records to check for conflicts
     const dates = recordsWithComments.map(r => r.occurredOn.start);
     const from = dates.reduce((min, d) => d < min ? d : min, dates[0]);
@@ -57,6 +47,48 @@ export async function POST(req: NextRequest) {
 
     const { events: store, findings: findingsStore } = getStores();
     const existingEvents = await store.effective({ from, to });
+
+    // What each gate already passed forward, per lot. Direct entry submits ONE
+    // station at a time, so without this the cross-stage check has nothing to
+    // compare against and every manual entry sails through it.
+    const priorAgg = new Map<
+      string,
+      { stageId: string; date: string; size: string | null; batch: string; accepted: number; checked: number; rejected: number }
+    >();
+    for (const e of existingEvents as any[]) {
+      const stageId = e.stageId;
+      if (!stageId) continue;
+      const date = e.occurredOn?.start;
+      if (!date) continue;
+      const batch = String(e.batchNo ?? e.customFields?.batch ?? "").trim();
+      const size = e.size ?? null;
+      const key = `${date}|${size ?? ""}|${batch}|${stageId}`;
+      const cur =
+        priorAgg.get(key) ?? { stageId, date, size, batch, accepted: 0, checked: 0, rejected: 0 };
+      const q = e.quantity ?? 0;
+      if (e.eventType === "production") cur.checked += q;
+      else if (e.eventType === "inspection" && e.disposition === "accepted") cur.accepted += q;
+      else if (e.eventType === "inspection" && e.disposition === "rejected") cur.rejected += q;
+      priorAgg.set(key, cur);
+    }
+    const priors = [...priorAgg.values()].map((p) => ({
+      stageId: p.stageId,
+      date: p.date,
+      size: p.size,
+      batch: p.batch,
+      // Same rule as `available()`: accepted when stated, else checked − rejected.
+      available: p.accepted > 0 ? p.accepted : Math.max(0, p.checked - p.rejected),
+    }));
+
+    // 1. Live clarification checks (point-in-time) — surfaced, never blocking.
+    const issues = [
+      ...recordsWithComments.flatMap((r) =>
+        checkRecord(r).map((i) => ({ ...i, stageId: r.stageId, date: r.occurredOn.start }))
+      ),
+      // Cross-stage mass balance (V-014): checked(N+1) must not exceed what
+      // stage N passed forward — Disposafe's data-tampering tripwire.
+      ...massBalanceIssues(recordsWithComments, undefined, priors),
+    ];
 
     // Map existing events to minimal StageDayRecord shape for comparison
     const existingMap = new Map<string, { stageId: string, size: string | null, date: string, rejectedVal: number }>();
@@ -237,6 +269,76 @@ export async function POST(req: NextRequest) {
       supersede(e, null, "Cleared by re-entry — value removed from this slice");
     }
     const { inserted, deduped } = await store.append([...events, ...corrections]);
+
+    // 2b. Persist the clarification issues as Findings.
+    //
+    // These used to be computed, returned in the response, and dropped — the
+    // browser only read the body on failure, and nothing wrote them down. So
+    // an impossible count or an unexplained rejection left no trace for a QM
+    // to work through later. Now every issue lands in the findings store,
+    // keyed by content so re-saving the same bad row does not pile up copies.
+    if (issues.length > 0) {
+      const { hashFinding } = require("@/lib/contract/hash");
+      const { Finding } = require("@/lib/contract/d3");
+      const SEV: Record<string, "critical" | "warning" | "info"> = {
+        critical: "critical",
+        warning: "warning",
+        info: "info",
+      };
+      const firstRecord = recordsWithComments[0];
+      const issueFindings = issues.map((i: any) => {
+        const day = i.date ?? firstRecord?.occurredOn.start ?? new Date().toISOString().slice(0, 10);
+        const stageId = i.stageId ?? firstRecord?.stageId ?? "unknown";
+        const source = recordsWithComments.find(
+          (r) => r.stageId === stageId && r.occurredOn.start === day,
+        ) ?? firstRecord;
+        const cell = source?.checked?.cell || `${stageId}!${day}`;
+        return Finding.parse({
+          findingId: hashFinding({
+            ruleId: i.code,
+            subtype: i.field,
+            evidenceEventIds: [`${stageId}-${day}-${i.field}-${i.stated ?? ""}`],
+          }),
+          schemaVersion: "1.0.0",
+          ingestionId: body.ingestionId,
+          ruleId: i.code,
+          subtype: i.field,
+          severity: SEV[i.severity] ?? "warning",
+          question: i.message,
+          detail: i.message,
+          evidence: {
+            eventIds: events.map((e) => e.eventId),
+            cells: [cell],
+            provenance: {
+              file: source?.source.file ?? body.fileName,
+              fileHash: source?.source.fileHash ?? "local",
+              sheet: source?.source.sheet ?? "",
+              tableId: source?.source.tableId ?? "t1",
+              cells: [cell],
+              headerPath: [i.field],
+              rowLabel: null,
+              formulaText: null,
+              cachedValue: null,
+              externalRef: null,
+            },
+            statedValue: i.stated,
+            computedValue: i.computed,
+            magnitude:
+              typeof i.stated === "number" && typeof i.computed === "number"
+                ? Math.abs(i.stated - i.computed)
+                : null,
+          },
+          hypotheses: [
+            { kind: "mistake", text: "Mis-keyed count, or a column read from the wrong row." },
+            { kind: "intentional-practice", text: "Real process event the sheet does not model yet." },
+          ],
+          requiresGmAuthority: false,
+          occurredOn: { kind: "day", start: day, end: day },
+          recordedAt: new Date().toISOString(),
+        });
+      });
+      await findingsStore.upsert(issueFindings);
+    }
 
     // 3. Per-stage rollup for the success summary (deterministic, from events).
     const byStage: Record<string, { checked: number; rejected: number; days: number }> = {};

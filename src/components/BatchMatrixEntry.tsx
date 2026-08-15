@@ -95,6 +95,18 @@ interface BatchDraft {
 /** How the operator resolved defect-sum vs Rejected before save. */
 type A12Choice = "set-reject" | "keep-incomplete" | null;
 
+/** A clarification the ledger raised about a saved row (V-001, V-004, V-014…). */
+interface EntryIssue {
+  code: string;
+  severity: "critical" | "warning" | "info";
+  field: string;
+  message: string;
+  stated: number | null;
+  computed: number | null;
+  stageId?: string;
+  date?: string;
+}
+
 function loadShift(): ShiftBatchRecord[] {
   if (typeof window === "undefined") return [];
   try {
@@ -192,6 +204,11 @@ export default function BatchMatrixEntry({
   /** Twin batch code the operator confirmed this one is genuinely distinct
    *  from (matching numbers, different lot) — stamped onto the next save. */
   const duplicateConfirmedOfRef = useRef<string | null>(null);
+  /** Clarifications the ledger raised about the row just saved. Sticky until
+   *  dismissed — they were computed and discarded unread before this. */
+  const [lastIssues, setLastIssues] = useState<
+    { batchId: string; stage: string; issues: EntryIssue[] } | null
+  >(null);
   /** Defect sum ≠ Rejected — operator must choose before save (never silent). */
   const [a12, setA12] = useState<{ defectSum: number; reject: number } | null>(null);
   const [a12Choice, setA12Choice] = useState<A12Choice>(null);
@@ -684,7 +701,16 @@ export default function BatchMatrixEntry({
     if (id) setBatchId(id);
   };
 
-  async function commitRecord(rec: ShiftBatchRecord): Promise<boolean> {
+  /**
+   * Save one record and return whatever the ledger wants to tell us about it.
+   *
+   * The server has always run checkRecord + mass balance and returned the
+   * results as `issues`. This function used to read the body only when the
+   * request FAILED, so on the happy path every clarification the system
+   * computed was thrown away unread. They are now returned to the caller and
+   * shown; the server also writes them down as Findings.
+   */
+  async function commitRecord(rec: ShiftBatchRecord): Promise<EntryIssue[]> {
     const ingestionId = globalThis.crypto?.randomUUID?.() ?? `entry-${Date.now()}`;
     const payload = [toStageDayRecord(rec, ingestionId)];
     const res = await fetch("/api/ingest", {
@@ -696,11 +722,9 @@ export default function BatchMatrixEntry({
         records: payload,
       }),
     });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body.error ?? "Ingest failed");
-    }
-    return true;
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error ?? "Ingest failed");
+    return Array.isArray(body.issues) ? (body.issues as EntryIssue[]) : [];
   }
 
   function buildPendingRecord(overrideReject?: number): ShiftBatchRecord {
@@ -741,7 +765,8 @@ export default function BatchMatrixEntry({
     setMsg(null);
     try {
       const revising = saved.some((b) => b.id === rec.id);
-      await commitRecord(rec);
+      const issues = await commitRecord(rec);
+      setLastIssues(issues.length ? { batchId: rec.batchId, stage: rec.processName, issues } : null);
       const withSync = { ...rec, synced: true };
       const next = revising
         ? saved.map((b) => (b.id === rec.id ? withSync : b))
@@ -2186,6 +2211,74 @@ export default function BatchMatrixEntry({
       )}
       {msg && (
         <div style={{ marginBottom: 12, padding: "10px 12px", borderRadius: 8, background: "var(--positive-weak)", color: "var(--positive)", fontSize: 13 }}>{msg}</div>
+      )}
+
+      {/* What the ledger noticed about the row just saved. The entry IS on the
+          ledger — these are questions to answer, not a failed save — so this
+          stays until dismissed rather than disappearing with the toast. */}
+      {lastIssues && lastIssues.issues.length > 0 && (
+        <div
+          role="status"
+          style={{
+            marginBottom: 12,
+            borderRadius: 10,
+            border: "1px solid color-mix(in srgb, var(--warning) 45%, transparent)",
+            background: "var(--surface)",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "9px 12px",
+              background: "var(--warning-weak)",
+              borderBottom: "1px solid color-mix(in srgb, var(--warning) 30%, transparent)",
+            }}
+          >
+            <strong style={{ fontSize: 13, color: "var(--warning)" }}>
+              {lastIssues.issues.length === 1
+                ? "1 thing to check"
+                : `${lastIssues.issues.length} things to check`}
+            </strong>
+            <span className="small" style={{ color: "var(--text-3)" }}>
+              {lastIssues.batchId} · {lastIssues.stage} — saved, and flagged for review
+            </span>
+            <button
+              type="button"
+              onClick={() => setLastIssues(null)}
+              aria-label="Dismiss"
+              style={{
+                marginLeft: "auto",
+                border: "none",
+                background: "transparent",
+                color: "var(--text-3)",
+                cursor: "pointer",
+                fontSize: 16,
+                lineHeight: 1,
+              }}
+            >
+              ×
+            </button>
+          </div>
+          <ul style={{ margin: 0, padding: "8px 12px 10px 28px", display: "grid", gap: 6 }}>
+            {lastIssues.issues.map((i, n) => (
+              <li
+                key={`${i.code}-${i.field}-${n}`}
+                style={{ fontSize: 12.5, lineHeight: 1.5, color: "var(--text-2)" }}
+              >
+                {i.message}
+                <span
+                  className="small"
+                  style={{ color: "var(--text-3)", fontFamily: "var(--font-mono)", marginLeft: 6 }}
+                >
+                  {i.code}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {/* Sticky save bar */}
