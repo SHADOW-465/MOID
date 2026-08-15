@@ -896,10 +896,7 @@ export default function SchemaPage() {
               </Link>
               <button
                 type="button"
-                onClick={() => {
-                  setSection("stages");
-                  setAdding(true);
-                }}
+                onClick={() => mutate({ action: "load-plant-catalog" }, "Plant catalog loaded — your edits were kept.")}
                 style={{
                   padding: "8px 14px",
                   borderRadius: 8,
@@ -911,26 +908,7 @@ export default function SchemaPage() {
                   color: "var(--text)",
                 }}
               >
-                Add first stage
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSection("mappings");
-                  setAdding(true);
-                }}
-                style={{
-                  padding: "8px 14px",
-                  borderRadius: 8,
-                  border: "1px solid var(--border)",
-                  background: "var(--surface-2)",
-                  fontWeight: 600,
-                  fontSize: 13,
-                  cursor: "pointer",
-                  color: "var(--text)",
-                }}
-              >
-                Add first mapping
+                Load plant catalog
               </button>
             </div>
           </Card>

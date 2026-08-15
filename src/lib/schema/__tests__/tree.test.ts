@@ -166,3 +166,13 @@ describe("visibleRows / filterTree", () => {
     expect(nodes.find((n) => n.id === "sizes")).toBeUndefined();
   });
 });
+
+describe("an emptied category still offers a place to add back into", () => {
+  it("keeps the category folder (with zero children) rather than dropping it", () => {
+    const emptied = buildSchemaTree({ ...input, stages: input.stages.filter((s) => s.category !== "primary") });
+    const primary = emptied.find((n) => n.id === "cat:primary")!;
+    expect(primary).toBeTruthy();
+    expect(primary.children).toEqual([]);
+    expect(primary.locked).toBe(true);
+  });
+});

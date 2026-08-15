@@ -48,6 +48,23 @@ export default function SchemaDetail({ node, data, busy, mutate }: SchemaDetailP
     else setDraft({});
   }, [node, stage, defect, size]);
 
+  // "Add X" — a folder node (category / defects-folder / all-defects-folder /
+  // sizes-folder) offers to create a new child, pre-scoped to where you clicked.
+  const [creating, setCreating] = useState<"stage" | "defect" | "size" | null>(null);
+  const [newStage, setNewStage] = useState({
+    stageId: "",
+    label: "",
+    category: "assembly" as string,
+    captures: [] as string[],
+    upstream: [] as string[],
+    isQualityGate: false,
+  });
+  const [newDefect, setNewDefect] = useState({ defectCode: "", label: "", stages: [] as string[] });
+  const [newSize, setNewSize] = useState({ sizeId: "", label: "" });
+  useEffect(() => {
+    setCreating(null);
+  }, [node?.id]);
+
   if (!node) {
     return (
       <div style={emptyWrap}>
@@ -137,8 +154,51 @@ export default function SchemaDetail({ node, data, busy, mutate }: SchemaDetailP
         <p className="small" style={note}>
           The three sections are fixed — they cannot be renamed, added to or
           removed, so this schema stays recognisable as this plant&apos;s process.
-          The stages inside are fully editable.
+          The stages inside — including this one having none right now — are
+          fully editable.
         </p>
+        {creating === "stage" ? (
+          <NewStageForm
+            draft={newStage}
+            onChange={setNewStage}
+            onCancel={() => setCreating(null)}
+            onSave={() => {
+              const stageId = newStage.stageId.trim().toLowerCase().replace(/\s+/g, "-");
+              const label = newStage.label.trim();
+              if (!stageId || !label) return;
+              void mutate(
+                {
+                  action: "upsert-stage",
+                  stage: {
+                    stageId,
+                    label,
+                    category: newStage.category,
+                    captures: newStage.captures,
+                    upstream: newStage.upstream,
+                    isQualityGate: newStage.isQualityGate,
+                    effectiveFrom: null,
+                    effectiveTo: null,
+                  },
+                },
+                `Added stage ${stageId}`,
+              );
+              setCreating(null);
+              setNewStage({ stageId: "", label: "", category: node.ref?.categoryId ?? "assembly", captures: [], upstream: [], isQualityGate: false });
+            }}
+            busy={busy}
+          />
+        ) : (
+          <button
+            type="button"
+            style={addBtn}
+            onClick={() => {
+              setNewStage((d) => ({ ...d, category: node.ref?.categoryId ?? "assembly" }));
+              setCreating("stage");
+            }}
+          >
+            + Add stage to {node.label}
+          </button>
+        )}
       </>
     );
   } else if (node.kind === "stage" && stage) {
@@ -201,6 +261,37 @@ export default function SchemaDetail({ node, data, busy, mutate }: SchemaDetailP
           A stage with no capture columns cannot be typed into and is hidden from
           Data Entry.
         </p>
+        {creating === "defect" ? (
+          <NewDefectForm
+            draft={newDefect}
+            stages={data.stages}
+            onChange={setNewDefect}
+            onCancel={() => setCreating(null)}
+            onSave={() => {
+              const defectCode = newDefect.defectCode.trim().toUpperCase();
+              const label = newDefect.label.trim();
+              if (!defectCode || !label) return;
+              void mutate(
+                { action: "upsert-defect", defect: { defectCode, label, aliases: [], stages: newDefect.stages } },
+                `Added defect ${defectCode}`,
+              );
+              setCreating(null);
+              setNewDefect({ defectCode: "", label: "", stages: [] });
+            }}
+            busy={busy}
+          />
+        ) : (
+          <button
+            type="button"
+            style={addBtn}
+            onClick={() => {
+              setNewDefect((d) => ({ ...d, stages: [stage.stageId] }));
+              setCreating("defect");
+            }}
+          >
+            + Add defect to {stage.label}
+          </button>
+        )}
       </>
     );
   } else if (node.kind === "defect" && defect) {
@@ -270,6 +361,78 @@ export default function SchemaDetail({ node, data, busy, mutate }: SchemaDetailP
           A spelling learned from a workbook. Removing it only stops the resolver
           using that rule; nothing on the ledger changes.
         </p>
+      </>
+    );
+  } else if (node.kind === "all-defects-folder" || node.kind === "defects-folder") {
+    const preScope = node.kind === "defects-folder" ? node.ref?.stageId : undefined;
+    body = (
+      <>
+        <Row label="Folder">{node.label}</Row>
+        <Row label="Items">{node.children.length}</Row>
+        <p className="small" style={note}>
+          Select a defect inside this folder to edit it.
+        </p>
+        {creating === "defect" ? (
+          <NewDefectForm
+            draft={newDefect}
+            stages={data.stages}
+            onChange={setNewDefect}
+            onCancel={() => setCreating(null)}
+            onSave={() => {
+              const defectCode = newDefect.defectCode.trim().toUpperCase();
+              const label = newDefect.label.trim();
+              if (!defectCode || !label) return;
+              void mutate(
+                { action: "upsert-defect", defect: { defectCode, label, aliases: [], stages: newDefect.stages } },
+                `Added defect ${defectCode}`,
+              );
+              setCreating(null);
+              setNewDefect({ defectCode: "", label: "", stages: [] });
+            }}
+            busy={busy}
+          />
+        ) : (
+          <button
+            type="button"
+            style={addBtn}
+            onClick={() => {
+              setNewDefect({ defectCode: "", label: "", stages: preScope ? [preScope] : [] });
+              setCreating("defect");
+            }}
+          >
+            + Add defect
+          </button>
+        )}
+      </>
+    );
+  } else if (node.kind === "sizes-folder") {
+    body = (
+      <>
+        <Row label="Folder">{node.label}</Row>
+        <Row label="Items">{node.children.length}</Row>
+        {creating === "size" ? (
+          <NewSizeForm
+            draft={newSize}
+            onChange={setNewSize}
+            onCancel={() => setCreating(null)}
+            onSave={() => {
+              const sizeId = newSize.sizeId.trim();
+              const label = newSize.label.trim();
+              if (!sizeId) return;
+              void mutate(
+                { action: "upsert-size", size: { sizeId, label: label || sizeId } },
+                `Added size ${sizeId}`,
+              );
+              setCreating(null);
+              setNewSize({ sizeId: "", label: "" });
+            }}
+            busy={busy}
+          />
+        ) : (
+          <button type="button" style={addBtn} onClick={() => setCreating("size")}>
+            + Add size
+          </button>
+        )}
       </>
     );
   } else {
@@ -412,5 +575,241 @@ const dangerBtn: React.CSSProperties = {
   border: "1px solid color-mix(in srgb, var(--critical) 30%, var(--border))",
   background: "var(--surface)",
   color: "var(--critical)",
+  cursor: "pointer",
+};
+
+const addBtn: React.CSSProperties = {
+  fontSize: 12.5,
+  fontWeight: 600,
+  padding: "7px 12px",
+  borderRadius: 8,
+  border: "1px dashed var(--border-strong)",
+  background: "var(--surface-2)",
+  color: "var(--accent)",
+  cursor: "pointer",
+  alignSelf: "start",
+};
+
+interface NewStageDraft {
+  stageId: string;
+  label: string;
+  category: string;
+  captures: string[];
+  upstream: string[];
+  isQualityGate: boolean;
+}
+
+function NewStageForm({
+  draft,
+  onChange,
+  onSave,
+  onCancel,
+  busy,
+}: {
+  draft: NewStageDraft;
+  onChange: (next: NewStageDraft) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  busy: boolean;
+}) {
+  const canSave = draft.stageId.trim().length > 0 && draft.label.trim().length > 0;
+  return (
+    <div style={formBox}>
+      <Row label="Stage ID">
+        <input
+          style={input}
+          placeholder="e.g. shrink-wrap"
+          value={draft.stageId}
+          onChange={(e) => onChange({ ...draft, stageId: e.target.value })}
+        />
+      </Row>
+      <Row label="Label">
+        <input
+          style={input}
+          placeholder="e.g. Shrink Wrap"
+          value={draft.label}
+          onChange={(e) => onChange({ ...draft, label: e.target.value })}
+        />
+      </Row>
+      <Row label="Section">
+        <select
+          style={input}
+          value={draft.category}
+          onChange={(e) => onChange({ ...draft, category: e.target.value })}
+        >
+          {STAGE_CATEGORIES.map((c) => (
+            <option key={c.id} value={c.id}>{c.label}</option>
+          ))}
+        </select>
+      </Row>
+      <Row label="Captures">
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {CAPTURE_OPTS.map((c) => (
+            <label key={c} style={checkLabel}>
+              <input
+                type="checkbox"
+                checked={draft.captures.includes(c)}
+                onChange={(e) =>
+                  onChange({
+                    ...draft,
+                    captures: e.target.checked
+                      ? [...draft.captures, c]
+                      : draft.captures.filter((x) => x !== c),
+                  })
+                }
+              />
+              {c}
+            </label>
+          ))}
+        </div>
+      </Row>
+      <FormButtons canSave={canSave} busy={busy} onSave={onSave} onCancel={onCancel} />
+    </div>
+  );
+}
+
+interface NewDefectDraft {
+  defectCode: string;
+  label: string;
+  stages: string[];
+}
+
+function NewDefectForm({
+  draft,
+  stages,
+  onChange,
+  onSave,
+  onCancel,
+  busy,
+}: {
+  draft: NewDefectDraft;
+  stages: { stageId: string; label: string }[];
+  onChange: (next: NewDefectDraft) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  busy: boolean;
+}) {
+  const canSave = draft.defectCode.trim().length > 0 && draft.label.trim().length > 0;
+  return (
+    <div style={formBox}>
+      <Row label="Code">
+        <input
+          style={input}
+          placeholder="e.g. SD"
+          value={draft.defectCode}
+          onChange={(e) => onChange({ ...draft, defectCode: e.target.value })}
+        />
+      </Row>
+      <Row label="Label">
+        <input
+          style={input}
+          placeholder="e.g. Surface Damage"
+          value={draft.label}
+          onChange={(e) => onChange({ ...draft, label: e.target.value })}
+        />
+      </Row>
+      <Row label="Scoped to">
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {stages.map((s) => (
+            <label key={s.stageId} style={checkLabel}>
+              <input
+                type="checkbox"
+                checked={draft.stages.includes(s.stageId)}
+                onChange={(e) =>
+                  onChange({
+                    ...draft,
+                    stages: e.target.checked
+                      ? [...draft.stages, s.stageId]
+                      : draft.stages.filter((x) => x !== s.stageId),
+                  })
+                }
+              />
+              {s.label}
+            </label>
+          ))}
+        </div>
+      </Row>
+      <FormButtons canSave={canSave} busy={busy} onSave={onSave} onCancel={onCancel} />
+    </div>
+  );
+}
+
+function NewSizeForm({
+  draft,
+  onChange,
+  onSave,
+  onCancel,
+  busy,
+}: {
+  draft: { sizeId: string; label: string };
+  onChange: (next: { sizeId: string; label: string }) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  busy: boolean;
+}) {
+  const canSave = draft.sizeId.trim().length > 0;
+  return (
+    <div style={formBox}>
+      <Row label="Size ID">
+        <input
+          style={input}
+          placeholder="e.g. Fr16"
+          value={draft.sizeId}
+          onChange={(e) => onChange({ ...draft, sizeId: e.target.value })}
+        />
+      </Row>
+      <Row label="Label">
+        <input
+          style={input}
+          placeholder="e.g. 16Fr"
+          value={draft.label}
+          onChange={(e) => onChange({ ...draft, label: e.target.value })}
+        />
+      </Row>
+      <FormButtons canSave={canSave} busy={busy} onSave={onSave} onCancel={onCancel} />
+    </div>
+  );
+}
+
+function FormButtons({
+  canSave,
+  busy,
+  onSave,
+  onCancel,
+}: {
+  canSave: boolean;
+  busy: boolean;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div style={{ display: "flex", gap: 8 }}>
+      <button type="button" style={primaryBtn} disabled={!canSave || busy} onClick={onSave}>
+        {busy ? "Saving…" : "Save"}
+      </button>
+      <button type="button" style={ghostBtn} disabled={busy} onClick={onCancel}>
+        Cancel
+      </button>
+    </div>
+  );
+}
+
+const formBox: React.CSSProperties = {
+  display: "grid",
+  gap: 10,
+  padding: 12,
+  borderRadius: 10,
+  border: "1px solid var(--border)",
+  background: "var(--surface-2)",
+};
+
+const ghostBtn: React.CSSProperties = {
+  fontSize: 13,
+  fontWeight: 600,
+  padding: "8px 14px",
+  borderRadius: 8,
+  border: "1px solid var(--border)",
+  background: "var(--surface)",
+  color: "var(--text-2)",
   cursor: "pointer",
 };
