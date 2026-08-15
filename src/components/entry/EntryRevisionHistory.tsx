@@ -2,20 +2,15 @@
 
 import { useEffect, useState } from "react";
 import type { AuditEntryRow } from "@/lib/analytics/audit-sessions";
+import {
+  buildRevisions,
+  formatGap,
+  formatStamp,
+  type RevisionEventLike,
+} from "@/lib/entry/revision-diff";
 import "./entry-revision-history.css";
 
-type TimelineItem = {
-  eventId: string;
-  eventType: string;
-  recordedAt: string;
-  quantity: number | null;
-  disposition: string | null;
-  defect: string | null;
-  isSuperseded: boolean;
-  supersedesEventId: string | null;
-  reason: string | null;
-  extractedBy: string;
-};
+type TimelineItem = RevisionEventLike;
 
 /**
  * Floating panel: append-only revision timeline for one Data Entry / audit row.
@@ -79,6 +74,8 @@ export default function EntryRevisionHistory({
     };
   }, [row.date, row.batch, row.stageId, row.size]);
 
+  const revisions = buildRevisions(timeline);
+
   return (
     <div className="erh-root" role="dialog" aria-modal="true" aria-labelledby="erh-title">
       <button type="button" className="erh-backdrop" aria-label="Close history" onClick={onClose} />
@@ -87,7 +84,9 @@ export default function EntryRevisionHistory({
           <div>
             <p className="erh-kicker">Append-only ledger</p>
             <h2 id="erh-title" className="erh-title">
-              Entry history
+              {revisions.length > 1
+                ? `Edited ${revisions.length - 1} time${revisions.length - 1 === 1 ? "" : "s"}`
+                : "Entry history"}
             </h2>
             <p className="erh-meta">
               <span className="erh-mono">{row.batch}</span>
@@ -95,10 +94,10 @@ export default function EntryRevisionHistory({
               {row.stageId}
               {row.size ? ` · ${row.size}` : ""}
               {" · "}
-              {row.date}
+              recorded on {row.date}
             </p>
             <p className="erh-current">
-              Current values: checked{" "}
+              Now: checked{" "}
               <strong className="erh-mono">{row.checked.toLocaleString()}</strong>
               {" · "}accepted{" "}
               <strong className="erh-mono">{row.accepted.toLocaleString()}</strong>
@@ -118,61 +117,93 @@ export default function EntryRevisionHistory({
               {error}
             </p>
           )}
-          {!loading && !error && timeline.length === 0 && (
+          {!loading && !error && revisions.length === 0 && (
             <p className="erh-muted">No events found for this entry.</p>
           )}
-          {!loading && timeline.length > 0 && (
+          {!loading && revisions.length > 0 && (
             <ol className="erh-timeline">
-              {timeline.map((item, i) => (
-                <li
-                  key={item.eventId + i}
-                  className={`erh-item ${item.isSuperseded ? "is-old" : "is-current"} ${
-                    item.eventType === "correction" ? "is-correction" : ""
-                  }`}
-                >
-                  <div className="erh-item-head">
-                    <span className="erh-type">{labelType(item)}</span>
-                    <span className="erh-when">{fmtStamp(item.recordedAt)}</span>
-                  </div>
-                  <div className="erh-item-body">
-                    {item.eventType === "correction" ? (
-                      <span>
-                        Correction
-                        {item.reason ? `: ${item.reason}` : ""}
-                        {item.supersedesEventId ? (
-                          <span className="erh-mono erh-dim">
-                            {" "}
-                            → supersedes {item.supersedesEventId.slice(0, 8)}…
-                          </span>
-                        ) : null}
+              {revisions.map((rev, i) => {
+                const prev = i > 0 ? revisions[i - 1] : null;
+                const gap = prev ? formatGap(prev.recordedAt, rev.recordedAt) : null;
+                const isCurrent = !rev.isSuperseded;
+                return (
+                  <li
+                    key={rev.id}
+                    className={`erh-rev ${isCurrent ? "is-current" : "is-old"}`}
+                  >
+                    <div className="erh-rev-head">
+                      <span className="erh-rev-title">
+                        {i === 0 ? "Entered" : `Edit ${i}`}
                       </span>
-                    ) : (
-                      <span>
-                        {item.quantity != null && (
-                          <strong className="erh-mono">{item.quantity.toLocaleString()}</strong>
-                        )}
-                        {item.disposition ? ` ${item.disposition}` : ""}
-                        {item.defect ? ` · ${item.defect}` : ""}
+                      <span className="erh-when">{formatStamp(rev.recordedAt)}</span>
+                      {gap && <span className="erh-gap">{gap}</span>}
+                      <span className={`erh-badge ${isCurrent ? "erh-badge--live" : "erh-badge--old"}`}>
+                        {isCurrent ? "Current" : "Replaced"}
                       </span>
+                    </div>
+
+                    <p className="erh-who">
+                      {rev.operator && <span>{rev.operator}</span>}
+                      {rev.productType && <span>{rev.productType}</span>}
+                      {rev.shift && <span>{rev.shift}</span>}
+                      {rev.extractedBy && (
+                        <span>{rev.extractedBy === "direct-entry" ? "typed in" : rev.extractedBy}</span>
+                      )}
+                    </p>
+
+                    {rev.changes.length > 0 && (
+                      <ul className="erh-changes">
+                        {rev.changes.map((c) => (
+                          <li className="erh-change" key={`${rev.id}-${c.label}`}>
+                            <span className={`erh-change-label ${c.kind === "defect" ? "is-defect" : ""}`}>
+                              {c.label}
+                            </span>
+                            <span className="erh-from">{c.from ?? "—"}</span>
+                            <span className="erh-arrow" aria-label="changed to">→</span>
+                            <span className="erh-to">{c.to ?? "—"}</span>
+                            {c.delta != null && c.delta !== 0 && (
+                              <span className={`erh-delta ${c.delta > 0 ? "is-up" : "is-down"}`}>
+                                {c.delta > 0 ? `+${c.delta}` : c.delta}
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
                     )}
-                  </div>
-                  <div className="erh-badges">
-                    {item.isSuperseded ? (
-                      <span className="erh-badge erh-badge--old">Superseded</span>
-                    ) : item.eventType !== "correction" ? (
-                      <span className="erh-badge erh-badge--live">Effective</span>
-                    ) : null}
-                  </div>
-                </li>
-              ))}
+
+                    <div className="erh-values">
+                      {rev.snapshot.checked != null && (
+                        <span>checked <strong>{rev.snapshot.checked.toLocaleString()}</strong></span>
+                      )}
+                      {rev.snapshot.accepted != null && (
+                        <span>accepted <strong>{rev.snapshot.accepted.toLocaleString()}</strong></span>
+                      )}
+                      {rev.snapshot.rework != null && rev.snapshot.rework > 0 && (
+                        <span>hold <strong>{rev.snapshot.rework.toLocaleString()}</strong></span>
+                      )}
+                      {rev.snapshot.rejected != null && (
+                        <span>rejected <strong>{rev.snapshot.rejected.toLocaleString()}</strong></span>
+                      )}
+                      {Object.entries(rev.snapshot.defects).map(([code, qty]) => (
+                        <span key={code}>{code} <strong>{qty}</strong></span>
+                      ))}
+                    </div>
+
+                    {rev.remarks && <p className="erh-reason">Remark: {rev.remarks}</p>}
+                    {rev.supersededReason && (
+                      <p className="erh-reason">Replaced because: {rev.supersededReason}</p>
+                    )}
+                  </li>
+                );
+              })}
             </ol>
           )}
         </div>
 
         <footer className="erh-foot">
           <p className="erh-foot-note">
-            History is never deleted. Edits append corrections and new values; the card always
-            shows the effective numbers.
+            Nothing is ever deleted. Each edit appends a new version and retires the one before it;
+            the row always shows the newest.
           </p>
           <button type="button" className="erh-btn" onClick={onClose}>
             Close
@@ -181,26 +212,4 @@ export default function EntryRevisionHistory({
       </div>
     </div>
   );
-}
-
-function labelType(item: TimelineItem): string {
-  if (item.eventType === "correction") return "Correction";
-  if (item.eventType === "production") return "Checked qty";
-  if (item.eventType === "inspection") return "Inspection";
-  if (item.eventType === "rejection") return "Defect";
-  return item.eventType;
-}
-
-function fmtStamp(iso: string): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? "—"
-    : d.toLocaleString("en-GB", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
 }

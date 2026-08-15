@@ -131,7 +131,9 @@ test("the size filter keeps only matching rows, and 'all' keeps everything", () 
       eventIds: [],
       commentCount: 0,
       hasCorrection: false,
+      revisionCount: 1,
       shifts: ["Day Shift"],
+      productType: "Male 2 way",
     }) as Parameters<typeof filterEntryRows>[0][number];
 
   const rows = [row("Fr14", "A"), row("Fr6", "B"), row(null, "C")];

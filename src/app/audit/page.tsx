@@ -1109,6 +1109,12 @@ function EntryGrid({
               >
                 <strong>{r.date}</strong>
                 <span style={{ fontFamily: "var(--font-mono)" }}>{r.size ?? "—"}</span>
+                {/* Product type has been written onto every event since day one
+                    and displayed nowhere — including here, where the audit
+                    trail is meant to show what was actually recorded. */}
+                {r.productType && (
+                  <span style={{ color: "var(--text-2)", fontSize: 12 }}>{r.productType}</span>
+                )}
                 <span style={{ color: "var(--text-3)", fontSize: 12 }}>
                   {fmtStamp(r.recordedAt)}
                   {edited ? " · edited" : ""}

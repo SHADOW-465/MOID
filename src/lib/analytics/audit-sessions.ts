@@ -299,6 +299,13 @@ export interface AuditEntryRow {
    * only way to erase a displayed row is the far broader batch-wide purge.
    */
   shifts: string[];
+  /**
+   * Catheter product type ("Male 2 way", "Female", …). Written onto every
+   * event by Data Entry since day one and read back by nothing, so it never
+   * appeared on any screen — including the audit trail that is supposed to
+   * show what was recorded.
+   */
+  productType: string | null;
 }
 
 export interface AuditStageBucket {
@@ -370,6 +377,7 @@ export function buildEntryRows(
     manual: number;
     excel: number;
     fileLabel: string;
+    productType: string | null;
     recordedAt: string;
     eventIds: string[];
     commentCount: number;
@@ -410,6 +418,7 @@ export function buildEntryRows(
           manual: 0,
           excel: 0,
           fileLabel: "Data Entry",
+          productType: null,
           recordedAt: "",
           eventIds: [],
           commentCount: 0,
@@ -447,6 +456,7 @@ export function buildEntryRows(
         manual: 0,
         excel: 0,
         fileLabel: "Data Entry",
+        productType: null,
         recordedAt: "",
         eventIds: [],
         commentCount: 0,
@@ -457,6 +467,10 @@ export function buildEntryRows(
       map.set(key, a);
     }
     a.shifts.add(e.provenance?.sheet?.trim() || "Day Shift");
+    if (!a.productType) {
+      const pt = e.customFields?.productType;
+      if (typeof pt === "string" && pt.trim()) a.productType = pt.trim();
+    }
 
     if (e.eventId) a.eventIds.push(e.eventId);
     const ts = eventTs(e);
@@ -524,6 +538,7 @@ export function buildEntryRows(
       defects,
       source,
       fileLabel: source === "manual" ? "Data Entry" : a.fileLabel,
+      productType: a.productType,
       recordedAt: a.recordedAt,
       eventIds: a.eventIds,
       commentCount: a.commentCount,

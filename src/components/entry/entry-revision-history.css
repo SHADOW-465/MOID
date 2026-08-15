@@ -119,38 +119,52 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
 
-.erh-item {
-  border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  padding: 10px 12px;
-  background: var(--bg);
+/* Each revision is one save. The rail down the left is what makes a stack of
+   them read as one lot's life rather than unrelated cards. */
+.erh-rev {
+  position: relative;
+  padding: 0 0 18px 22px;
+  border-left: 2px solid var(--border);
 }
 
-.erh-item.is-old {
-  opacity: 0.72;
+.erh-rev:last-child {
+  border-left-color: transparent;
+  padding-bottom: 0;
 }
 
-.erh-item.is-current:not(.is-correction) {
-  border-color: color-mix(in srgb, var(--positive) 40%, var(--border-strong));
-  background: color-mix(in srgb, var(--positive) 6%, var(--surface));
+.erh-rev::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--border-strong);
 }
 
-.erh-item.is-correction {
-  border-style: dashed;
+.erh-rev.is-current::before {
+  border-color: var(--positive);
+  background: var(--positive);
 }
 
-.erh-item-head {
+.erh-rev.is-old {
+  opacity: 0.78;
+}
+
+.erh-rev-head {
   display: flex;
-  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
-.erh-type {
-  font-size: 12px;
+.erh-rev-title {
+  font-size: 13px;
   font-weight: 700;
   color: var(--text);
 }
@@ -159,31 +173,131 @@
   font-size: 11.5px;
   font-family: var(--font-mono);
   color: var(--text-3);
+  font-variant-numeric: tabular-nums;
 }
 
-.erh-item-body {
-  font-size: 13px;
-  color: var(--text-2);
-  line-height: 1.4;
-}
-
-.erh-dim {
-  color: var(--text-3);
+.erh-gap {
   font-size: 11px;
+  color: var(--text-3);
+  font-style: italic;
 }
 
-.erh-badges {
-  margin-top: 6px;
+.erh-who {
+  margin: 0 0 8px;
+  font-size: 11.5px;
+  color: var(--text-3);
   display: flex;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.erh-who span::after {
+  content: "·";
+  margin-left: 8px;
+  color: var(--border-strong);
+}
+
+.erh-who span:last-child::after {
+  content: "";
+}
+
+/* The diff itself — the point of the whole panel. */
+.erh-changes {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.erh-change {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 5px 9px;
+  border-radius: 7px;
+  background: var(--surface-2);
+  font-size: 12.5px;
+}
+
+.erh-change-label {
+  font-weight: 600;
+  color: var(--text);
+  min-width: 92px;
+}
+
+.erh-change-label.is-defect {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.erh-from {
+  font-family: var(--font-mono);
+  color: var(--text-3);
+  text-decoration: line-through;
+  font-variant-numeric: tabular-nums;
+}
+
+.erh-arrow {
+  color: var(--text-3);
+}
+
+.erh-to {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.erh-delta {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.erh-delta.is-up {
+  color: var(--critical);
+}
+
+.erh-delta.is-down {
+  color: var(--positive);
+}
+
+/* Values as they stood after this save — context under the diff. */
+.erh-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 11.5px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.erh-values strong {
+  color: var(--text-2);
+}
+
+.erh-reason {
+  margin: 6px 0 0;
+  padding: 6px 9px;
+  border-radius: 7px;
+  background: var(--surface-2);
+  font-size: 11.5px;
+  color: var(--text-3);
+  line-height: 1.45;
 }
 
 .erh-badge {
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.03em;
   text-transform: uppercase;
-  padding: 2px 7px;
+  padding: 1px 7px;
   border-radius: 999px;
 }
 

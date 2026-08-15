@@ -95,11 +95,21 @@ export async function GET(req: NextRequest) {
           reason?: string;
           size?: string | null;
         };
+        const cf = (e as { customFields?: Record<string, unknown> }).customFields ?? {};
         return {
           eventId: e.eventId,
           eventType: e.eventType,
           recordedAt: e.recordedAt,
           occurredOn: e.occurredOn,
+          /** Which save this event belongs to — the unit a revision diff groups by. */
+          ingestionId: e.ingestionId ?? null,
+          // Who / what, so history can answer "who changed it and to what".
+          // productType was written on every event from day one and read back
+          // by nothing — it never appeared on any screen until now.
+          operator: typeof cf.operator === "string" ? cf.operator : null,
+          productType: typeof cf.productType === "string" ? cf.productType : null,
+          shift: (e as { provenance?: { sheet?: string } }).provenance?.sheet ?? null,
+          remarks: typeof cf.notes === "string" ? cf.notes : null,
           quantity: any.quantity ?? null,
           disposition: any.disposition ?? null,
           defect:
