@@ -432,29 +432,41 @@ export default function BatchMatrixEntry({
   const impliedRejectFromBalance = Math.max(0, checked - accept - holdPart);
 
   /**
-   * Reject is auto-derived when this station captures it:
-   *  1. Defect reasons win when any defect qty is entered (sum → Rejected)
-   *  2. Otherwise balance remainder from Checked − Accept (− Hold)
+   * Rejected has ONE definition: the quantity balance. It used to switch to
+   * "sum of the defect counts" the moment any defect was typed, which made the
+   * number climb while the operator itemised (9 → 15 → 22 …) and, if they only
+   * itemised some reasons, quietly redefined Rejected as that partial sum.
+   *
+   * The balance is what the plant's own sheet computes, so this is also the
+   * number that has to match their Excel. Defects now EXPLAIN this figure
+   * rather than replace it — see `defectCoverage` below.
    */
-  const defectsDriveReject = showReject && !hideDefects && defectSum > 0;
   const rejectIsDerived = showReject;
-  const rejectSource: "defects" | "balance" | null = !showReject
-    ? null
-    : defectsDriveReject
-      ? "defects"
-      : checked > 0
-        ? "balance"
-        : null;
 
   useEffect(() => {
     if (!showReject) return;
-    const next = defectsDriveReject
-      ? defectSum
-      : checked > 0
-        ? impliedRejectFromBalance
-        : 0;
+    const next = checked > 0 ? impliedRejectFromBalance : 0;
     setReject((cur) => (cur === next ? cur : next));
-  }, [showReject, defectsDriveReject, defectSum, checked, impliedRejectFromBalance]);
+  }, [showReject, checked, impliedRejectFromBalance]);
+
+  /** How much of Rejected the defect reasons account for. */
+  const defectCoverage = useMemo(() => {
+    if (!showReject || hideDefects) return null;
+    const unexplained = reject - defectSum;
+    return {
+      sum: defectSum,
+      reject,
+      unexplained,
+      state:
+        reject === 0 && defectSum === 0
+          ? ("empty" as const)
+          : unexplained === 0
+            ? ("complete" as const)
+            : unexplained > 0
+              ? ("short" as const)
+              : ("over" as const),
+    };
+  }, [showReject, hideDefects, reject, defectSum]);
 
   /** Filtered tiles, carrying their ORIGINAL index so the numbering keeps
    *  matching the schema order the operator counts by. */
@@ -481,6 +493,7 @@ export default function BatchMatrixEntry({
         ? `${checked} = Accept ${accept} + Hold ${hold} + Reject ${reject}`
         : `${checked} = Accept ${accept} + Reject ${reject}`;
 
+  const dateIsToday = date === today();
   const shiftConfig = useMemo(() => readShiftWindowConfig(), [tick]);
   const withinShift = useMemo(
     () => isWithinShiftWindow(shift, new Date(), shiftConfig),
@@ -546,19 +559,49 @@ export default function BatchMatrixEntry({
     setA12Choice(null);
   }, []);
 
+  /**
+   * True when the operator has typed something they would lose.
+   *
+   * Switching station used to call resetQtys() unconditionally, so noticing
+   * "wrong station" after filling the form silently threw the counts away and
+   * the operator re-typed them from the paper — which is exactly where
+   * transcription errors come from.
+   */
+  const hasUnsavedQty = () =>
+    checked > 0 ||
+    accept > 0 ||
+    hold > 0 ||
+    trolleys > 0 ||
+    bin.trim() !== "" ||
+    remarks.trim() !== "" ||
+    Object.values(defects).some((v) => v > 0);
+
+  const confirmDiscard = (what: string) =>
+    !hasUnsavedQty() ||
+    confirm(
+      `Switch to ${what}?\n\nThe quantities you have typed stay in the form — only the defect reasons that do not exist at the new station are dropped.`,
+    );
+
   const selectMacro = (id: MacroId) => {
-    setMacro(id);
+    if (id === macro) return;
     const first = schema ? stationsIn(schema, id)[0] : undefined;
+    const label = first?.label ?? id;
+    if (!confirmDiscard(label)) return;
+    setMacro(id);
     setStageId(first?.stageId ?? migrateToStageId({ macro: id }));
-    resetQtys();
+    // Quantities survive the move; only defect reasons are station-specific.
+    setDefects({});
   };
 
   const selectStation = (id: string) => {
     if (id === stageId) return;
-    setStageId(id);
     const st = schema ? stationById(schema, id) : undefined;
+    if (!confirmDiscard(st?.label ?? id)) return;
+    setStageId(id);
     if (st) setMacro(st.category);
-    resetQtys();
+    // Same rule as selectMacro: the counts are the operator's transcription of
+    // the paper and survive; the defect vocabulary belongs to the station.
+    setDefects({});
   };
 
   /**
@@ -914,6 +957,23 @@ export default function BatchMatrixEntry({
       return;
     }
 
+    // A lot that has cleared every gate is finished. Landing back on the first
+    // gate with that same code almost always means the operator started the
+    // next lot and the carried-over code was never changed — the single most
+    // likely way a whole lot ends up filed under its predecessor's name.
+    //
+    // Corrections to a finished lot belong in the saved-entries list below,
+    // where the change is deliberate and attributed. The form only makes new
+    // entries.
+    if (!editingId && lotProgress?.status === "complete") {
+      setErr(
+        `${batchKey} has already cleared all ${lotProgress.totalCount} gates — it is a finished lot. ` +
+          `If this is the next lot, change the Batch date (or size) to give it its own code. ` +
+          `To correct ${batchKey}, use Edit on its row in Saved this shift.`,
+      );
+      return;
+    }
+
     // /api/ingest supersedes direct entry by date · stage · size · batch. If a
     // revision changes any of those, the OLD ledger row keys differently and
     // survives — the edit would double-count instead of replacing. Say so.
@@ -1072,16 +1132,16 @@ export default function BatchMatrixEntry({
       return;
     }
     let nextReject = reject;
+    // "set-reject" now means "let me finish the defect reasons" — Rejected is
+    // the quantity balance and is never rewritten to match a partial itemisation.
     if (a12Choice === "set-reject") {
-      nextReject = a12.defectSum;
-      setReject(nextReject);
+      setA12(null);
+      setA12Choice(null);
+      setMsg(`Add the missing ${Math.max(a12.reject - a12.defectSum, 0)} to the defect reasons below, then save.`);
+      document.getElementById("defect-reasons")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
     }
-    // Aligning Rejected to defect sum is a normal correction — no GM exception.
     const rec = buildPendingRecord(nextReject);
-    rec.remarks =
-      (rec.remarks ? rec.remarks + " | " : "") +
-      `Aligned Rejected to defect sum (${a12.defectSum}) before save`;
-    setMsg(`Rejected set to ${a12.defectSum} to match defect reasons — saving…`);
     await finalizeSave(rec);
   }
 
@@ -1466,28 +1526,93 @@ export default function BatchMatrixEntry({
                 options={ENTRY_ROLES.map((o) => ({ value: o, label: o }))}
                 ariaLabel="Recorded by"
               />
+              {/* Recorded on is stamped, not chosen. It used to keep whatever
+                  day was last typed, so a backfill silently sent the next
+                  entries to the wrong date. Corrections happen in the entry
+                  history, where the change is visible and attributed. */}
               <label style={subLabel}>
                 Recorded on
-                <input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  title="Day this station ran the lot. The batch code is set from the lot's own date, under Batch / lot ID — moving this never renames the lot."
-                  style={{ ...inp, marginTop: 4 }}
-                />
+                {dateIsToday || persona === "gm" ? (
+                  <div
+                    style={{
+                      ...inp,
+                      marginTop: 4,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                      background: "var(--surface-2)",
+                    }}
+                  >
+                    <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                      {dateIsToday ? `Today · ${shortEntryDate(date)}` : shortEntryDate(date)}
+                    </span>
+                    {persona === "gm" && (
+                      <input
+                        type="date"
+                        value={date}
+                        onChange={(e) => setDate(e.target.value)}
+                        aria-label="Change recorded-on date (GM)"
+                        title="GM only — backfill a past day. Operators always record on today."
+                        style={{
+                          border: "none",
+                          background: "transparent",
+                          color: "var(--text-3)",
+                          fontSize: 11,
+                          width: 26,
+                          cursor: "pointer",
+                        }}
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      ...inp,
+                      marginTop: 4,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      background: "var(--warning-weak)",
+                      borderColor: "var(--warning)",
+                    }}
+                  >
+                    <span style={{ fontWeight: 600 }}>{shortEntryDate(date)}</span>
+                    <button
+                      type="button"
+                      onClick={() => setDate(today())}
+                      style={{
+                        marginLeft: "auto",
+                        fontSize: 11,
+                        fontWeight: 700,
+                        padding: "2px 8px",
+                        borderRadius: 6,
+                        border: "1px solid var(--warning)",
+                        background: "var(--surface)",
+                        color: "var(--warning)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Back to today
+                    </button>
+                  </div>
+                )}
               </label>
+              {/* One plant shift (08:00–20:00). The picker used to offer a
+                  "Night Shift" that has no configured window, which silently
+                  locked the operator out of saving. */}
               <label style={subLabel}>
                 Shift
-                <Select
-                  value={shift}
-                  onChange={setShift}
-                  options={[
-                    { value: "Day Shift", label: "Day Shift" },
-                    { value: "Night Shift", label: "Night Shift" },
-                  ]}
-                  ariaLabel="Shift"
-                  style={{ marginTop: 4 }}
-                />
+                <div
+                  style={{
+                    ...inp,
+                    marginTop: 4,
+                    background: "var(--surface-2)",
+                    color: "var(--text-2)",
+                  }}
+                >
+                  {describeShiftWindow(shift, shiftConfig)}
+                </div>
               </label>
             </FieldCol>
 
@@ -1554,7 +1679,45 @@ export default function BatchMatrixEntry({
                   }}
                 >
                   <LotProgress progress={lotProgress} activeStageId={stageId} />
-                  {stageAlreadyDone && (
+                  {lotProgress.status === "complete" && !editingId && (
+                    // The finished-lot case, said before they type rather than
+                    // at save: this code belongs to a lot that is already done.
+                    <div
+                      style={{
+                        margin: "8px 0 0",
+                        padding: "8px 10px",
+                        borderRadius: "var(--radius-sm)",
+                        border: "1px solid color-mix(in srgb, var(--critical) 35%, transparent)",
+                        background: "var(--critical-weak)",
+                        color: "var(--critical)",
+                        fontSize: "var(--text-2xs)",
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      <strong>This lot is finished.</strong> {batchId} has cleared all{" "}
+                      {lotProgress.totalCount} gates. Starting the next lot? Give it its own code
+                      before entering counts.
+                      <button
+                        type="button"
+                        onClick={() => setBatchDate(today())}
+                        style={{
+                          display: "block",
+                          marginTop: 6,
+                          padding: "3px 9px",
+                          borderRadius: 6,
+                          border: "1px solid var(--critical)",
+                          background: "var(--surface)",
+                          color: "var(--critical)",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Start a new lot dated today
+                      </button>
+                    </div>
+                  )}
+                  {stageAlreadyDone && lotProgress.status !== "complete" && (
                     // Contained, not floating orange text. The station name is
                     // already selected above, so it is not repeated here, and
                     // the date reads the way a person says it.
@@ -1691,23 +1854,19 @@ export default function BatchMatrixEntry({
                     justifyContent: "center",
                   }}
                   title={
-                    rejectSource === "defects"
-                      ? "Sum of the defect counts below"
-                      : capturesHold
-                        ? "Auto: Checked − Accept − Hold"
-                        : "Auto: Checked − Accept"
+                    capturesHold
+                      ? "Always Checked − Accept − Hold. Defect reasons explain this number; they never change it."
+                      : "Always Checked − Accept. Defect reasons explain this number; they never change it."
                   }
                 >
                   {reject}
                 </div>
                 <div className="small" style={{ marginTop: 6, color: "var(--text-3)", textAlign: "center", fontSize: 11, lineHeight: 1.3 }}>
-                  {rejectSource === "defects"
-                    ? "= defect sum"
-                    : checked > 0
-                      ? capturesHold
-                        ? `= ${checked} − ${accept} − ${hold}`
-                        : `= ${checked} − ${accept}`
-                      : "auto"}
+                  {checked > 0
+                    ? capturesHold
+                      ? `= ${checked} − ${accept} − ${hold}`
+                      : `= ${checked} − ${accept}`
+                    : "auto"}
                 </div>
               </FieldCol>
             )}
@@ -1735,33 +1894,34 @@ export default function BatchMatrixEntry({
       </div>
 
       {!hideDefects && (
-        <div style={{ marginBottom: 16, padding: 16, borderRadius: 10, border: "1px solid var(--border)", background: "var(--surface-2)" }}>
+        <div id="defect-reasons" style={{ marginBottom: 16, padding: 16, borderRadius: 10, border: "1px solid var(--border)", background: "var(--surface-2)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border)", paddingBottom: 10, marginBottom: 12, gap: 12, flexWrap: "wrap" }}>
             <div>
               <div style={{ fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                 <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--status-bad)", display: "inline-block" }} />
-                Defects
-                {reject > 0 && (
-                  <span style={{ fontWeight: 600, color: "var(--text-2)" }}>
-                    · need {reject}
-                  </span>
-                )}
-                {(reject > 0 || defectSum > 0) && (
-                  <span
-                    style={{
-                      fontWeight: 600,
-                      color: defectMismatch ? "var(--status-warn, #d97706)" : "var(--status-good)",
-                      fontFamily: "var(--font-mono)",
-                      fontSize: 12,
-                    }}
-                  >
-                    · sum {defectSum}
-                    {defectMismatch ? " (not matched)" : reject > 0 ? " (matched)" : ""}
-                  </span>
-                )}
+                Why were they rejected?
               </div>
               <div className="small" style={{ color: "var(--text-3)", fontWeight: 500, fontSize: 12 }}>
                 {processName}
+                {defectCoverage && defectCoverage.state !== "empty" && (
+                  <>
+                    {" · "}
+                    <span
+                      style={{
+                        fontFamily: "var(--font-mono)",
+                        fontWeight: 700,
+                        color:
+                          defectCoverage.state === "complete"
+                            ? "var(--positive)"
+                            : defectCoverage.state === "over"
+                              ? "var(--critical)"
+                              : "var(--warning)",
+                      }}
+                    >
+                      {defectCoverage.sum} of {defectCoverage.reject} explained
+                    </span>
+                  </>
+                )}
               </div>
             </div>
             <input
@@ -1771,22 +1931,20 @@ export default function BatchMatrixEntry({
               style={{ ...inp, width: 190, marginLeft: "auto" }}
               aria-label="Filter defect list"
             />
-            <span
-              style={{
-                ...badge(defectMismatch ? "amber" : defectSum === reject && reject > 0 ? "green" : "blue"),
-              }}
-              title={
-                defectMismatch
-                  ? `Defect columns sum to ${defectSum} but Rejected is ${reject}`
-                  : `Defect sum vs Rejected`
-              }
-            >
-              {defectMismatch
-                ? `Unreconciled (${defectSum} of ${reject})`
-                : reject > 0 || defectSum > 0
-                  ? `Fully reconciled (${defectSum} of ${reject})`
-                  : `Defect sum: ${defectSum}`}
-            </span>
+            {defectCoverage && defectCoverage.state !== "empty" && (
+              <span
+                style={{
+                  ...badge(defectCoverage.state === "complete" ? "green" : "amber"),
+                }}
+                title="Rejected comes from Checked − Accept − Hold. These reasons explain it; they never change it."
+              >
+                {defectCoverage.state === "complete"
+                  ? "All explained"
+                  : defectCoverage.state === "over"
+                    ? `${-defectCoverage.unexplained} too many`
+                    : `${defectCoverage.unexplained} unexplained`}
+              </span>
+            )}
           </div>
           <div
             style={{
@@ -1946,20 +2104,20 @@ export default function BatchMatrixEntry({
               {capturesHold
                 ? ` (${checked} − Accept ${accept} − Hold ${hold})`
                 : ` (${checked} − Accept ${accept})`}
-              {rejectSource === "defects" && defectSum !== impliedRejectFromBalance && (
-                <span style={{ color: "var(--status-warn, #d97706)" }}>
+              {defectCoverage?.state === "short" && (
+                <span style={{ color: "var(--warning)" }}>
                   {" "}
-                  · defect sum is {defectSum} — adjust Accept/Hold or defect reasons
+                  · {defectCoverage.unexplained} of {reject} not yet explained by a defect reason
                 </span>
               )}
-              {!hideDefects && reject > 0 && defectSum !== reject && (
-                <span style={{ color: "var(--status-warn, #d97706)" }}>
+              {defectCoverage?.state === "over" && (
+                <span style={{ color: "var(--critical)" }}>
                   {" "}
-                  · defect reasons should total {reject} (now {defectSum})
+                  · defect reasons total {defectSum}, more than the {reject} rejected
                 </span>
               )}
-              {!hideDefects && reject > 0 && defectSum === reject && (
-                <span style={{ color: "var(--status-good)" }}> · defect reasons match Reject</span>
+              {defectCoverage?.state === "complete" && (
+                <span style={{ color: "var(--status-good)" }}> · every rejected piece is explained</span>
               )}
             </div>
           )}
@@ -1977,10 +2135,15 @@ export default function BatchMatrixEntry({
           }}
         >
           <div style={{ fontWeight: 700, marginBottom: 8 }}>
-            Defect counts don&apos;t add up to Rejected
+            {a12.defectSum > a12.reject
+              ? "More defects than rejected pieces"
+              : `${a12.reject - a12.defectSum} rejected ${a12.reject - a12.defectSum === 1 ? "piece has" : "pieces have"} no reason yet`}
           </div>
           <p className="small" style={{ color: "var(--text-2)", marginBottom: 10 }}>
-            Defects sum to {a12.defectSum}, Rejected is {a12.reject}. Choose how to resolve before saving — nothing is auto-changed.
+            {a12.reject} rejected · {a12.defectSum} explained by defect reasons.{" "}
+            {a12.defectSum > a12.reject
+              ? "A defect count is too high, or Accept / Hold is wrong — the two cannot both be right."
+              : "Rejected comes from the quantity balance and is not changed by this choice."}
           </p>
           <label style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6, fontSize: 13, cursor: "pointer" }}>
             <input
@@ -1989,7 +2152,7 @@ export default function BatchMatrixEntry({
               checked={a12Choice === "set-reject"}
               onChange={() => setA12Choice("set-reject")}
             />
-            Set Rejected = {a12.defectSum} (match defect columns)
+            Go back — I&apos;ll finish the defect reasons
           </label>
           <label style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, fontSize: 13, cursor: "pointer" }}>
             <input
@@ -1998,7 +2161,7 @@ export default function BatchMatrixEntry({
               checked={a12Choice === "keep-incomplete"}
               onChange={() => setA12Choice("keep-incomplete")}
             />
-            Keep Rejected = {a12.reject} (treat defects as incomplete)
+            Save anyway — the cause of the remaining {Math.max(a12.reject - a12.defectSum, 0)} is not known
           </label>
           <div style={{ display: "flex", gap: 8 }}>
             <button type="button" onClick={applyA12AndSave} disabled={saving || !a12Choice} style={btnPrimary}>
