@@ -524,7 +524,7 @@ function HistoryBatch({
                       <div
                         style={{
                           display: "grid",
-                          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                          gridTemplateColumns: r.rework > 0 ? "repeat(4, minmax(0, 1fr))" : "repeat(3, minmax(0, 1fr))",
                           gap: 8,
                           marginBottom: r.defects.length ? 8 : 0,
                         }}
@@ -545,6 +545,16 @@ function HistoryBatch({
                             {r.accepted.toLocaleString()}
                           </div>
                         </div>
+                        {r.rework > 0 && (
+                          <div>
+                            <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase" }}>
+                              Hold
+                            </div>
+                            <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--warning)" }}>
+                              {r.rework.toLocaleString()}
+                            </div>
+                          </div>
+                        )}
                         <div>
                           <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase" }}>
                             Rejected

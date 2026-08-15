@@ -281,6 +281,13 @@ export interface AuditEntryRow {
   checked: number;
   accepted: number;
   rejected: number;
+  /**
+   * Held / reworked units (Visual only). Stored correctly as an
+   * inspection·rework event since day one — this row simply never read it
+   * back, so Checked never visibly summed to Accepted + Hold + Rejected and
+   * the held units looked lost even though the ledger had them.
+   */
+  rework: number;
   defects: { code: string; qty: number }[];
   source: "manual" | "excel" | "mixed";
   fileLabel: string;
@@ -514,6 +521,7 @@ export function buildEntryRows(
     const checked = a.atoms.get("production")?.qty ?? 0;
     const explicitAccepted = a.atoms.get("inspection:accepted")?.qty ?? 0;
     const rejected = a.atoms.get("inspection:rejected")?.qty ?? 0;
+    const rework = a.atoms.get("inspection:rework")?.qty ?? 0;
     const accepted =
       explicitAccepted > 0 ? explicitAccepted : Math.max(0, checked - rejected);
 
@@ -535,6 +543,7 @@ export function buildEntryRows(
       checked,
       accepted,
       rejected,
+      rework,
       defects,
       source,
       fileLabel: source === "manual" ? "Data Entry" : a.fileLabel,

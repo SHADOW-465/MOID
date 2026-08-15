@@ -226,3 +226,29 @@ describe("buildEntryRows + groupByBatchThenStage", () => {
     expect(rows[0].hasCorrection || rows[0].revisionCount > 1).toBe(true);
   });
 });
+
+describe("buildEntryRows — held/reworked units", () => {
+  it("reads Hold back from the ledger instead of dropping it", () => {
+    // Visual: 1326 checked, 1163 accepted, 124 held, 39 rejected — the row
+    // used to report checked/accepted/rejected only, so 1163+39=1202 never
+    // visibly summed to 1326 and the missing 124 looked like lost data even
+    // though the ledger held it as an inspection·rework event.
+    const events: AuditEventLike[] = [
+      ev({ eventId: "p1", eventType: "production", stageId: "visual", quantity: 1326, customFields: { batch: "26H25-18" } } as any),
+      ev({ eventId: "i1", eventType: "inspection", stageId: "visual", disposition: "accepted", quantity: 1163, customFields: { batch: "26H25-18" } } as any),
+      ev({ eventId: "i2", eventType: "inspection", stageId: "visual", disposition: "rework", quantity: 124, customFields: { batch: "26H25-18" } } as any),
+      ev({ eventId: "i3", eventType: "inspection", stageId: "visual", disposition: "rejected", quantity: 39, customFields: { batch: "26H25-18" } } as any),
+    ];
+    const rows = buildEntryRows(events);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ checked: 1326, accepted: 1163, rework: 124, rejected: 39 });
+    expect(rows[0].checked).toBe(rows[0].accepted + rows[0].rework + rows[0].rejected);
+  });
+
+  it("a stage that never captures Hold reports zero, not undefined", () => {
+    const events: AuditEventLike[] = [
+      ev({ eventId: "p1", eventType: "production", stageId: "final", quantity: 500, customFields: { batch: "26H25-18" } } as any),
+    ];
+    expect(buildEntryRows(events)[0].rework).toBe(0);
+  });
+});

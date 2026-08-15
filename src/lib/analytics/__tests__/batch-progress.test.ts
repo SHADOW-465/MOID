@@ -124,6 +124,7 @@ test("the size filter keeps only matching rows, and 'all' keeps everything", () 
       checked: 10,
       accepted: 9,
       rejected: 1,
+      rework: 0,
       defects: [],
       source: "manual",
       fileLabel: "Data Entry",
