@@ -54,8 +54,11 @@ export interface SchemaNode {
   id: string;
   kind: SchemaNodeKind;
   label: string;
-  /** Secondary line: "21 scoped", "also on Final Inspection", … */
+  /** Inline description sitting next to the label ("also on Final Inspection"). */
   sublabel?: string;
+  /** How many items a folder holds. Rendered in a shared right-hand gutter, so
+   *  it stays a scannable column instead of a ragged trail after each label. */
+  count?: number;
   badge?: SchemaNodeBadge;
   /** Category folders: fixed, never editable or deletable. */
   locked?: boolean;
@@ -182,7 +185,7 @@ function aliasFolder(
       id: folderId,
       kind: "aliases-folder",
       label: "Aliases",
-      sublabel: `${nodes.length}`,
+      count: nodes.length,
       children: nodes,
     },
   ];
@@ -217,7 +220,7 @@ export function buildSchemaTree(input: SchemaTreeInput): SchemaNode[] {
       id: catId,
       kind: "category",
       label: cat.label,
-      sublabel: `${inCat.length} ${inCat.length === 1 ? "stage" : "stages"}`,
+      count: inCat.length,
       locked: true,
       ref: { categoryId: cat.id },
       children: orderByCascade(inCat).map((s) =>
@@ -234,7 +237,7 @@ export function buildSchemaTree(input: SchemaTreeInput): SchemaNode[] {
       id: "cat:unassigned",
       kind: "category",
       label: "Unassigned stages",
-      sublabel: `${orphanStages.length}`,
+      count: orphanStages.length,
       badge: "orphan",
       locked: true,
       children: orderByCascade(orphanStages).map((s) =>
@@ -253,7 +256,7 @@ export function buildSchemaTree(input: SchemaTreeInput): SchemaNode[] {
         id: `${id}/captures`,
         kind: "captures-folder",
         label: "Captures",
-        sublabel: `${captures.length}`,
+        count: captures.length,
         ref: { stageId: s.stageId },
         children: captures.map((c) => ({
           id: `${id}/captures/${c}`,
@@ -270,7 +273,7 @@ export function buildSchemaTree(input: SchemaTreeInput): SchemaNode[] {
         id: `${id}/defects`,
         kind: "defects-folder",
         label: "Defects",
-        sublabel: `${scoped.length}`,
+        count: scoped.length,
         ref: { stageId: s.stageId },
         children: scoped.map((d) => {
           const others = (d.stages ?? []).filter((x) => x !== s.stageId);
@@ -310,7 +313,7 @@ export function buildSchemaTree(input: SchemaTreeInput): SchemaNode[] {
     id: "all-defects",
     kind: "all-defects-folder",
     label: "All defects",
-    sublabel: `${defects.length}`,
+    count: defects.length,
     children: defects.map((d) => {
       const id = `all-defects/defect:${d.defectCode}`;
       const scopes = d.stages ?? [];
@@ -320,7 +323,7 @@ export function buildSchemaTree(input: SchemaTreeInput): SchemaNode[] {
           id: `${id}/scopes`,
           kind: "defect-scope-folder",
           label: "Scoped to",
-          sublabel: `${scopes.length}`,
+          count: scopes.length,
           ref: { defectCode: d.defectCode },
           children: scopes.map((stageId) => ({
             id: `${id}/scopes/${stageId}`,
@@ -350,7 +353,7 @@ export function buildSchemaTree(input: SchemaTreeInput): SchemaNode[] {
     id: "sizes",
     kind: "sizes-folder",
     label: "Sizes",
-    sublabel: `${sizes.length}`,
+    count: sizes.length,
     children: sizes.map((s) => ({
       id: `sizes/size:${s.sizeId}`,
       kind: "size" as const,
@@ -378,7 +381,7 @@ export function buildSchemaTree(input: SchemaTreeInput): SchemaNode[] {
       id: "unmatched",
       kind: "unmatched-folder",
       label: "Unmatched patterns",
-      sublabel: `${unmatched.length}`,
+      count: unmatched.length,
       badge: "orphan",
       children: unmatched.map((m) => ({
         id: `unmatched/${m.kind}:${m.key}`,

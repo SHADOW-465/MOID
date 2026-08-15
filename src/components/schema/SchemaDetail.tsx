@@ -68,10 +68,13 @@ export default function SchemaDetail({ node, data, busy, mutate }: SchemaDetailP
   if (!node) {
     return (
       <div style={emptyWrap}>
-        <div className="h3" style={{ marginBottom: 6 }}>Nothing selected</div>
-        <p className="small" style={{ color: "var(--text-3)", maxWidth: 320 }}>
-          Pick a stage, defect, size or alias on the left. Section folders are
-          fixed; everything inside them can be edited, added or removed.
+        <p style={{ fontSize: 13, color: "var(--text-2)", margin: 0, maxWidth: "42ch", lineHeight: 1.6 }}>
+          Select anything on the left to edit it.
+        </p>
+        <p className="small" style={{ color: "var(--text-3)", margin: 0, maxWidth: "46ch", lineHeight: 1.6 }}>
+          The three sections are fixed. Every stage, defect, size and learned
+          spelling inside them can be edited, added or removed — and each change
+          reaches Data Entry on the next load.
         </p>
       </div>
     );
@@ -149,13 +152,12 @@ export default function SchemaDetail({ node, data, busy, mutate }: SchemaDetailP
     const count = node.children.length;
     body = (
       <>
-        <Row label="Section">{node.label}</Row>
-        <Row label="Stages">{count}</Row>
-        <p className="small" style={note}>
-          The three sections are fixed — they cannot be renamed, added to or
-          removed, so this schema stays recognisable as this plant&apos;s process.
-          The stages inside — including this one having none right now — are
-          fully editable.
+        {/* The header already names the section — repeating it as a row was
+            the panel telling you what you just clicked. */}
+        <p className="small" style={{ ...note, marginTop: 0 }}>
+          {count === 0
+            ? "No stages here yet. Add the first one below — it will appear in Data Entry as soon as it has capture columns."
+            : `${count} ${count === 1 ? "stage" : "stages"}, in process order. This section is fixed, but everything inside it is yours to change.`}
         </p>
         {creating === "stage" ? (
           <NewStageForm
@@ -299,9 +301,6 @@ export default function SchemaDetail({ node, data, busy, mutate }: SchemaDetailP
     const stages = (draft.stages as string[]) ?? [];
     body = (
       <>
-        <Row label="Code">
-          <code style={mono}>{defect.defectCode}</code>
-        </Row>
         <Row label="Label">
           <input
             style={input}
@@ -342,7 +341,6 @@ export default function SchemaDetail({ node, data, busy, mutate }: SchemaDetailP
   } else if (node.kind === "size" && size) {
     body = (
       <>
-        <Row label="Size ID"><code style={mono}>{size.sizeId}</code></Row>
         <Row label="Label">
           <input
             style={input}
@@ -355,7 +353,6 @@ export default function SchemaDetail({ node, data, busy, mutate }: SchemaDetailP
   } else if (node.kind === "alias" || node.kind === "mapping") {
     body = (
       <>
-        <Row label="Spelling"><code style={mono}>{node.label}</code></Row>
         <Row label="Resolves to"><code style={mono}>{node.sublabel ?? "—"}</code></Row>
         <p className="small" style={note}>
           A spelling learned from a workbook. Removing it only stops the resolver
@@ -367,10 +364,10 @@ export default function SchemaDetail({ node, data, busy, mutate }: SchemaDetailP
     const preScope = node.kind === "defects-folder" ? node.ref?.stageId : undefined;
     body = (
       <>
-        <Row label="Folder">{node.label}</Row>
-        <Row label="Items">{node.children.length}</Row>
-        <p className="small" style={note}>
-          Select a defect inside this folder to edit it.
+        <p className="small" style={{ ...note, marginTop: 0 }}>
+          {node.children.length === 0
+            ? "No defects here yet."
+            : `${node.children.length} defect${node.children.length === 1 ? "" : "s"}. Select one to edit it.`}
         </p>
         {creating === "defect" ? (
           <NewDefectForm
@@ -408,8 +405,11 @@ export default function SchemaDetail({ node, data, busy, mutate }: SchemaDetailP
   } else if (node.kind === "sizes-folder") {
     body = (
       <>
-        <Row label="Folder">{node.label}</Row>
-        <Row label="Items">{node.children.length}</Row>
+        <p className="small" style={{ ...note, marginTop: 0 }}>
+          {node.children.length === 0
+            ? "No sizes yet."
+            : `${node.children.length} size${node.children.length === 1 ? "" : "s"} available across the plant.`}
+        </p>
         {creating === "size" ? (
           <NewSizeForm
             draft={newSize}
@@ -438,10 +438,8 @@ export default function SchemaDetail({ node, data, busy, mutate }: SchemaDetailP
   } else {
     body = (
       <>
-        <Row label="Folder">{node.label}</Row>
-        <Row label="Items">{node.children.length}</Row>
-        <p className="small" style={note}>
-          Select an item inside this folder to edit it.
+        <p className="small" style={{ ...note, marginTop: 0 }}>
+          {node.children.length} item{node.children.length === 1 ? "" : "s"}. Select one to edit it.
         </p>
       </>
     );
@@ -469,31 +467,73 @@ export default function SchemaDetail({ node, data, busy, mutate }: SchemaDetailP
   const deletable = intent.kind !== "not-deletable";
 
   return (
-    <div style={{ padding: 16, display: "flex", flexDirection: "column", height: "100%" }}>
-      <div style={{ marginBottom: 12 }}>
-        <div className="h3">{node.label}</div>
-        <div className="small" style={{ color: "var(--text-3)" }}>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
+      <header
+        style={{
+          padding: "14px 20px 12px",
+          borderBottom: "1px solid var(--border)",
+        }}
+      >
+        <div
+          className="small"
+          style={{
+            color: "var(--text-3)",
+            fontSize: 11,
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+            marginBottom: 3,
+          }}
+        >
           {KIND_LABEL[node.kind] ?? node.kind}
         </div>
+        <h2
+          style={{
+            margin: 0,
+            fontSize: 17,
+            fontWeight: 650,
+            letterSpacing: "-0.01em",
+            color: "var(--text)",
+            fontFamily: MONO_TITLE.has(node.kind) ? "var(--font-mono)" : undefined,
+          }}
+        >
+          {node.label}
+        </h2>
+      </header>
+
+      <div style={{ padding: "16px 20px 20px", display: "grid", gap: 14, alignContent: "start", flex: 1 }}>
+        {body}
       </div>
 
-      <div style={{ display: "grid", gap: 10, flex: 1, alignContent: "start" }}>{body}</div>
-
-      <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-        {canSave && (
-          <button type="button" style={primaryBtn} onClick={onSave} disabled={busy}>
-            {busy ? "Saving…" : "Save"}
-          </button>
-        )}
-        {deletable && (
-          <button type="button" style={dangerBtn} onClick={onDelete} disabled={busy}>
-            {intent.kind === "unscope-defect" ? "Remove from this stage" : "Delete…"}
-          </button>
-        )}
-      </div>
+      {(canSave || deletable) && (
+        <footer
+          style={{
+            display: "flex",
+            gap: 8,
+            padding: "12px 20px",
+            borderTop: "1px solid var(--border)",
+            background: "var(--surface-2)",
+            position: "sticky",
+            bottom: 0,
+          }}
+        >
+          {canSave && (
+            <button type="button" style={primaryBtn} onClick={onSave} disabled={busy}>
+              {busy ? "Saving…" : "Save changes"}
+            </button>
+          )}
+          {deletable && (
+            <button type="button" style={dangerBtn} onClick={onDelete} disabled={busy}>
+              {intent.kind === "unscope-defect" ? "Remove from this stage" : "Delete…"}
+            </button>
+          )}
+        </footer>
+      )}
     </div>
   );
 }
+
+/** Titles that ARE data — codes and spellings — not prose. */
+const MONO_TITLE = new Set(["defect", "alias", "mapping"]);
 
 const KIND_LABEL: Record<string, string> = {
   category: "Section (fixed)",
@@ -521,10 +561,11 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 const emptyWrap: React.CSSProperties = {
-  padding: 24,
+  padding: "32px 24px",
   display: "flex",
   flexDirection: "column",
   justifyContent: "center",
+  gap: 10,
   height: "100%",
 };
 

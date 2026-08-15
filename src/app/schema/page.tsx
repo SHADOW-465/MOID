@@ -913,60 +913,62 @@ export default function SchemaPage() {
             </div>
           </Card>
         ) : (
-          <Card
-            title="Plant schema"
-            sub="Sections are fixed. Stages, defects, sizes and learned spellings inside them can be edited, added or removed."
-          >
-            <div style={{ marginBottom: 10 }}>
-              <input
-                value={treeQuery}
-                onChange={(e) => setTreeQuery(e.target.value)}
-                placeholder="Search stages, defects, sizes, spellings…"
-                style={{
-                  width: "100%",
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  border: "1px solid var(--border)",
-                  background: "var(--surface-2)",
-                  color: "var(--text)",
-                  fontSize: 13,
-                  fontFamily: "inherit",
-                }}
-              />
-            </div>
+          <Card title="Plant schema">
+            {/* One card, one hairline. The panes share a baseline and scroll
+                internally — that shared height is what makes this read as a
+                directory rather than two loose lists. */}
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "minmax(240px, 340px) minmax(0, 1fr)",
-                gap: 14,
-                alignItems: "start",
+                gridTemplateColumns: "minmax(0, 320px) minmax(0, 1fr)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius-md)",
+                background: "var(--surface)",
+                overflow: "hidden",
+                height: "min(62vh, 560px)",
+                minHeight: 380,
               }}
             >
               <div
                 style={{
-                  border: "1px solid var(--border)",
-                  borderRadius: 10,
-                  background: "var(--surface)",
-                  maxHeight: 560,
-                  overflow: "auto",
+                  display: "flex",
+                  flexDirection: "column",
+                  minWidth: 0,
+                  borderRight: "1px solid var(--border)",
+                  background: "var(--surface-2)",
                 }}
               >
-                <SchemaTree
-                  nodes={visibleTree}
-                  expanded={effectiveExpanded}
-                  onToggle={toggleNode}
-                  selectedId={selectedNodeId}
-                  onSelect={(n) => setSelectedNodeId(n.id)}
-                />
+                {/* Search belongs to the tree — it filters the tree. */}
+                <div style={{ padding: 8, borderBottom: "1px solid var(--border)" }}>
+                  <input
+                    value={treeQuery}
+                    onChange={(e) => setTreeQuery(e.target.value)}
+                    placeholder="Search schema…"
+                    aria-label="Search the plant schema"
+                    style={{
+                      width: "100%",
+                      padding: "6px 10px",
+                      borderRadius: "var(--radius-sm)",
+                      border: "1px solid transparent",
+                      background: "var(--surface)",
+                      color: "var(--text)",
+                      fontSize: 12.5,
+                      fontFamily: "inherit",
+                      outlineOffset: 1,
+                    }}
+                  />
+                </div>
+                <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
+                  <SchemaTree
+                    nodes={visibleTree}
+                    expanded={effectiveExpanded}
+                    onToggle={toggleNode}
+                    selectedId={selectedNodeId}
+                    onSelect={(n) => setSelectedNodeId(n.id)}
+                  />
+                </div>
               </div>
-              <div
-                style={{
-                  border: "1px solid var(--border)",
-                  borderRadius: 10,
-                  background: "var(--surface)",
-                  minHeight: 320,
-                }}
-              >
+              <div style={{ overflow: "auto", minWidth: 0 }}>
                 <SchemaDetail
                   node={selectedNode}
                   data={treeInput}
