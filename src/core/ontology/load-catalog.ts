@@ -12,14 +12,31 @@
 
 import { getCatalogStore, type CompanyCatalog } from "@/core/ontology/store/catalog-store";
 import { getModStore } from "@/core/ontology/store/mod-store";
-import { plantCatalog, mergePlantCatalog, STAGE_CATEGORY } from "@/core/ontology/plant-catalog";
+import {
+  plantCatalog,
+  mergePlantCatalog,
+  STAGE_CATEGORY,
+  type StageCategory,
+} from "@/core/ontology/plant-catalog";
 
 /**
  * Bump when the authored catalog gains (or repairs) a stage that already-seeded
  * plants must pick up. The backfill runs ONCE per tag, so a stage deleted on
  * Data Schema after that stays deleted — the catalog still outlives the code.
  */
-const SEED_TAG = "plant-catalog@secondary-production";
+const SEED_TAG = "plant-catalog@eye-punching-hanging-secondary";
+
+/**
+ * Stages whose authored `category` changed after plants were already seeded.
+ * Realigned once (see SEED_TAG), because a stored catalog otherwise keeps the
+ * old section forever — the repair below never overwrites a populated field.
+ * Stage category stays user-editable afterwards; this is a correction, not an
+ * ongoing override, so entries are removed once the fleet has rolled past them.
+ */
+const RECATEGORISED: Record<string, StageCategory> = {
+  "eye-punching": "secondary",
+  hanging: "secondary",
+};
 
 /**
  * Teach a stored catalog the authored stages it has never seen.
@@ -50,12 +67,18 @@ async function backfillAuthoredStages(
     if (!a) return s;
     const needsCaptures = (s.captures ?? []).length === 0 && (a.captures ?? []).length > 0;
     const needsCategory = !s.category && !!(a.category ?? STAGE_CATEGORY[s.stageId]);
-    if (!needsCaptures && !needsCategory) return s;
+    const recategorised = RECATEGORISED[s.stageId];
+    const needsMove = !!recategorised && s.category !== recategorised;
+    if (!needsCaptures && !needsCategory && !needsMove) return s;
     changed = true;
     return {
       ...s,
       captures: needsCaptures ? a.captures : s.captures,
-      category: needsCategory ? (a.category ?? STAGE_CATEGORY[s.stageId]) : s.category,
+      category: needsMove
+        ? recategorised
+        : needsCategory
+          ? (a.category ?? STAGE_CATEGORY[s.stageId])
+          : s.category,
     };
   });
 

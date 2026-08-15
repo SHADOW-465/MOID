@@ -27,6 +27,9 @@ import {
   type IntegrityIssue,
 } from "@/lib/analytics";
 import { clusterWorkbooks, fileBasename } from "@/lib/workbook-clusters";
+import SchemaTree from "@/components/schema/SchemaTree";
+import SchemaDetail from "@/components/schema/SchemaDetail";
+import { buildSchemaTree, filterTree, type SchemaNode } from "@/lib/schema/tree";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -106,6 +109,9 @@ interface ModDetail {
 
 type Section = "stages" | "defects" | "sizes" | "mappings";
 
+/** Which tree folders are open, remembered across reloads. */
+const TREE_OPEN_KEY = "moid_schema_tree_open";
+
 const CAPTURE_OPTS = ["checked", "accepted", "hold", "rejected"] as const;
 
 const MAPPING_KIND_LABEL: Record<MappingKind, string> = {
@@ -130,6 +136,33 @@ export default function SchemaPage() {
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [section, setSection] = useState<Section>("stages");
+
+  // ── Schema tree ─────────────────────────────────────────────────────────
+  const [treeQuery, setTreeQuery] = useState("");
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  /** Expansion survives a reload — the tree is deep and the plant is big. */
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
+    if (typeof window === "undefined") return new Set();
+    try {
+      const raw = localStorage.getItem(TREE_OPEN_KEY);
+      return new Set<string>(raw ? (JSON.parse(raw) as string[]) : ["cat:assembly"]);
+    } catch {
+      return new Set(["cat:assembly"]);
+    }
+  });
+  const toggleNode = useCallback((id: string) => {
+    setExpandedNodes((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      try {
+        localStorage.setItem(TREE_OPEN_KEY, JSON.stringify([...next]));
+      } catch {
+        /* private mode — expansion just won't persist */
+      }
+      return next;
+    });
+  }, []);
   const [mappingFilter, setMappingFilter] = useState<"all" | MappingKind>("all");
   const [mappingSearch, setMappingSearch] = useState("");
 
@@ -247,6 +280,48 @@ export default function SchemaPage() {
       .then((d) => setModDetail(d.mod ?? null))
       .catch(() => setModDetail(null));
   }, [selectedMod]);
+
+  /** The flat catalog, in the shape the tree derivation takes. */
+  const treeInput = useMemo(
+    () => ({
+      stages: catalog?.stages ?? [],
+      defects: catalog?.defects ?? [],
+      sizes: catalog?.sizes ?? [],
+      mappings: mappings.map((m) => ({
+        kind: m.kind,
+        key: m.key,
+        canonicalId: m.canonicalId,
+      })),
+    }),
+    [catalog, mappings],
+  );
+
+  const fullTree = useMemo(() => buildSchemaTree(treeInput), [treeInput]);
+
+  const { nodes: visibleTree, expand: searchExpand } = useMemo(
+    () => filterTree(fullTree, treeQuery),
+    [fullTree, treeQuery],
+  );
+
+  // A search reveals its own hits without disturbing what the user opened.
+  const effectiveExpanded = useMemo(
+    () => (treeQuery.trim() ? new Set([...expandedNodes, ...searchExpand]) : expandedNodes),
+    [treeQuery, expandedNodes, searchExpand],
+  );
+
+  const selectedNode = useMemo(() => {
+    if (!selectedNodeId) return null;
+    const find = (nodes: SchemaNode[]): SchemaNode | null => {
+      for (const n of nodes) {
+        if (n.id === selectedNodeId) return n;
+        const hit = find(n.children);
+        if (hit) return hit;
+      }
+      return null;
+    };
+    // Search off the FULL tree: a filtered-out selection is still being edited.
+    return find(fullTree);
+  }, [fullTree, selectedNodeId]);
 
   const workbookClusters = useMemo(() => clusterWorkbooks(workbooks), [workbooks]);
 
@@ -860,858 +935,69 @@ export default function SchemaPage() {
             </div>
           </Card>
         ) : (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(0, 1fr)",
-              gap: 14,
-            }}
+          <Card
+            title="Plant schema"
+            sub="Sections are fixed. Stages, defects, sizes and learned spellings inside them can be edited, added or removed."
           >
-            {/* Add form */}
-            {adding && (
-              <Card
-                title={
-                  section === "stages"
-                    ? "Add inspection stage"
-                    : section === "defects"
-                      ? "Add defect code"
-                      : section === "sizes"
-                        ? "Add size"
-                        : "Add Excel → canonical mapping"
-                }
-                sub={
-                  section === "mappings"
-                    ? "Saved to company knowledge — used by the resolver on every import"
-                    : "Saved to master catalog immediately"
-                }
+            <div style={{ marginBottom: 10 }}>
+              <input
+                value={treeQuery}
+                onChange={(e) => setTreeQuery(e.target.value)}
+                placeholder="Search stages, defects, sizes, spellings…"
+                style={{
+                  width: "100%",
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid var(--border)",
+                  background: "var(--surface-2)",
+                  color: "var(--text)",
+                  fontSize: 13,
+                  fontFamily: "inherit",
+                }}
+              />
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(240px, 340px) minmax(0, 1fr)",
+                gap: 14,
+                alignItems: "start",
+              }}
+            >
+              <div
+                style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: 10,
+                  background: "var(--surface)",
+                  maxHeight: 560,
+                  overflow: "auto",
+                }}
               >
-                {section === "stages" && (
-                  <EntityForm
-                    busy={busy}
-                    onCancel={() => setAdding(false)}
-                    onSave={() => {
-                      const id = newStage.stageId.trim().toLowerCase().replace(/\s+/g, "_");
-                      const label = newStage.label.trim();
-                      if (!id || !label) {
-                        setError("Stage id and label are required");
-                        return;
-                      }
-                      void mutate(
-                        {
-                          action: "upsert-stage",
-                          stage: {
-                            stageId: id,
-                            label,
-                            effectiveFrom: newStage.effectiveFrom ?? null,
-                            effectiveTo: newStage.effectiveTo ?? null,
-                            upstream: newStage.upstream ?? [],
-                            captures: newStage.captures ?? [],
-                            sizeWise: newStage.sizeWise,
-                            isQualityGate: newStage.isQualityGate,
-                          },
-                        },
-                        `Stage ${id} saved`,
-                      ).then(() =>
-                        setNewStage({
-                          stageId: "",
-                          label: "",
-                          upstream: [],
-                          captures: ["checked", "rejected"],
-                          effectiveFrom: null,
-                          effectiveTo: null,
-                        }),
-                      );
-                    }}
-                  >
-                    <Field label="Stage id" mono>
-                      <input
-                        value={newStage.stageId}
-                        onChange={(e) => setNewStage((s) => ({ ...s, stageId: e.target.value }))}
-                        placeholder="e.g. visual"
-                        style={inputStyle}
-                      />
-                    </Field>
-                    <Field label="Label">
-                      <input
-                        value={newStage.label}
-                        onChange={(e) => setNewStage((s) => ({ ...s, label: e.target.value }))}
-                        placeholder="Visual Inspection"
-                        style={inputStyle}
-                      />
-                    </Field>
-                    <Field label="Captures">
-                      <CaptureToggles
-                        value={newStage.captures ?? []}
-                        onChange={(captures) => setNewStage((s) => ({ ...s, captures }))}
-                      />
-                    </Field>
-                    <Field label="Feeds from (upstream ids, comma-separated)">
-                      <input
-                        value={(newStage.upstream ?? []).join(", ")}
-                        onChange={(e) =>
-                          setNewStage((s) => ({
-                            ...s,
-                            upstream: e.target.value
-                              .split(",")
-                              .map((x) => x.trim())
-                              .filter(Boolean),
-                          }))
-                        }
-                        placeholder="assembly, extrusion"
-                        style={inputStyle}
-                      />
-                    </Field>
-                  </EntityForm>
-                )}
-                {section === "defects" && (
-                  <EntityForm
-                    busy={busy}
-                    onCancel={() => setAdding(false)}
-                    onSave={() => {
-                      const code = newDefect.defectCode.trim().toUpperCase();
-                      const label = newDefect.label.trim();
-                      if (!code || !label) {
-                        setError("Defect code and label are required");
-                        return;
-                      }
-                      void mutate(
-                        {
-                          action: "upsert-defect",
-                          defect: {
-                            defectCode: code,
-                            label,
-                            aliases: (newDefect.aliases?.length ? newDefect.aliases : [label]).filter(Boolean),
-                            stages: newDefect.stages ?? [],
-                          },
-                        },
-                        `Defect ${code} saved`,
-                      ).then(() =>
-                        setNewDefect({ defectCode: "", label: "", aliases: [], stages: [] }),
-                      );
-                    }}
-                  >
-                    <Field label="Code" mono>
-                      <input
-                        value={newDefect.defectCode}
-                        onChange={(e) => setNewDefect((d) => ({ ...d, defectCode: e.target.value }))}
-                        placeholder="PINH"
-                        style={inputStyle}
-                      />
-                    </Field>
-                    <Field label="Label">
-                      <input
-                        value={newDefect.label}
-                        onChange={(e) => setNewDefect((d) => ({ ...d, label: e.target.value }))}
-                        placeholder="Pinhole"
-                        style={inputStyle}
-                      />
-                    </Field>
-                    <Field label="Stages (ids, comma-separated)">
-                      <input
-                        value={(newDefect.stages ?? []).join(", ")}
-                        onChange={(e) =>
-                          setNewDefect((d) => ({
-                            ...d,
-                            stages: e.target.value
-                              .split(",")
-                              .map((x) => x.trim())
-                              .filter(Boolean),
-                          }))
-                        }
-                        placeholder="visual, final"
-                        style={inputStyle}
-                      />
-                    </Field>
-                    <Field label="Aliases (comma-separated)">
-                      <input
-                        value={(newDefect.aliases ?? []).join(", ")}
-                        onChange={(e) =>
-                          setNewDefect((d) => ({
-                            ...d,
-                            aliases: e.target.value
-                              .split(",")
-                              .map((x) => x.trim())
-                              .filter(Boolean),
-                          }))
-                        }
-                        placeholder="pinhole, pin hole"
-                        style={inputStyle}
-                      />
-                    </Field>
-                  </EntityForm>
-                )}
-                {section === "sizes" && (
-                  <EntityForm
-                    busy={busy}
-                    onCancel={() => setAdding(false)}
-                    onSave={() => {
-                      const sizeId = newSize.sizeId.trim();
-                      const label = newSize.label.trim();
-                      if (!sizeId || !label) {
-                        setError("Size id and label are required");
-                        return;
-                      }
-                      void mutate(
-                        { action: "upsert-size", size: { sizeId, label } },
-                        `Size ${sizeId} saved`,
-                      ).then(() => setNewSize({ sizeId: "", label: "" }));
-                    }}
-                  >
-                    <Field label="Size id" mono>
-                      <input
-                        value={newSize.sizeId}
-                        onChange={(e) => setNewSize((s) => ({ ...s, sizeId: e.target.value }))}
-                        placeholder="Fr16"
-                        style={inputStyle}
-                      />
-                    </Field>
-                    <Field label="Label">
-                      <input
-                        value={newSize.label}
-                        onChange={(e) => setNewSize((s) => ({ ...s, label: e.target.value }))}
-                        placeholder="16 FR"
-                        style={inputStyle}
-                      />
-                    </Field>
-                  </EntityForm>
-                )}
-                {section === "mappings" && (
-                  <EntityForm
-                    busy={busy}
-                    onCancel={() => setAdding(false)}
-                    onSave={() => {
-                      const key = newMapping.key.trim();
-                      const canonicalId = newMapping.canonicalId.trim();
-                      if (!key || !canonicalId) {
-                        setError("Excel label and canonical id are required");
-                        return;
-                      }
-                      void mutate(
-                        {
-                          action: "upsert-mapping",
-                          mapping: {
-                            kind: newMapping.kind,
-                            key,
-                            canonicalId,
-                            confidence: 1,
-                          },
-                        },
-                        `Mapping “${key}” → ${canonicalId} saved`,
-                      ).then(() =>
-                        setNewMapping({ kind: "column-mapping", key: "", canonicalId: "" }),
-                      );
-                    }}
-                  >
-                    <Field label="Kind">
-                      <Select
-                        value={newMapping.kind}
-                        onChange={(v) => setNewMapping((m) => ({ ...m, kind: v as MappingKind }))}
-                        options={(Object.keys(MAPPING_KIND_LABEL) as MappingKind[]).map((k) => ({
-                          value: k,
-                          label: MAPPING_KIND_LABEL[k],
-                        }))}
-                        ariaLabel="Mapping kind"
-                      />
-                    </Field>
-                    <Field label="Excel / raw label" mono>
-                      <input
-                        value={newMapping.key}
-                        onChange={(e) => setNewMapping((m) => ({ ...m, key: e.target.value }))}
-                        placeholder="e.g. Visual Insp. / PIN HOLE"
-                        style={inputStyle}
-                      />
-                    </Field>
-                    <Field label="Canonical id" mono>
-                      <input
-                        value={newMapping.canonicalId}
-                        onChange={(e) =>
-                          setNewMapping((m) => ({ ...m, canonicalId: e.target.value }))
-                        }
-                        placeholder="e.g. visual / PINH / checked"
-                        style={inputStyle}
-                      />
-                    </Field>
-                  </EntityForm>
-                )}
-              </Card>
-            )}
-
-            {/* Stages table */}
-            {section === "stages" && (
-              <Card
-                title="Inspection stages"
-                sub="Process flow for Data Entry and analytics scope"
+                <SchemaTree
+                  nodes={visibleTree}
+                  expanded={effectiveExpanded}
+                  onToggle={toggleNode}
+                  selectedId={selectedNodeId}
+                  onSelect={(n) => setSelectedNodeId(n.id)}
+                />
+              </div>
+              <div
+                style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: 10,
+                  background: "var(--surface)",
+                  minHeight: 320,
+                }}
               >
-                {stages.length === 0 ? (
-                  <Empty label="No stages in master catalog" />
-                ) : (
-                  <div style={{ overflowX: "auto" }}>
-                    <table style={tableStyle}>
-                      <thead>
-                        <tr style={theadRow}>
-                          <th style={th}>Stage id</th>
-                          <th style={th}>Label</th>
-                          <th style={th}>Captures</th>
-                          <th style={th}>Feeds from</th>
-                          <th style={{ ...th, width: 120 }}>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {stages.map((s) => {
-                          const editing = editingStageId === s.stageId;
-                          const d = editing && stageDraft ? stageDraft : s;
-                          return (
-                            <tr key={s.stageId} style={{ borderTop: "1px solid var(--border)" }}>
-                              <td style={{ ...td, fontFamily: "var(--font-mono)", fontWeight: 700 }}>
-                                {s.stageId}
-                              </td>
-                              <td style={td}>
-                                {editing ? (
-                                  <input
-                                    value={d.label}
-                                    onChange={(e) =>
-                                      setStageDraft((x) => (x ? { ...x, label: e.target.value } : x))
-                                    }
-                                    style={inputStyle}
-                                  />
-                                ) : (
-                                  s.label
-                                )}
-                              </td>
-                              <td style={{ ...td, color: "var(--text-2)" }}>
-                                {editing ? (
-                                  <CaptureToggles
-                                    value={d.captures ?? []}
-                                    onChange={(captures) =>
-                                      setStageDraft((x) => (x ? { ...x, captures } : x))
-                                    }
-                                  />
-                                ) : (
-                                  (s.captures ?? []).join(", ") || "—"
-                                )}
-                              </td>
-                              <td style={{ ...td, color: "var(--text-2)", fontFamily: "var(--font-mono)", fontSize: 12 }}>
-                                {editing ? (
-                                  <input
-                                    value={(d.upstream ?? []).join(", ")}
-                                    onChange={(e) =>
-                                      setStageDraft((x) =>
-                                        x
-                                          ? {
-                                              ...x,
-                                              upstream: e.target.value
-                                                .split(",")
-                                                .map((v) => v.trim())
-                                                .filter(Boolean),
-                                            }
-                                          : x,
-                                      )
-                                    }
-                                    style={inputStyle}
-                                  />
-                                ) : (
-                                  (s.upstream ?? []).join(", ") || "—"
-                                )}
-                              </td>
-                              <td style={td}>
-                                {editing ? (
-                                  <RowActions
-                                    busy={busy}
-                                    onSave={() => {
-                                      if (!stageDraft) return;
-                                      void mutate(
-                                        {
-                                          action: "upsert-stage",
-                                          stage: {
-                                            stageId: stageDraft.stageId,
-                                            label: stageDraft.label.trim(),
-                                            effectiveFrom: stageDraft.effectiveFrom ?? null,
-                                            effectiveTo: stageDraft.effectiveTo ?? null,
-                                            upstream: stageDraft.upstream ?? [],
-                                            captures: stageDraft.captures ?? [],
-                                            sizeWise: stageDraft.sizeWise,
-                                            isQualityGate: stageDraft.isQualityGate,
-                                          },
-                                        },
-                                        `Stage ${stageDraft.stageId} updated`,
-                                      );
-                                    }}
-                                    onCancel={() => {
-                                      setEditingStageId(null);
-                                      setStageDraft(null);
-                                    }}
-                                  />
-                                ) : (
-                                  <RowActions
-                                    busy={busy}
-                                    onEdit={() => {
-                                      setEditingStageId(s.stageId);
-                                      setStageDraft({ ...s });
-                                      setAdding(false);
-                                    }}
-                                    onDelete={() => confirmDelete("stage", s.stageId, s.label)}
-                                  />
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </Card>
-            )}
-
-            {/* Defects table */}
-            {section === "defects" && (
-              <Card title="Defect catalog" sub="Codes used in rejection analytics and Data Entry">
-                {defects.length === 0 ? (
-                  <Empty label="No defect codes in master catalog" />
-                ) : (
-                  <div style={{ overflowX: "auto" }}>
-                    <table style={tableStyle}>
-                      <thead>
-                        <tr style={theadRow}>
-                          <th style={th}>Code</th>
-                          <th style={th}>Label</th>
-                          <th style={th}>Stages</th>
-                          <th style={th}>Aliases</th>
-                          <th style={{ ...th, width: 120 }}>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {defects.map((d) => {
-                          const editing = editingDefectCode === d.defectCode;
-                          const draft = editing && defectDraft ? defectDraft : d;
-                          return (
-                            <tr key={d.defectCode} style={{ borderTop: "1px solid var(--border)" }}>
-                              <td style={{ ...td, fontFamily: "var(--font-mono)", fontWeight: 700 }}>
-                                {d.defectCode}
-                              </td>
-                              <td style={td}>
-                                {editing ? (
-                                  <input
-                                    value={draft.label}
-                                    onChange={(e) =>
-                                      setDefectDraft((x) => (x ? { ...x, label: e.target.value } : x))
-                                    }
-                                    style={inputStyle}
-                                  />
-                                ) : (
-                                  d.label
-                                )}
-                              </td>
-                              <td style={{ ...td, fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-2)" }}>
-                                {editing ? (
-                                  <input
-                                    value={(draft.stages ?? []).join(", ")}
-                                    onChange={(e) =>
-                                      setDefectDraft((x) =>
-                                        x
-                                          ? {
-                                              ...x,
-                                              stages: e.target.value
-                                                .split(",")
-                                                .map((v) => v.trim())
-                                                .filter(Boolean),
-                                            }
-                                          : x,
-                                      )
-                                    }
-                                    style={inputStyle}
-                                  />
-                                ) : (
-                                  (d.stages ?? []).join(", ") || "—"
-                                )}
-                              </td>
-                              <td style={{ ...td, color: "var(--text-2)", fontSize: 12 }}>
-                                {editing ? (
-                                  <input
-                                    value={(draft.aliases ?? []).join(", ")}
-                                    onChange={(e) =>
-                                      setDefectDraft((x) =>
-                                        x
-                                          ? {
-                                              ...x,
-                                              aliases: e.target.value
-                                                .split(",")
-                                                .map((v) => v.trim())
-                                                .filter(Boolean),
-                                            }
-                                          : x,
-                                      )
-                                    }
-                                    style={inputStyle}
-                                  />
-                                ) : (
-                                  (d.aliases ?? []).join(", ") || "—"
-                                )}
-                              </td>
-                              <td style={td}>
-                                {editing ? (
-                                  <RowActions
-                                    busy={busy}
-                                    onSave={() => {
-                                      if (!defectDraft) return;
-                                      const aliases =
-                                        defectDraft.aliases && defectDraft.aliases.length > 0
-                                          ? defectDraft.aliases
-                                          : [defectDraft.label];
-                                      void mutate(
-                                        {
-                                          action: "upsert-defect",
-                                          defect: {
-                                            defectCode: defectDraft.defectCode,
-                                            label: defectDraft.label.trim(),
-                                            aliases,
-                                            stages: defectDraft.stages ?? [],
-                                          },
-                                        },
-                                        `Defect ${defectDraft.defectCode} updated`,
-                                      );
-                                    }}
-                                    onCancel={() => {
-                                      setEditingDefectCode(null);
-                                      setDefectDraft(null);
-                                    }}
-                                  />
-                                ) : (
-                                  <RowActions
-                                    busy={busy}
-                                    onEdit={() => {
-                                      setEditingDefectCode(d.defectCode);
-                                      setDefectDraft({ ...d });
-                                      setAdding(false);
-                                    }}
-                                    onDelete={() => confirmDelete("defect", d.defectCode, d.label)}
-                                  />
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </Card>
-            )}
-
-            {/* Sizes table */}
-            {section === "sizes" && (
-              <Card title="Sizes" sub="French / product sizes for size-wise analysis">
-                {sizes.length === 0 ? (
-                  <Empty label="No sizes in master catalog" />
-                ) : (
-                  <div style={{ overflowX: "auto" }}>
-                    <table style={tableStyle}>
-                      <thead>
-                        <tr style={theadRow}>
-                          <th style={th}>Size id</th>
-                          <th style={th}>Label</th>
-                          <th style={{ ...th, width: 120 }}>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sizes.map((s) => {
-                          const editing = editingSizeId === s.sizeId;
-                          const draft = editing && sizeDraft ? sizeDraft : s;
-                          return (
-                            <tr key={s.sizeId} style={{ borderTop: "1px solid var(--border)" }}>
-                              <td style={{ ...td, fontFamily: "var(--font-mono)", fontWeight: 700 }}>
-                                {s.sizeId}
-                              </td>
-                              <td style={td}>
-                                {editing ? (
-                                  <input
-                                    value={draft.label}
-                                    onChange={(e) =>
-                                      setSizeDraft((x) => (x ? { ...x, label: e.target.value } : x))
-                                    }
-                                    style={inputStyle}
-                                  />
-                                ) : (
-                                  s.label
-                                )}
-                              </td>
-                              <td style={td}>
-                                {editing ? (
-                                  <RowActions
-                                    busy={busy}
-                                    onSave={() => {
-                                      if (!sizeDraft) return;
-                                      void mutate(
-                                        {
-                                          action: "upsert-size",
-                                          size: {
-                                            sizeId: sizeDraft.sizeId,
-                                            label: sizeDraft.label.trim(),
-                                          },
-                                        },
-                                        `Size ${sizeDraft.sizeId} updated`,
-                                      );
-                                    }}
-                                    onCancel={() => {
-                                      setEditingSizeId(null);
-                                      setSizeDraft(null);
-                                    }}
-                                  />
-                                ) : (
-                                  <RowActions
-                                    busy={busy}
-                                    onEdit={() => {
-                                      setEditingSizeId(s.sizeId);
-                                      setSizeDraft({ ...s });
-                                      setAdding(false);
-                                    }}
-                                    onDelete={() => confirmDelete("size", s.sizeId, s.label)}
-                                  />
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </Card>
-            )}
-
-            {/* Learned Excel-heading → canonical mappings */}
-            {section === "mappings" && (
-              <Card
-                title="All Excel → canonical mappings"
-                sub="Every Excel column heading MOID recognises, and what it maps to. Edit or delete any row — your files add to this list when you confirm their columns."
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: 10,
-                    marginBottom: 14,
-                    alignItems: "center",
-                  }}
-                >
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {(
-                      [
-                        ["all", "All"],
-                        ["stage-alias", "Stage"],
-                        ["defect-alias", "Defect"],
-                        ["column-mapping", "Column"],
-                        ["header-pattern", "Header"],
-                      ] as const
-                    ).map(([k, label]) => {
-                      const active = mappingFilter === k;
-                      return (
-                        <button
-                          key={k}
-                          type="button"
-                          onClick={() => setMappingFilter(k)}
-                          style={{
-                            fontSize: 12,
-                            fontWeight: 600,
-                            padding: "5px 10px",
-                            borderRadius: 7,
-                            border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
-                            background: active
-                              ? "color-mix(in srgb, var(--accent) 12%, var(--surface))"
-                              : "var(--surface-2)",
-                            color: active ? "var(--accent)" : "var(--text-2)",
-                            cursor: "pointer",
-                          }}
-                        >
-                          {label}
-                          {k === "all"
-                            ? ` · ${mappings.length}`
-                            : ` · ${mappings.filter((m) => m.kind === k).length}`}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <input
-                    value={mappingSearch}
-                    onChange={(e) => setMappingSearch(e.target.value)}
-                    placeholder="Search label, canonical, source…"
-                    style={{
-                      ...inputStyle,
-                      flex: "1 1 200px",
-                      minWidth: 180,
-                      maxWidth: 360,
-                    }}
-                  />
-                </div>
-
-                {filteredMappings.length === 0 ? (
-                  <Empty
-                    label={
-                      mappings.length === 0
-                        ? "No mappings yet — verify a workbook or add one above"
-                        : "No mappings match this filter"
-                    }
-                  />
-                ) : (
-                  <div style={{ overflowX: "auto" }}>
-                    <table style={tableStyle}>
-                      <thead>
-                        <tr style={theadRow}>
-                          <th style={th}>Kind</th>
-                          <th style={th}>Excel / raw label</th>
-                          <th style={th}>Canonical</th>
-                          <th style={th}>Source</th>
-                          <th style={th}>Conf.</th>
-                          <th style={{ ...th, width: 130 }}>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredMappings.map((m) => {
-                          const rowId = mappingRowId(m);
-                          const editing = editingMappingKey === rowId;
-                          const draft = editing && mappingDraft ? mappingDraft : m;
-                          const isKnowledge = m.source !== "mod";
-                          return (
-                            <tr key={rowId} style={{ borderTop: "1px solid var(--border)" }}>
-                              <td style={{ ...td, fontSize: 12, color: "var(--text-2)" }}>
-                                {editing ? (
-                                  <Select
-                                    value={draft.kind}
-                                    onChange={(v) =>
-                                      setMappingDraft((x) => (x ? { ...x, kind: v as MappingKind } : x))
-                                    }
-                                    options={(Object.keys(MAPPING_KIND_LABEL) as MappingKind[]).map((k) => ({
-                                      value: k,
-                                      label: MAPPING_KIND_LABEL[k],
-                                    }))}
-                                    size="sm"
-                                    ariaLabel="Mapping kind"
-                                    style={{ minWidth: 120 }}
-                                  />
-                                ) : (
-                                  MAPPING_KIND_LABEL[m.kind]
-                                )}
-                              </td>
-                              <td style={{ ...td, fontFamily: "var(--font-mono)", fontWeight: 600 }}>
-                                {editing && isKnowledge ? (
-                                  <input
-                                    value={draft.key}
-                                    onChange={(e) =>
-                                      setMappingDraft((x) => (x ? { ...x, key: e.target.value } : x))
-                                    }
-                                    style={inputStyle}
-                                  />
-                                ) : (
-                                  m.key
-                                )}
-                              </td>
-                              <td style={{ ...td, fontFamily: "var(--font-mono)" }}>
-                                {editing ? (
-                                  <input
-                                    value={draft.canonicalId}
-                                    onChange={(e) =>
-                                      setMappingDraft((x) =>
-                                        x ? { ...x, canonicalId: e.target.value } : x,
-                                      )
-                                    }
-                                    style={inputStyle}
-                                  />
-                                ) : (
-                                  m.canonicalId
-                                )}
-                              </td>
-                              <td style={{ ...td, fontSize: 12, color: "var(--text-2)" }}>
-                                <span
-                                  style={{
-                                    fontFamily: "var(--font-mono)",
-                                    fontSize: 11,
-                                    fontWeight: 700,
-                                    padding: "2px 6px",
-                                    borderRadius: 4,
-                                    background: isKnowledge
-                                      ? "color-mix(in srgb, var(--positive) 12%, transparent)"
-                                      : "color-mix(in srgb, var(--accent) 10%, transparent)",
-                                    color: isKnowledge ? "var(--positive)" : "var(--accent)",
-                                  }}
-                                >
-                                  {isKnowledge ? "brain" : "mod"}
-                                </span>
-                                {m.learnedFrom && (
-                                  <span
-                                    style={{
-                                      display: "block",
-                                      marginTop: 4,
-                                      fontFamily: "var(--font-mono)",
-                                      fontSize: 10,
-                                      color: "var(--text-3)",
-                                      maxWidth: 140,
-                                      overflow: "hidden",
-                                      textOverflow: "ellipsis",
-                                      whiteSpace: "nowrap",
-                                    }}
-                                    title={m.learnedFrom}
-                                  >
-                                    {m.learnedFrom}
-                                  </span>
-                                )}
-                              </td>
-                              <td
-                                style={{
-                                  ...td,
-                                  fontFamily: "var(--font-mono)",
-                                  fontSize: 12,
-                                  color: "var(--text-3)",
-                                }}
-                              >
-                                {Math.round((m.confidence ?? 0) * 100)}%
-                              </td>
-                              <td style={td}>
-                                {editing ? (
-                                  <RowActions
-                                    busy={busy}
-                                    onSave={() => {
-                                      if (!mappingDraft) return;
-                                      void saveMappingEdit(m, mappingDraft);
-                                    }}
-                                    onCancel={() => {
-                                      setEditingMappingKey(null);
-                                      setMappingDraft(null);
-                                    }}
-                                  />
-                                ) : (
-                                  <RowActions
-                                    busy={busy}
-                                    onEdit={() => {
-                                      setEditingMappingKey(rowId);
-                                      setMappingDraft({ ...m });
-                                      setAdding(false);
-                                      setEditingStageId(null);
-                                      setEditingDefectCode(null);
-                                      setEditingSizeId(null);
-                                    }}
-                                    onDelete={() => confirmDeleteMapping(m)}
-                                  />
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-                <p
-                  className="small"
-                  style={{ margin: "12px 0 0", color: "var(--text-3)", lineHeight: 1.45 }}
-                >
-                  Showing {filteredMappings.length} of {mappings.length} mapping
-                  {mappings.length === 1 ? "" : "s"}. “brain” rows live in company knowledge and
-                  are fully deletable. “mod” rows come from verified files — Save promotes them
-                  into the editable brain.
-                </p>
-              </Card>
-            )}
-          </div>
+                <SchemaDetail
+                  node={selectedNode}
+                  data={treeInput}
+                  busy={busy}
+                  mutate={mutate}
+                />
+              </div>
+            </div>
+          </Card>
         )}
 
         {/* Per-file interpretation — series + file dropdowns (continuous card) */}

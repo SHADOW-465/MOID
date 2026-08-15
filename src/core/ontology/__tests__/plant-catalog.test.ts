@@ -3,7 +3,7 @@
 // stage-specific target sets that caused the Excel's false "OK" verdicts stay
 // distinguishable from "no target".
 
-import { STAGES, DEFECTS, SIZES, DEFECT_TARGETS, plantCatalog, mergePlantCatalog, canonicalDefectCode } from "../plant-catalog";
+import { STAGES, STAGE_CATEGORIES, DEFECTS, SIZES, DEFECT_TARGETS, plantCatalog, mergePlantCatalog, canonicalDefectCode } from "../plant-catalog";
 import { StageDef, DefectDef, SizeDef } from "@/lib/contract/d1";
 import type { CompanyCatalog } from "@/core/ontology/store/catalog-store";
 
@@ -49,8 +49,17 @@ test("every stage belongs to a shop-floor section", () => {
   expect(cat("assembly")).toEqual([
     "visual", "balloon", "valve-fixing", "valve-integrity", "final", "primary-pack-inspection",
   ]);
-  expect(cat("secondary")).toEqual(["secondary"]);
+  // Eye punching and hanging are secondary-line work, not dipping.
+  expect(cat("secondary")).toEqual(["eye-punching", "hanging", "secondary"]);
   expect(cat("primary")).toContain("production");
+  expect(cat("primary")).not.toContain("eye-punching");
+});
+
+test("the three shop-floor sections are a fixed set — the schema tree locks them", () => {
+  expect(STAGE_CATEGORIES.map((c) => c.id)).toEqual(["primary", "secondary", "assembly"]);
+  // Renaming a section is a code edit, never a user action (see the schema tree
+  // design doc): the id is what every rollup keys on, the label is display only.
+  expect(STAGE_CATEGORIES.find((c) => c.id === "primary")!.label).toBe("Production Dipping");
 });
 
 test("defects are scoped to stages that exist, and the four vocabularies stay separate", () => {

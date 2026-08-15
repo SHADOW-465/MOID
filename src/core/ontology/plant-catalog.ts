@@ -51,13 +51,13 @@ export const STAGES: Stage[] = [
   { stageId: "production", label: "Production (Dipping)", effectiveFrom: null, effectiveTo: null,
     upstream: [], captures: [...PASS], ...FLOW, sizeWise: true, category: "primary" },
   { stageId: "eye-punching", label: "Eye Punching", effectiveFrom: null, effectiveTo: null,
-    upstream: ["production"], captures: [...PASS], ...FLOW, category: "primary" },
+    upstream: ["production"], captures: [...PASS], ...FLOW, category: "secondary" },
   { stageId: "leaching", label: "Leaching", effectiveFrom: null, effectiveTo: null,
     upstream: ["eye-punching"], captures: ["checked"], ...FLOW, category: "primary" },
   { stageId: "chlorination", label: "Chlorination", effectiveFrom: null, effectiveTo: null,
     upstream: ["leaching"], captures: ["checked"], ...FLOW, category: "primary" },
   { stageId: "hanging", label: "Hanging", effectiveFrom: null, effectiveTo: null,
-    upstream: ["chlorination"], captures: ["checked"], ...FLOW, category: "primary" },
+    upstream: ["chlorination"], captures: ["checked"], ...FLOW, category: "secondary" },
   { stageId: "gauge", label: "Gauge", effectiveFrom: null, effectiveTo: null,
     upstream: ["hanging"], captures: ["checked"], ...FLOW, category: "primary" },
   { stageId: "trimming", label: "Trimming", effectiveFrom: null, effectiveTo: null,
@@ -93,8 +93,14 @@ export const STAGE_CATEGORY: Record<string, StageCategory> = Object.fromEntries(
   STAGES.filter((s) => s.category).map((s) => [s.stageId, s.category as StageCategory]),
 );
 
+/**
+ * The plant's three sections. This list is FIXED — the Data Schema tree renders
+ * these as locked folders that cannot be renamed, added to, or deleted, so a
+ * deployment can't be reorganised and re-pointed at a different plant. What
+ * lives inside them (stages, defects, sizes, aliases) is fully editable.
+ */
 export const STAGE_CATEGORIES: { id: StageCategory; label: string }[] = [
-  { id: "primary", label: "Primary (P1–P9)" },
+  { id: "primary", label: "Production Dipping" },
   { id: "secondary", label: "Secondary (P10–P14)" },
   { id: "assembly", label: "Assembly (P15–P27)" },
 ];

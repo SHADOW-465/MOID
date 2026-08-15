@@ -76,3 +76,35 @@ test("the backfill runs once — a stage deleted on Data Schema afterwards stays
   const loaded = await loadCatalog("acme");
   expect(loaded.stages.map((s) => s.stageId)).not.toContain("secondary");
 });
+
+test("a stored catalog holding the old section for eye-punching/hanging is realigned once", async () => {
+  const store = getCatalogStore();
+  const authored = plantCatalog();
+  await store.put("acme", {
+    ...authored,
+    // Seeded before these two moved to the secondary line.
+    stages: authored.stages.map((s) =>
+      s.stageId === "eye-punching" || s.stageId === "hanging"
+        ? { ...s, category: "primary" as const }
+        : s,
+    ),
+    lastMergedFrom: "plant-catalog@secondary-production",
+  });
+
+  const loaded = await loadCatalog("acme");
+  const catOf = (id: string) => loaded.stages.find((s) => s.stageId === id)?.category;
+  expect(catOf("eye-punching")).toBe("secondary");
+  expect(catOf("hanging")).toBe("secondary");
+  expect(catOf("production")).toBe("primary");
+
+  // Realignment is a one-time correction: a later hand edit sticks.
+  const tagged = await store.get("acme");
+  await store.put("acme", {
+    ...tagged,
+    stages: tagged.stages.map((s) =>
+      s.stageId === "hanging" ? { ...s, category: "primary" as const } : s,
+    ),
+  });
+  const again = await loadCatalog("acme");
+  expect(again.stages.find((s) => s.stageId === "hanging")?.category).toBe("primary");
+});
