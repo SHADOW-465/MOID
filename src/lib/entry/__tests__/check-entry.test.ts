@@ -1,0 +1,202 @@
+import { checkEntry, summariseLedger, type EntryDraft } from "../check-entry";
+import { entryIdentity, identityKey, sizeFromLot } from "../identity";
+
+const TODAY = "2026-08-15";
+
+function draft(over: Partial<EntryDraft> = {}): EntryDraft {
+  return {
+    lot: "26H25-18",
+    station: "visual",
+    stationLabel: "Visual Inspection",
+    size: "18Fr",
+    date: TODAY,
+    checked: 1326,
+    accepted: 1163,
+    hold: 124,
+    rejected: 39,
+    defectSum: 39,
+    capturesAccepted: true,
+    capturesHold: true,
+    capturesRejected: true,
+    capturesDefects: true,
+    ...over,
+  };
+}
+
+/** A saved direct entry, in the shape summariseLedger reads. */
+function saved(
+  lot: string,
+  station: string,
+  vals: { checked: number; accepted?: number; rejected?: number; date?: string; pass?: number },
+) {
+  const base = {
+    stageId: station,
+    batchNo: lot,
+    extractedBy: "direct-entry",
+    occurredOn: { start: vals.date ?? TODAY },
+    customFields: vals.pass && vals.pass > 1 ? { pass: vals.pass } : {},
+    provenance: { sheet: "Day Shift" },
+  };
+  return [
+    { ...base, eventType: "production", quantity: vals.checked },
+    { ...base, eventType: "inspection", disposition: "accepted", quantity: vals.accepted ?? 0 },
+    { ...base, eventType: "inspection", disposition: "rejected", quantity: vals.rejected ?? 0 },
+  ];
+}
+
+const EMPTY = new Map();
+
+describe("identity", () => {
+  it("derives the size from the lot code — the code is authoritative", () => {
+    expect(sizeFromLot("26H25-18")).toBe("Fr18");
+    expect(sizeFromLot("26G01-6")).toBe("Fr6");
+    expect(sizeFromLot("nonsense")).toBeNull();
+  });
+
+  it("keys pass 1 without a suffix so pre-pass rows still match", () => {
+    expect(identityKey(entryIdentity("26H25-18", "visual")!)).toBe("26H25-18|visual");
+    expect(identityKey(entryIdentity("26H25-18", "visual", 2)!)).toBe("26H25-18|visual|2");
+  });
+
+  it("folds lot-code spellings onto one identity", () => {
+    expect(identityKey(entryIdentity("26H2518", "visual")!)).toBe(
+      identityKey(entryIdentity("26H25-18", "visual")!),
+    );
+  });
+});
+
+describe("checkEntry — blocks", () => {
+  it("passes a clean entry", () => {
+    const v = checkEntry(draft(), EMPTY, TODAY);
+    expect(v.blocks).toEqual([]);
+    expect(v.canSave).toBe(true);
+  });
+
+  it("refuses a lot code that is not a lot code", () => {
+    const v = checkEntry(draft({ lot: "26025-18" }), EMPTY, TODAY);
+    expect(v.canSave).toBe(false);
+    expect(v.blocks.map((b) => b.code)).toContain("lot-code-invalid");
+  });
+
+  it("refuses a size that disagrees with the lot code", () => {
+    const v = checkEntry(draft({ size: "14Fr" }), EMPTY, TODAY);
+    expect(v.blocks.map((b) => b.code)).toContain("size-disagrees-with-lot");
+    expect(v.blocks.find((b) => b.code === "size-disagrees-with-lot")!.message).toContain("Fr18");
+  });
+
+  it("refuses counts that do not balance", () => {
+    const v = checkEntry(draft({ hold: 0 }), EMPTY, TODAY);
+    expect(v.blocks.map((b) => b.code)).toContain("counts-do-not-balance");
+  });
+
+  it("refuses defect reasons totalling more than the rejected", () => {
+    const v = checkEntry(draft({ defectSum: 44 }), EMPTY, TODAY);
+    expect(v.blocks.map((b) => b.code)).toContain("defects-exceed-rejected");
+  });
+
+  it("refuses a future date but allows a backdated one with a note", () => {
+    expect(checkEntry(draft({ date: "2026-08-16" }), EMPTY, TODAY).blocks.map((b) => b.code))
+      .toContain("date-in-future");
+    const back = checkEntry(draft({ date: "2026-08-12" }), EMPTY, TODAY);
+    expect(back.canSave).toBe(true);
+    expect(back.notes.map((n) => n.code)).toContain("date-backdated");
+  });
+
+  it("refuses an empty entry", () => {
+    expect(checkEntry(draft({ checked: 0, accepted: 0, hold: 0, rejected: 0, defectSum: 0 }), EMPTY, TODAY)
+      .blocks.map((b) => b.code)).toContain("nothing-checked");
+  });
+});
+
+describe("checkEntry — the lot already being at this station", () => {
+  const ledger = summariseLedger(saved("26H25-18", "visual", { checked: 1326, accepted: 1163, rejected: 39 }));
+
+  it("warns rather than blocks — the operator may be correcting", () => {
+    const v = checkEntry(draft(), ledger, TODAY);
+    expect(v.canSave).toBe(true);
+    expect(v.warnings.map((w) => w.code)).toContain("station-already-recorded");
+  });
+
+  it("catches it even when the date differs — this is the bug the plant hit", () => {
+    // With the date in the identity, the SAME lot re-entered at the SAME
+    // station on another day looked brand new and was filed in silence.
+    const v = checkEntry(draft({ date: "2026-08-14" }), ledger, TODAY);
+    expect(v.warnings.map((w) => w.code)).toContain("station-already-recorded");
+  });
+
+  it("says nothing about a DIFFERENT station on the same lot", () => {
+    const v = checkEntry(draft({ station: "balloon", stationLabel: "Balloon" }), ledger, TODAY);
+    expect(v.warnings.map((w) => w.code)).not.toContain("station-already-recorded");
+    expect(v.canSave).toBe(true);
+  });
+
+  it("never blocks a later station just because earlier gates are done", () => {
+    // The regression that locked finished lots out of Valve Fixing and every
+    // primary/secondary station.
+    const finished = summariseLedger([
+      ...saved("26H25-18", "visual", { checked: 100 }),
+      ...saved("26H25-18", "balloon", { checked: 100 }),
+      ...saved("26H25-18", "valve-integrity", { checked: 100 }),
+      ...saved("26H25-18", "final", { checked: 100 }),
+    ]);
+    for (const station of ["valve-fixing", "primary-pack-inspection", "production", "trimming"]) {
+      const v = checkEntry(
+        draft({ station, capturesHold: false, hold: 0, accepted: 1287, defectSum: 39 }),
+        finished,
+        TODAY,
+      );
+      expect(v.blocks.map((b) => b.code)).not.toContain("station-already-recorded");
+      expect(v.canSave).toBe(true);
+    }
+  });
+
+  it("stays quiet while editing that same row", () => {
+    const v = checkEntry(draft({ editing: true }), ledger, TODAY);
+    expect(v.warnings.map((w) => w.code)).not.toContain("station-already-recorded");
+  });
+});
+
+describe("checkEntry — declared repeat passes", () => {
+  const ledger = summariseLedger(saved("26H25-18", "visual", { checked: 700, accepted: 700 }));
+
+  it("a second pass needs a reason", () => {
+    const v = checkEntry(draft({ pass: 2 }), ledger, TODAY);
+    expect(v.blocks.map((b) => b.code)).toContain("pass-needs-reason");
+  });
+
+  it("a reasoned second pass saves, and does not collide with the first", () => {
+    const v = checkEntry(draft({ pass: 2, passReason: "Re-inspected after rework" }), ledger, TODAY);
+    expect(v.canSave).toBe(true);
+    expect(v.warnings.map((w) => w.code)).not.toContain("station-already-recorded");
+  });
+
+  it("warns when a second pass has no first pass behind it", () => {
+    const v = checkEntry(draft({ pass: 2, passReason: "Split run" }), EMPTY, TODAY);
+    expect(v.warnings.map((w) => w.code)).toContain("pass-without-first");
+  });
+});
+
+describe("checkEntry — same counts under a different lot code", () => {
+  const ledger = summariseLedger(saved("26H24-18", "visual", { checked: 1326, accepted: 1163, rejected: 39 }));
+
+  it("flags identical counts filed under another lot on the same day", () => {
+    const v = checkEntry(draft(), ledger, TODAY);
+    expect(v.warnings.map((w) => w.code)).toContain("same-counts-different-lot");
+  });
+
+  it("stays quiet when the counts genuinely differ", () => {
+    const v = checkEntry(draft({ checked: 1000, accepted: 900, hold: 61, rejected: 39 }), ledger, TODAY);
+    expect(v.warnings.map((w) => w.code)).not.toContain("same-counts-different-lot");
+  });
+});
+
+describe("summariseLedger", () => {
+  it("ignores Excel-sourced events — an import is not superseded by typing", () => {
+    const excel = saved("26H25-18", "visual", { checked: 1326 }).map((e) => ({
+      ...e,
+      extractedBy: "mod",
+      provenance: { sheet: "Sheet1" },
+    }));
+    expect(summariseLedger(excel).size).toBe(0);
+  });
+});

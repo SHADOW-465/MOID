@@ -46,7 +46,7 @@ import {
   toCanonicalSize,
   toDisplaySize,
 } from "@/lib/entry/batch-id";
-import { existingLedgerEntry, suspectedDuplicateBatch } from "@/lib/entry/validate-entry";
+import { checkEntry, summariseLedger } from "@/lib/entry/check-entry";
 import {
   describeShiftWindow,
   isWithinShiftWindow,
@@ -58,7 +58,6 @@ import { readPrefill, clearPrefill } from "@/lib/agent/prefill";
 import { useEvents } from "@/components/app/EventsContext";
 import { usePersona } from "@/components/app/PersonaContext";
 import QtyInput from "@/components/entry/QtyInput";
-import ExceptionModal from "@/components/entry/ExceptionModal";
 import { loadDraft, saveDraft } from "@/lib/entry/draft";
 import BatchIdField from "@/components/entry/BatchIdField";
 import { buildBatchProgress, progressFor } from "@/lib/analytics/batch-progress";
@@ -91,9 +90,6 @@ interface BatchDraft {
   accept: number; hold: number; reject: number;
   defects: Record<string, number>; remarks: string;
 }
-
-/** How the operator resolved defect-sum vs Rejected before save. */
-type A12Choice = "set-reject" | "keep-incomplete" | null;
 
 /** A clarification the ledger raised about a saved row (V-001, V-004, V-014…). */
 interface EntryIssue {
@@ -164,9 +160,6 @@ export default function BatchMatrixEntry({
    * operator moved to the next day's entry.
    */
   const [batchDate, setBatchDate] = useState(today);
-  const [exceptionOpen, setExceptionOpen] = useState(false);
-  const [exceptionKind, setExceptionKind] = useState<"qty" | "defect" | null>(null);
-  const [exceptionReason, setExceptionReason] = useState("");
   const [tick, setTick] = useState(0);
   const [requestingEdit, setRequestingEdit] = useState(false);
   const [checked, setChecked] = useState(0);
@@ -204,14 +197,20 @@ export default function BatchMatrixEntry({
   /** Twin batch code the operator confirmed this one is genuinely distinct
    *  from (matching numbers, different lot) — stamped onto the next save. */
   const duplicateConfirmedOfRef = useRef<string | null>(null);
+  /**
+   * Which time this lot came through this station. 1 for the normal case — a
+   * lot goes through a station once, so a second entry is a correction. The
+   * operator can declare a genuine repeat, which then demands a reason; the
+   * escape hatch exists so nobody is ever cornered into inventing a fake lot
+   * code to get their work saved.
+   */
+  const [pass, setPass] = useState(1);
+  const [passReason, setPassReason] = useState("");
   /** Clarifications the ledger raised about the row just saved. Sticky until
    *  dismissed — they were computed and discarded unread before this. */
   const [lastIssues, setLastIssues] = useState<
     { batchId: string; stage: string; issues: EntryIssue[] } | null
   >(null);
-  /** Defect sum ≠ Rejected — operator must choose before save (never silent). */
-  const [a12, setA12] = useState<{ defectSum: number; reject: number } | null>(null);
-  const [a12Choice, setA12Choice] = useState<A12Choice>(null);
   /** Once the operator edits any qty, never auto-overwrite Checked from upstream. */
   const userTouchedQty = useRef(false);
   /** Prefill key already applied for this (batch, size, station) context. */
@@ -511,6 +510,57 @@ export default function BatchMatrixEntry({
         : `${checked} = Accept ${accept} + Reject ${reject}`;
 
   const dateIsToday = date === today();
+
+  // ── The verdict ─────────────────────────────────────────────────────────
+  // Recomputed as they type, so a block is visible before the save button is
+  // ever pressed rather than appearing as a dialog after it.
+  const ledgerSummary = useMemo(
+    () => summariseLedger((events ?? []) as AuditEventLike[]),
+    [events],
+  );
+
+  const verdict = useMemo(
+    () =>
+      checkEntry(
+        {
+          lot: batchId.trim().toUpperCase(),
+          station: stageId,
+          stationLabel: processName,
+          pass,
+          passReason,
+          size,
+          date,
+          checked,
+          accepted: showAccept ? accept : 0,
+          hold: capturesHold ? hold : 0,
+          rejected: showReject ? reject : 0,
+          defectSum,
+          capturesAccepted: showAccept,
+          capturesHold,
+          capturesRejected: showReject,
+          capturesDefects: !hideDefects,
+          editing: !!editingId,
+        },
+        ledgerSummary,
+        today(),
+      ),
+    [
+      batchId, stageId, processName, pass, passReason, size, date, checked, accept, hold,
+      reject, defectSum, showAccept, capturesHold, showReject, hideDefects, editingId,
+      ledgerSummary,
+    ],
+  );
+
+  // Acknowledgements are per-warning, so one blanket confirm can never stand in
+  // as consent to a different problem. Reset whenever the verdict changes shape.
+  const [acked, setAcked] = useState<Record<string, boolean>>({});
+  const [ackReasons, setAckReasons] = useState<Record<string, string>>({});
+  const warningKey = verdict.warnings.map((w) => w.code).join(",");
+  useEffect(() => {
+    setAcked({});
+    setAckReasons({});
+  }, [warningKey]);
+
   const shiftConfig = useMemo(() => readShiftWindowConfig(), [tick]);
   const withinShift = useMemo(
     () => isWithinShiftWindow(shift, new Date(), shiftConfig),
@@ -534,6 +584,10 @@ export default function BatchMatrixEntry({
   // Owner: canWrite false. Operator: needs open shift window or GM grant. GM: always.
   const mayEdit =
     canWrite && (persona !== "operator" || withinShift || hasGrant);
+
+  const unackedWarnings = verdict.warnings.filter((w) => !acked[w.code]);
+  const saveDisabled = saving || !mayEdit || !verdict.canSave || unackedWarnings.length > 0;
+
 
   const identityCols = "minmax(150px, 1.1fr) minmax(110px, 0.9fr) minmax(140px, 1fr)";
   const fieldCount =
@@ -561,8 +615,6 @@ export default function BatchMatrixEntry({
     setDefects({});
     setRemarks("");
     setPrefillNote(null);
-    setA12(null);
-    setA12Choice(null);
     userTouchedQty.current = false;
     prefillAppliedKey.current = null;
     duplicateConfirmedOfRef.current = null;
@@ -571,9 +623,6 @@ export default function BatchMatrixEntry({
   const touchQty = useCallback(() => {
     userTouchedQty.current = true;
     setPrefillNote(null);
-    // Editing after a mismatch prompt invalidates the pending A12 choice.
-    setA12(null);
-    setA12Choice(null);
   }, []);
 
   /**
@@ -756,6 +805,8 @@ export default function BatchMatrixEntry({
       savedAt: new Date().toISOString(),
       synced: false,
       duplicateConfirmedOf: duplicateConfirmedOfRef.current,
+      pass,
+      passReason: pass > 1 ? passReason.trim() : null,
     };
   }
 
@@ -799,8 +850,6 @@ export default function BatchMatrixEntry({
       );
     } finally {
       setSaving(false);
-      setA12(null);
-      setA12Choice(null);
     }
   }
 
@@ -868,12 +917,15 @@ export default function BatchMatrixEntry({
     }
   }
 
+  /**
+   * Tell the GM an entry was saved over a warning. `kind` is the warning's own
+   * code from checkEntry, so a new rule needs no change here.
+   */
   async function notifyException(opts: {
-    kind: "qty_mismatch" | "defect_mismatch";
+    kind: string;
     reason: string;
     defectSum?: number;
     reject?: number;
-    a12Choice?: "set-reject" | "keep-incomplete";
   }) {
     const rej = opts.reject ?? reject;
     const dSum = opts.defectSum;
@@ -886,15 +938,11 @@ export default function BatchMatrixEntry({
       dSum != null
         ? ` · Defects sum ${dSum}${rej !== dSum ? ` vs Rejected ${rej}` : ""}`
         : "";
-    const title =
-      opts.kind === "qty_mismatch"
-        ? "Entry saved with quantity exception"
-        : "Entry saved with defect exception";
+    const title = `Entry saved over a warning: ${opts.kind}`;
     const body =
       `${operator.trim() || "Operator"} saved ${batchId.trim().toUpperCase() || "(no batch)"} · ` +
       `${processName} · ${size} · ${date}. ` +
-      (opts.kind === "qty_mismatch" ? balanceLine : `Defects ${dSum ?? "?"} vs Rejected ${rej}`) +
-      `. Reason: ${opts.reason}`;
+      `${balanceLine}. Reason: ${opts.reason}`;
 
     await postNotification({
       type: "entry_exception",
@@ -920,8 +968,7 @@ export default function BatchMatrixEntry({
         defectSum: dSum,
         reason: opts.reason,
         path: "/data-entry",
-        detail: opts.kind === "qty_mismatch" ? balanceLine + defectLine : `Defects ${dSum} vs Rejected ${rej}`,
-        a12Choice: opts.a12Choice,
+        detail: balanceLine + defectLine,
       },
     });
   }
@@ -970,198 +1017,46 @@ export default function BatchMatrixEntry({
       return;
     }
 
-    // A lot code that isn't a lot code can never fold onto its twin: "26025-18"
-    // and "26H25-18" are the same physical lot, but only one parses, so the
-    // ledger carries both and every batch-keyed view counts the lot twice.
-    const batchKey = batchId.trim().toUpperCase();
-    if (!isValidBatchId(batchKey)) {
+    // Every rule lives in checkEntry — one pure function, tested in node.
+    // The chain of confirm() dialogs this replaces could not be tested at all,
+    // which is how a guard meaning "this station is already recorded" shipped
+    // keyed on "all four assembly gates are done" and locked finished lots out
+    // of every other station.
+    if (verdict.blocks.length > 0) {
+      setErr(verdict.blocks[0].message);
+      document.getElementById("entry-verdict")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+
+    const unacked = verdict.warnings.filter((w) => !acked[w.code]);
+    if (unacked.length > 0) {
       setErr(
-        `"${batchKey || "(empty)"}" isn't a lot code. Expected YY + month letter (A–L) + DD + size — ` +
-          `e.g. ${buildBatchId(batchDate, size) ?? "26H25-18"}.`,
+        unacked.length === 1
+          ? "One thing needs your confirmation before saving."
+          : `${unacked.length} things need your confirmation before saving.`,
       );
+      document.getElementById("entry-verdict")?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
 
-    // NOTE: there is deliberately no "this lot is finished" block here.
-    //
-    // A previous version blocked any save when lotProgress.status was
-    // "complete", but "complete" only means the four ASSEMBLY QUALITY GATES
-    // have entries — it says nothing about Valve Fixing, Primary Pack
-    // Inspection, or any primary/secondary station. So finishing the gates
-    // locked the lot out of every other station permanently. The real signal
-    // for "you are re-entering something" is that THIS station already has an
-    // entry for THIS lot, which existingLedgerEntry checks below.
-
-    // /api/ingest supersedes direct entry by date · stage · size · batch. If a
-    // revision changes any of those, the OLD ledger row keys differently and
-    // survives — the edit would double-count instead of replacing. Say so.
-    if (editingId) {
-      const orig = saved.find((b) => b.id === editingId);
-      if (
-        orig &&
-        (orig.date !== date ||
-          orig.stageId !== stageId ||
-          orig.sizeCanonical !== (toCanonicalSize(size) ?? size) ||
-          orig.batchId !== batchId.trim().toUpperCase())
-      ) {
-        if (
-          !confirm(
-            `You changed the date, stage, size, or batch ID of a saved entry.\n\n` +
-              `The original ledger row (${orig.date} · ${orig.processName} · ${orig.size} · ${orig.batchId}) ` +
-              `will NOT be replaced — it stays and this becomes a second entry.\n\n` +
-              `Save as a separate entry anyway?`,
-          )
-        ) {
-          return;
-        }
-        setEditing(null);
+    // A warning accepted with a reason is an exception the GM should see.
+    for (const w of verdict.warnings) {
+      const reason = ackReasons[w.code]?.trim();
+      if (reason) {
+        await notifyException({ kind: w.code, reason }).catch(() => {});
       }
     }
 
-    // Same slot, saved twice. The ledger keeps ONE entry per lot·gate·size·day,
-    // so this save replaces the earlier one — the operator sees two entries in
-    // the shift log but the second quietly overwrote the first. Say it first.
-    if (!editingId) {
-      const prior = existingLedgerEntry((events ?? []) as AuditEventLike[], {
-        date,
-        stageId,
-        size: sizeCanon ?? size,
-        batchId: batchKey,
-      });
-      if (
-        prior &&
-        !confirm(
-          `${batchKey} · ${processName} · ${size} on ${date} is already on the ledger ` +
-            `(${prior.checked} checked, ${prior.rejected} rejected${prior.shift ? `, ${prior.shift}` : ""}).\n\n` +
-            `Saving REPLACES it — the ledger keeps one entry per lot, gate, size and day.\n\n` +
-            `Replace it? Cancel and change the Batch ID or date if this is a different run.`,
-        )
-      ) {
-        return;
-      }
-    }
-
-    // Same size, same gate, same day, same three numbers, but a DIFFERENT lot
-    // code — almost always the same physical lot entered twice with the month
-    // letter or day mistyped the second time. Both codes are individually
-    // valid, so they never collide as the same ledger slot; this is the only
-    // place that catches it.
-    if (!editingId) {
-      const dupe = suspectedDuplicateBatch((events ?? []) as AuditEventLike[], {
-        date,
-        stageId,
-        size: sizeCanon ?? size,
-        batchId: batchKey,
-        checked,
-        accepted: showAccept ? accept : 0,
-        rejected: showReject ? reject : 0,
-      });
-      if (
-        dupe &&
-        !confirm(
-          `Batch ${dupe.batch} on the ledger (${processName} · ${size} · ${date}) has the exact same ` +
-            `checked/accepted/rejected counts as ${batchKey}.\n\n` +
-            `This usually means the same lot was typed twice with the batch code slightly wrong the ` +
-            `second time (e.g. a different month letter or day).\n\n` +
-            `Save anyway as a separate lot? Cancel to fix the Batch ID instead.`,
-        )
-      ) {
-        return;
-      }
-      // Stamp the twin's code so every later view (shift list, View Source,
-      // audit) can badge both rows as a confirmed coincidence — not a mistake.
-      duplicateConfirmedOfRef.current = dupe ? dupe.batch : null;
-    } else {
-      duplicateConfirmedOfRef.current = null;
-    }
-
-    // Balance check — popup + mandatory reason; never rewrite fields silently.
-    // qtyMismatch with checked===0 is blocked by the save button.
-    if (showReject && checked > 0 && checked !== sumParts) {
-      setExceptionKind("qty");
-      setExceptionReason("");
-      setExceptionOpen(true);
-      return;
-    }
-
-    // Defect vs Rejected (A12) — always present both options; never auto-apply.
-    if (defectMismatch) {
-      setA12({ defectSum, reject });
-      setA12Choice(null);
-      return;
-    }
-
-    await finalizeSave(buildPendingRecord());
-  }
-
-  async function confirmExceptionAndSave() {
-    const reason = exceptionReason.trim();
-    if (reason.length < 4) return;
-
-    if (exceptionKind === "qty") {
-      // After qty exception, still need A12 if defects disagree.
-      if (defectMismatch) {
-        setExceptionOpen(false);
-        setA12({ defectSum, reject });
-        setA12Choice(null);
-        // Stash reason into remarks so it survives A12 path.
-        setRemarks((r) => (r ? `${r} | Exception: ${reason}` : `Exception: ${reason}`));
-        await notifyException({ kind: "qty_mismatch", reason });
-        setExceptionKind(null);
-        return;
-      }
-      const rec = buildPendingRecord();
-      rec.remarks = (rec.remarks ? rec.remarks + " | " : "") + `Qty mismatch exception: ${reason}`;
-      setExceptionOpen(false);
-      setExceptionKind(null);
-      await notifyException({ kind: "qty_mismatch", reason });
-      await finalizeSave(rec);
-      return;
-    }
-
-    if (exceptionKind === "defect" && a12 && a12Choice === "keep-incomplete") {
-      const rec = buildPendingRecord();
-      rec.remarks =
-        (rec.remarks ? rec.remarks + " | " : "") +
-        `A12: Kept Rejected=${a12.reject}; defects incomplete (sum ${a12.defectSum}). Reason: ${reason}`;
-      setExceptionOpen(false);
-      setExceptionKind(null);
-      await notifyException({
-        kind: "defect_mismatch",
-        reason,
-        defectSum: a12.defectSum,
-        reject: a12.reject,
-        a12Choice: "keep-incomplete",
-      });
-      await finalizeSave(rec);
-    }
-  }
-
-  async function applyA12AndSave() {
-    if (!a12 || !a12Choice) {
-      setErr("Choose how to resolve the defect / reject mismatch.");
-      return;
-    }
-    if (a12Choice === "keep-incomplete") {
-      // Mandatory reason via modal — never save incomplete defects silently.
-      setExceptionKind("defect");
-      setExceptionReason("");
-      setExceptionOpen(true);
-      return;
-    }
-    let nextReject = reject;
-    // "set-reject" now means "let me finish the defect reasons" — Rejected is
-    // the quantity balance and is never rewritten to match a partial itemisation.
-    if (a12Choice === "set-reject") {
-      setA12(null);
-      setA12Choice(null);
-      setMsg(`Add the missing ${Math.max(a12.reject - a12.defectSum, 0)} to the defect reasons below, then save.`);
-      document.getElementById("defect-reasons")?.scrollIntoView({ behavior: "smooth", block: "center" });
-      return;
-    }
-    const rec = buildPendingRecord(nextReject);
+    const rec = buildPendingRecord();
+    const reasons = verdict.warnings
+      .map((w) => (ackReasons[w.code]?.trim() ? `${w.code}: ${ackReasons[w.code].trim()}` : null))
+      .filter(Boolean)
+      .join(" | ");
+    if (reasons) rec.remarks = rec.remarks ? `${rec.remarks} | ${reasons}` : reasons;
     await finalizeSave(rec);
   }
+
+
 
   /** Load a logged row back into the form above for revision. */
   function editRow(rec: ShiftBatchRecord) {
@@ -1194,8 +1089,6 @@ export default function BatchMatrixEntry({
     userTouchedQty.current = true;
     prefillAppliedKey.current = null;
     setPrefillNote(null);
-    setA12(null);
-    setA12Choice(null);
     setEditing(rec.id);
     setPreviewId(null);
     setMsg(null);
@@ -2124,62 +2017,108 @@ export default function BatchMatrixEntry({
         </div>
       )}
 
-      {a12 && (
-        <div
-          style={{
-            marginBottom: 16,
-            padding: 14,
-            borderRadius: 10,
-            border: "1px solid var(--status-warn, #d97706)",
-            background: "var(--surface)",
-          }}
-        >
-          <div style={{ fontWeight: 700, marginBottom: 8 }}>
-            {a12.defectSum > a12.reject
-              ? "More defects than rejected pieces"
-              : `${a12.reject - a12.defectSum} rejected ${a12.reject - a12.defectSum === 1 ? "piece has" : "pieces have"} no reason yet`}
-          </div>
-          <p className="small" style={{ color: "var(--text-2)", marginBottom: 10 }}>
-            {a12.reject} rejected · {a12.defectSum} explained by defect reasons.{" "}
-            {a12.defectSum > a12.reject
-              ? "A defect count is too high, or Accept / Hold is wrong — the two cannot both be right."
-              : "Rejected comes from the quantity balance and is not changed by this choice."}
-          </p>
-          <label style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6, fontSize: 13, cursor: "pointer" }}>
-            <input
-              type="radio"
-              name="a12"
-              checked={a12Choice === "set-reject"}
-              onChange={() => setA12Choice("set-reject")}
-            />
-            Go back — I&apos;ll finish the defect reasons
-          </label>
-          <label style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, fontSize: 13, cursor: "pointer" }}>
-            <input
-              type="radio"
-              name="a12"
-              checked={a12Choice === "keep-incomplete"}
-              onChange={() => setA12Choice("keep-incomplete")}
-            />
-            Save anyway — the cause of the remaining {Math.max(a12.reject - a12.defectSum, 0)} is not known
-          </label>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" onClick={applyA12AndSave} disabled={saving || !a12Choice} style={btnPrimary}>
-              Apply after I confirm
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setA12(null);
-                setA12Choice(null);
+      {/* One panel for everything wrong with this entry. Blocks stop the save;
+          warnings need a per-item acknowledgement so a single confirm can never
+          stand in as consent to a different problem. */}
+      {(verdict.blocks.length > 0 || verdict.warnings.length > 0 || verdict.notes.length > 0) && (
+        <div id="entry-verdict" style={{ display: "grid", gap: 8, marginBottom: 14 }}>
+          {verdict.blocks.map((b) => (
+            <div
+              key={b.code}
+              role="alert"
+              style={{
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: "1px solid color-mix(in srgb, var(--critical) 45%, transparent)",
+                background: "var(--critical-weak)",
               }}
-              style={btnGhost}
             >
-              Cancel
-            </button>
-          </div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--critical)" }}>{b.message}</div>
+              {b.action && (
+                <div className="small" style={{ color: "var(--text-2)", marginTop: 3, lineHeight: 1.5 }}>
+                  {b.action}
+                </div>
+              )}
+            </div>
+          ))}
+
+          {verdict.warnings.map((w) => {
+            const on = !!acked[w.code];
+            const needsReason = w.code === "rejected-not-fully-explained";
+            return (
+              <div
+                key={w.code}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: `1px solid color-mix(in srgb, var(--warning) ${on ? 25 : 50}%, transparent)`,
+                  background: on ? "var(--surface-2)" : "var(--warning-weak)",
+                }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 700, color: on ? "var(--text-2)" : "var(--warning)" }}>
+                  {w.message}
+                </div>
+                {w.action && (
+                  <div className="small" style={{ color: "var(--text-2)", marginTop: 3, lineHeight: 1.5 }}>
+                    {w.action}
+                  </div>
+                )}
+                <label style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 8, fontSize: 12.5, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    onChange={(e) => setAcked((cur) => ({ ...cur, [w.code]: e.target.checked }))}
+                  />
+                  {w.code === "station-already-recorded"
+                    ? "Yes — replace the entry that is already there"
+                    : "I have checked this and want to save anyway"}
+                </label>
+                {/* The escape hatch. Strict-by-default would otherwise corner an
+                    operator whose lot genuinely came through twice into
+                    inventing a fake lot code to get the work saved. */}
+                {w.code === "station-already-recorded" && (
+                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed var(--border-strong)" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={pass > 1}
+                        onChange={(e) => {
+                          setPass(e.target.checked ? 2 : 1);
+                          if (!e.target.checked) setPassReason("");
+                        }}
+                      />
+                      No — this lot came through {processName} again (keep both)
+                    </label>
+                    {pass > 1 && (
+                      <input
+                        value={passReason}
+                        onChange={(e) => setPassReason(e.target.value)}
+                        placeholder="Why did it come through again? (required)"
+                        style={{ ...inp, marginTop: 7 }}
+                      />
+                    )}
+                  </div>
+                )}
+                {on && needsReason && (
+                  <input
+                    value={ackReasons[w.code] ?? ""}
+                    onChange={(e) => setAckReasons((cur) => ({ ...cur, [w.code]: e.target.value }))}
+                    placeholder="Why is the cause unknown? (sent to the GM)"
+                    style={{ ...inp, marginTop: 7 }}
+                  />
+                )}
+              </div>
+            );
+          })}
+
+          {verdict.notes.map((n) => (
+            <div key={n.code} className="small" style={{ color: "var(--text-3)", paddingLeft: 2 }}>
+              {n.message}
+            </div>
+          ))}
         </div>
       )}
+
 
       {err && (
         <div style={{ marginBottom: 12, padding: "10px 12px", borderRadius: 8, background: "var(--negative-weak, #fee2e2)", color: "var(--status-bad)", fontSize: 13 }}>{err}</div>
@@ -2300,52 +2239,24 @@ export default function BatchMatrixEntry({
         <button
           type="button"
           onClick={submitForm}
-          disabled={saving || !!a12 || checked === 0 || !mayEdit}
+          // A block is visible in the panel above, so the button says no rather
+          // than accepting the click and answering with a dialog.
+          disabled={saveDisabled}
+          title={verdict.blocks[0]?.message}
           style={{
             ...btnPrimary,
             marginLeft: "auto",
             padding: "10px 22px",
             fontSize: 14,
             fontWeight: 700,
-            opacity: saving || !!a12 || checked === 0 || !mayEdit ? 0.5 : 1,
-            cursor: saving || !!a12 || checked === 0 || !mayEdit ? "not-allowed" : "pointer",
+            opacity: saveDisabled ? 0.5 : 1,
+            cursor: saveDisabled ? "not-allowed" : "pointer",
           }}
         >
           {saveLabel}
         </button>
       </div>
 
-      <ExceptionModal
-        open={exceptionOpen}
-        title={
-          exceptionKind === "defect"
-            ? "Defect sum does not match Rejected"
-            : "Quantity balance mismatch"
-        }
-        lines={
-          exceptionKind === "defect" && a12
-            ? [
-                { label: "Defect sum", value: String(a12.defectSum) },
-                { label: "Rejected", value: String(a12.reject) },
-                { label: "Batch", value: batchId },
-                { label: "Type", value: String(productType) },
-              ]
-            : [
-                { label: qtyLabel, value: String(checked) },
-                { label: isPrimary ? "Accept+Reject" : "Accept+Hold+Reject", value: String(sumParts) },
-                { label: "Batch", value: batchId },
-                { label: "Type", value: String(productType) },
-              ]
-        }
-        reason={exceptionReason}
-        onReasonChange={setExceptionReason}
-        onConfirm={() => void confirmExceptionAndSave()}
-        onCancel={() => {
-          setExceptionOpen(false);
-          setExceptionKind(null);
-        }}
-        busy={saving}
-      />
 
       {/* Shift list */}
       <div>

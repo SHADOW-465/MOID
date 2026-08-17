@@ -66,6 +66,11 @@ export function toStageDayRecord(rec: ShiftBatchRecord, ingestionId: string): St
       ...(rec.duplicateConfirmedOf
         ? { confirmedDistinctFrom: rec.duplicateConfirmedOf }
         : {}),
+      // Part of the entry's identity, so it has to reach the ledger — a repeat
+      // pass that is not written down collides with its own first pass.
+      ...(rec.pass && rec.pass > 1
+        ? { pass: rec.pass, passReason: rec.passReason ?? null }
+        : {}),
       ...(isPrimary && rec.trolleys != null && rec.trolleys > 0
         ? { trolleysProduced: rec.trolleys, "No. of Trolleys Produced": rec.trolleys }
         : {}),

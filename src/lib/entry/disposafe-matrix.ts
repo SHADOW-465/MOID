@@ -337,6 +337,14 @@ export type ShiftBatchRecord = {
    * operator (or an auditor) mistaking the coincidence for a data-entry error.
    */
   duplicateConfirmedOf?: string | null;
+  /**
+   * Which time this lot came through this station. 1 unless the operator
+   * explicitly declared a repeat pass (re-inspection after rework, a run split
+   * across days). Part of the entry's identity — see lib/entry/identity.ts.
+   */
+  pass?: number;
+  /** Why a pass beyond the first exists. Required when `pass` > 1. */
+  passReason?: string | null;
 };
 
 /** Common bin labels for Secondary Production (operators may also free-type). */

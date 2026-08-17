@@ -8,6 +8,7 @@ import { emitMany, type StageDayRecord } from "@/lib/ingest/emit";
 import { checkRecord } from "@/lib/entry/validate-entry";
 import { massBalanceIssues } from "@/lib/ingest/mass-balance";
 import { getStores } from "@/lib/store";
+import { entryIdentity, identityKey, identityOfEvent } from "@/lib/entry/identity";
 
 interface IngestBody {
   ingestionId: string;
@@ -221,23 +222,43 @@ export async function POST(req: NextRequest) {
     // append-only guarantee, ran only when Supabase was configured, and pruned
     // just records[0]'s date, leaving the rest of a month-long save behind.
     //
-    // `slice` is the (day · stage · size · batch · sheet) cell a payload owns.
-    // Only direct entry claims a slice: re-saving a Data Entry day must never
-    // supersede events extracted from a workbook for that same day.
+    // Both keys below now derive from ONE identity — (lot · station · pass) —
+    // so they can no longer disagree. They used to: `sk` omitted the shift while
+    // `sliceOf` included it, which is why a night-shift entry silently replaced
+    // the day-shift entry for the same lot and station.
+    //
+    // The DATE is deliberately not part of either key. A lot passes a station
+    // once; the day it happened is a fact about that pass, not part of its name.
+    // With the date in the key, the same lot re-entered at the same station on
+    // another day looked brand new and was filed without complaint — the exact
+    // failure the plant reported. A genuine repeat is an explicit `pass`.
     const PRIMARY = new Set(["production", "inspection", "rejection"]);
-    const sk = (e: any) => `${e.eventType}|${e.stageId}|${e.occurredOn.start}|${e.disposition ?? ""}|${e.defectCode ?? e.defectCodeRaw ?? ""}|${e.size ?? ""}|${e.batchNo ?? ""}`;
-    const sliceOf = (e: any) =>
-      `${e.occurredOn.start}|${e.stageId ?? ""}|${e.size ?? ""}|${e.batchNo ?? ""}|${e.provenance?.sheet ?? ""}`;
+    //
+    // Not every row has a lot code: workbook imports and rows written before
+    // lot codes were required have none, and those must keep behaving exactly
+    // as they did. They fall back to the old day-based slice, which is the
+    // only thing that identifies them.
+    const idOf = (e: any): string => {
+      const id = identityOfEvent(e);
+      if (id) return identityKey(id);
+      return `nolot|${e.occurredOn?.start ?? ""}|${e.stageId ?? ""}|${e.size ?? ""}|${e.provenance?.sheet ?? ""}`;
+    };
+    /** Supersede key: one identity, one atom (a defect code is its own atom). */
+    const sk = (e: any) =>
+      `${idOf(e)}|${e.eventType}|${e.disposition ?? ""}|${e.defectCode ?? e.defectCodeRaw ?? ""}`;
     // Built from the RECORDS, not the emitted events: a row whose Rejected was
     // just cleared to nothing emits no rejection event, but it still owns its
-    // slice — that is exactly the row whose stale event must be superseded.
-    const ownedSlices = new Set(
+    // identity — that is exactly the row whose stale event must be superseded.
+    const ownedIdentities = new Set(
       recordsWithComments
         .filter((r) => r.extractedBy === "direct-entry")
         .map((r) => {
           const cf = r.customFields ?? {};
           const batch = String(cf.batch ?? cf.batchId ?? cf.batchNo ?? "").trim();
-          return `${r.occurredOn.start}|${r.stageId}|${r.size ?? ""}|${batch}|${r.source.sheet}`;
+          const pass = typeof cf.pass === "number" ? cf.pass : 1;
+          const id = entryIdentity(batch, r.stageId, pass);
+          if (id) return identityKey(id);
+          return `nolot|${r.occurredOn.start}|${r.stageId}|${r.size ?? ""}|${r.source.sheet}`;
         }),
     );
 
@@ -260,13 +281,15 @@ export async function POST(req: NextRequest) {
       const ids = incomingByKey.get(sk(e));
       if (ids) {
         if (ids.includes(e.eventId)) continue; // identical → keep as-is
-        supersede(e, ids[0], "Re-ingest updated this value");
+        supersede(e, ids[0], "Re-entry updated this value");
         continue;
       }
-      // Not in the payload. Only a removal if this payload owns the slice.
+      // Not in the payload. Only a removal if this payload owns the identity,
+      // and only direct entry claims one — re-saving a typed row must never
+      // supersede what a workbook import stated.
       if (e.extractedBy !== "direct-entry") continue;
-      if (!ownedSlices.has(sliceOf(e))) continue;
-      supersede(e, null, "Cleared by re-entry — value removed from this slice");
+      if (!ownedIdentities.has(idOf(e))) continue;
+      supersede(e, null, "Cleared by re-entry — value removed from this entry");
     }
     const { inserted, deduped } = await store.append([...events, ...corrections]);
 
