@@ -10,7 +10,7 @@
  * edits or deletes the durable knowledge plane.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Select from "@/components/ui/Select";
 import Link from "next/link";
 import AppShell from "@/components/app/AppShell";
@@ -28,7 +28,12 @@ import {
 } from "@/lib/analytics";
 import { clusterWorkbooks, fileBasename } from "@/lib/workbook-clusters";
 import SchemaTree from "@/components/schema/SchemaTree";
-import SchemaDetail from "@/components/schema/SchemaDetail";
+import SchemaDetail, { type SchemaDetailHandle } from "@/components/schema/SchemaDetail";
+import SchemaEditUnlock from "@/components/schema/SchemaEditUnlock";
+import { applySchemaDelete, canDeleteNode, deleteLabelFor } from "@/lib/schema/apply-delete";
+import { SCHEMA_EDIT_STORAGE_KEY } from "@/lib/schema/edit-lock";
+import { addActionFor } from "@/lib/schema/toolbar";
+import type { SchemaPendingCreate } from "@/lib/schema/toolbar";
 import { buildSchemaTree, filterTree, type SchemaNode } from "@/lib/schema/tree";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -36,12 +41,18 @@ import { buildSchemaTree, filterTree, type SchemaNode } from "@/lib/schema/tree"
 interface Stage {
   stageId: string;
   label: string;
+  category?: string;
   upstream?: string[];
   captures?: string[];
   effectiveFrom?: string | null;
   effectiveTo?: string | null;
   sizeWise?: boolean;
   isQualityGate?: boolean;
+}
+
+interface CatalogSection {
+  id: string;
+  label: string;
 }
 
 interface Defect {
@@ -60,6 +71,7 @@ interface CatalogMeta {
   stages: Stage[];
   defects: Defect[];
   sizes: Size[];
+  sections?: CatalogSection[];
   fiscalYearStartMonth: number;
   updatedAt: string | null;
   lastMergedFrom: string | null;
@@ -208,6 +220,11 @@ export default function SchemaPage() {
   const [selectedMod, setSelectedMod] = useState<string | null>(null);
   const [modDetail, setModDetail] = useState<ModDetail | null>(null);
   const [showMappings, setShowMappings] = useState(false);
+  const [editUnlocked, setEditUnlocked] = useState(false);
+  const [unlockOpen, setUnlockOpen] = useState(false);
+  const [pendingCreate, setPendingCreate] = useState<SchemaPendingCreate | null>(null);
+  const [toolbarCanSave, setToolbarCanSave] = useState(false);
+  const editorRef = useRef<SchemaDetailHandle>(null);
 
   const integrity = useMemo(() => {
     if (!events || events.length === 0) {
@@ -271,6 +288,51 @@ export default function SchemaPage() {
   }, [load, loadWorkbooks]);
 
   useEffect(() => {
+    try {
+      setEditUnlocked(sessionStorage.getItem(SCHEMA_EDIT_STORAGE_KEY) === "1");
+    } catch {
+      /* private mode — stay locked */
+    }
+  }, []);
+
+  const lockEdit = () => {
+    setEditUnlocked(false);
+    setToolbarCanSave(false);
+    setPendingCreate(null);
+    try {
+      sessionStorage.removeItem(SCHEMA_EDIT_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const unlockEdit = () => {
+    setEditUnlocked(true);
+    setUnlockOpen(false);
+    try {
+      sessionStorage.setItem(SCHEMA_EDIT_STORAGE_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const ensureExpanded = useCallback((id: string) => {
+    setExpandedNodes((cur) => {
+      if (cur.has(id)) return cur;
+      const next = new Set(cur);
+      next.add(id);
+      try {
+        localStorage.setItem(TREE_OPEN_KEY, JSON.stringify([...next]));
+      } catch {
+        /* private mode */
+      }
+      return next;
+    });
+  }, []);
+
+  const consumePendingCreate = useCallback(() => setPendingCreate(null), []);
+
+  useEffect(() => {
     if (!selectedMod) {
       setModDetail(null);
       return;
@@ -287,6 +349,7 @@ export default function SchemaPage() {
       stages: catalog?.stages ?? [],
       defects: catalog?.defects ?? [],
       sizes: catalog?.sizes ?? [],
+      sections: catalog?.sections,
       mappings: mappings.map((m) => ({
         kind: m.kind,
         key: m.key,
@@ -418,6 +481,10 @@ export default function SchemaPage() {
   };
 
   const mutate = async (body: Record<string, unknown>, okMsg: string) => {
+    if (!editUnlocked) {
+      setError("Unlock edit with the password to change the schema.");
+      return;
+    }
     setBusy(true);
     setError(null);
     setStatus(null);
@@ -620,7 +687,8 @@ export default function SchemaPage() {
             </h1>
             <p className="body" style={{ fontSize: 14, margin: 0, color: "var(--text-2)", maxWidth: 680, lineHeight: 1.55 }}>
               The durable knowledge of the whole plant: process stages, defect codes, sizes, and every
-              Excel label→canonical mapping the resolver uses. Edit or delete any row here.
+              Excel label→canonical mapping the resolver uses. Unlock edit to
+              add, rename or remove sections, stages, capture columns and defects.
               Deleting an uploaded file never wipes this brain.
             </p>
           </div>
@@ -640,57 +708,27 @@ export default function SchemaPage() {
             >
               Import from Excel
             </Link>
-            <button
-              type="button"
-              onClick={() => {
-                setAdding(true);
-                setEditingStageId(null);
-                setEditingDefectCode(null);
-                setEditingSizeId(null);
-                setEditingMappingKey(null);
-              }}
-              style={{
-                fontSize: 13,
-                fontWeight: 700,
-                padding: "8px 14px",
-                borderRadius: 8,
-                border: "1px solid var(--accent)",
-                background: "var(--accent)",
-                color: "var(--text-invert)",
-                cursor: "pointer",
-              }}
-            >
-              + Add{" "}
-              {section === "stages"
-                ? "stage"
-                : section === "defects"
-                  ? "defect"
-                  : section === "sizes"
-                    ? "size"
-                    : "mapping"}
-            </button>
-            {/* Brings the catalog up to the full documented process (all stages,
-                every defect vocabulary, per-stage targets). Additive: your
-                renames and anything you added by hand are kept. */}
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => mutate({ action: "load-plant-catalog" }, "Plant catalog loaded — your edits were kept.")}
-              title="Add any missing stages, defect codes and sizes from the documented plant process. Never removes or renames what you have."
-              style={{
-                fontSize: 13,
-                fontWeight: 600,
-                padding: "8px 14px",
-                borderRadius: 8,
-                border: "1px solid var(--border)",
-                background: "var(--surface-2)",
-                color: "var(--text)",
-                cursor: busy ? "default" : "pointer",
-                opacity: busy ? 0.6 : 1,
-              }}
-            >
-              Load plant catalog
-            </button>
+            {editUnlocked && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => mutate({ action: "load-plant-catalog" }, "Plant catalog loaded — your edits were kept.")}
+                title="Add any missing stages, defect codes and sizes from the documented plant process. Never removes or renames what you have."
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                  border: "1px solid var(--border)",
+                  background: "var(--surface-2)",
+                  color: "var(--text)",
+                  cursor: busy ? "default" : "pointer",
+                  opacity: busy ? 0.6 : 1,
+                }}
+              >
+                Load plant catalog
+              </button>
+            )}
           </div>
         </header>
 
@@ -894,26 +932,120 @@ export default function SchemaPage() {
               >
                 Open Staging →
               </Link>
-              <button
-                type="button"
-                onClick={() => mutate({ action: "load-plant-catalog" }, "Plant catalog loaded — your edits were kept.")}
-                style={{
-                  padding: "8px 14px",
-                  borderRadius: 8,
-                  border: "1px solid var(--border)",
-                  background: "var(--surface-2)",
-                  fontWeight: 600,
-                  fontSize: 13,
-                  cursor: "pointer",
-                  color: "var(--text)",
-                }}
-              >
-                Load plant catalog
-              </button>
+              {editUnlocked && (
+                <button
+                  type="button"
+                  onClick={() => mutate({ action: "load-plant-catalog" }, "Plant catalog loaded — your edits were kept.")}
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: 8,
+                    border: "1px solid var(--border)",
+                    background: "var(--surface-2)",
+                    fontWeight: 600,
+                    fontSize: 13,
+                    cursor: "pointer",
+                    color: "var(--text)",
+                  }}
+                >
+                  Load plant catalog
+                </button>
+              )}
             </div>
           </Card>
         ) : (
-          <Card title="Plant schema">
+          <Card>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                marginBottom: 12,
+              }}
+            >
+              <span
+                className="h3"
+                style={{
+                  fontSize: "var(--text-md)",
+                  fontWeight: 600,
+                  letterSpacing: "-0.01em",
+                  color: "var(--text)",
+                }}
+              >
+                Plant schema
+              </span>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={() => (editUnlocked ? lockEdit() : setUnlockOpen(true))}
+                  style={editUnlocked ? schemaPill : schemaPillAccent}
+                >
+                  {editUnlocked ? "Lock schema" : "Unlock edit"}
+                </button>
+                {editUnlocked && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const add = addActionFor(selectedNode, treeInput);
+                      if (add.selectId) {
+                        setSelectedNodeId(add.selectId);
+                        const slash = add.selectId.indexOf("/");
+                        if (slash > 0) ensureExpanded(add.selectId.slice(0, slash));
+                        ensureExpanded(add.selectId);
+                      }
+                      setPendingCreate(add.kind);
+                    }}
+                    style={schemaPill}
+                  >
+                    + {addActionFor(selectedNode, treeInput).label}
+                  </button>
+                )}
+                {editUnlocked && (
+                  <button
+                    type="button"
+                    disabled={busy || !toolbarCanSave}
+                    title={toolbarCanSave ? "Save the current form" : "Nothing to save on this row."}
+                    onClick={() => editorRef.current?.save()}
+                    style={{
+                      ...schemaPillAccent,
+                      opacity: busy || !toolbarCanSave ? 0.45 : 1,
+                      cursor: busy || !toolbarCanSave ? "default" : "pointer",
+                    }}
+                  >
+                    {busy ? "Saving…" : "Save"}
+                  </button>
+                )}
+                {editUnlocked && (
+                  <button
+                    type="button"
+                    disabled={busy || !canDeleteNode(selectedNode, treeInput)}
+                    title={
+                      !selectedNode
+                        ? "Select a section, stage, defect or capture first."
+                        : canDeleteNode(selectedNode, treeInput)
+                          ? deleteLabelFor(selectedNode, treeInput)
+                          : "This row cannot be deleted."
+                    }
+                    onClick={() => {
+                      if (!selectedNode) return;
+                      const err = applySchemaDelete(selectedNode, treeInput, mutate, () =>
+                        setSelectedNodeId(null),
+                      );
+                      if (err) setError(err);
+                    }}
+                    style={{
+                      ...schemaPillDanger,
+                      opacity: busy || !canDeleteNode(selectedNode, treeInput) ? 0.45 : 1,
+                      cursor:
+                        busy || !canDeleteNode(selectedNode, treeInput) ? "default" : "pointer",
+                    }}
+                  >
+                    {deleteLabelFor(selectedNode, treeInput)}
+                  </button>
+                )}
+              </div>
+            </div>
             {/* One card, one hairline. The panes share a baseline and scroll
                 internally — that shared height is what makes this read as a
                 directory rather than two loose lists. */}
@@ -925,8 +1057,8 @@ export default function SchemaPage() {
                 borderRadius: "var(--radius-md)",
                 background: "var(--surface)",
                 overflow: "hidden",
-                height: "min(62vh, 560px)",
-                minHeight: 380,
+                height: "min(72vh, 640px)",
+                minHeight: 420,
               }}
             >
               <div
@@ -934,12 +1066,15 @@ export default function SchemaPage() {
                   display: "flex",
                   flexDirection: "column",
                   minWidth: 0,
+                  minHeight: 0,
+                  height: "100%",
                   borderRight: "1px solid var(--border)",
                   background: "var(--surface-2)",
+                  overflow: "hidden",
                 }}
               >
                 {/* Search belongs to the tree — it filters the tree. */}
-                <div style={{ padding: 8, borderBottom: "1px solid var(--border)" }}>
+                <div style={{ padding: 8, borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
                   <input
                     value={treeQuery}
                     onChange={(e) => setTreeQuery(e.target.value)}
@@ -958,7 +1093,17 @@ export default function SchemaPage() {
                     }}
                   />
                 </div>
-                <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
+                <div
+                  style={{
+                    flex: 1,
+                    overflowY: "auto",
+                    overflowX: "hidden",
+                    minHeight: 0,
+                    overscrollBehavior: "contain",
+                    scrollbarWidth: "thin",
+                    scrollbarColor: "var(--border) transparent",
+                  }}
+                >
                   <SchemaTree
                     nodes={visibleTree}
                     expanded={effectiveExpanded}
@@ -968,11 +1113,30 @@ export default function SchemaPage() {
                   />
                 </div>
               </div>
-              <div style={{ overflow: "auto", minWidth: 0 }}>
+              <div
+                style={{
+                  overflowY: "auto",
+                  overflowX: "hidden",
+                  minWidth: 0,
+                  minHeight: 0,
+                  height: "100%",
+                  overscrollBehavior: "contain",
+                  scrollbarWidth: "thin",
+                  scrollbarColor: "var(--border) transparent",
+                }}
+              >
                 <SchemaDetail
+                  ref={editorRef}
                   node={selectedNode}
                   data={treeInput}
                   busy={busy}
+                  editable={editUnlocked}
+                  saveError={error}
+                  onCanSaveChange={setToolbarCanSave}
+                  pendingCreate={pendingCreate}
+                  onPendingCreateConsumed={consumePendingCreate}
+                  onSelectId={setSelectedNodeId}
+                  onExpand={ensureExpanded}
                   mutate={mutate}
                 />
               </div>
@@ -1263,6 +1427,12 @@ export default function SchemaPage() {
           same wipe on two screens meant two confirmation flows to keep in
           sync, and an object page is the wrong home for "destroy this object".
         */}
+        <SchemaEditUnlock
+          open={unlockOpen}
+          onUnlock={unlockEdit}
+          onCancel={() => setUnlockOpen(false)}
+        />
+
         <p
           className="small"
           style={{
@@ -1708,6 +1878,34 @@ const ghostBtn: React.CSSProperties = {
   background: "var(--surface)",
   color: "var(--text-2)",
   cursor: "pointer",
+};
+
+const schemaPill: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  height: 28,
+  padding: "0 12px",
+  borderRadius: "var(--radius-pill)",
+  border: "1px solid var(--border)",
+  background: "var(--surface)",
+  color: "var(--text)",
+  fontSize: 12,
+  fontWeight: 600,
+  cursor: "pointer",
+  lineHeight: 1,
+};
+
+const schemaPillAccent: React.CSSProperties = {
+  ...schemaPill,
+  border: "1px solid var(--accent)",
+  background: "color-mix(in srgb, var(--accent) 10%, var(--surface))",
+  color: "var(--accent)",
+};
+
+const schemaPillDanger: React.CSSProperties = {
+  ...schemaPill,
+  border: "1px solid color-mix(in srgb, var(--critical) 35%, var(--border))",
+  color: "var(--critical)",
 };
 
 const linkBtn: React.CSSProperties = {

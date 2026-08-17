@@ -41,14 +41,26 @@ const byId = (nodes: SchemaNode[], id: string): SchemaNode | undefined => {
 };
 
 describe("buildSchemaTree", () => {
-  it("renders the three fixed category folders, locked, in order", () => {
+  it("renders the three shop-floor sections in authored order", () => {
     const cats = tree.filter((n) => n.kind === "category");
     expect(cats.map((c) => c.label)).toEqual([
       "Production Dipping",
       "Secondary (P10–P14)",
       "Assembly (P15–P27)",
     ]);
-    expect(cats.every((c) => c.locked)).toBe(true);
+    expect(cats.every((c) => !c.locked)).toBe(true);
+  });
+
+  it("uses catalog section labels when they have been renamed", () => {
+    const renamed = buildSchemaTree({
+      ...input,
+      sections: [
+        { id: "primary", label: "Dipping line" },
+        { id: "secondary", label: "Secondary" },
+        { id: "assembly", label: "Assembly" },
+      ],
+    });
+    expect(renamed.find((n) => n.id === "cat:primary")?.label).toBe("Dipping line");
   });
 
   it("puts each stage under its category", () => {
@@ -76,6 +88,29 @@ describe("buildSchemaTree", () => {
     expect(byId(tree, "cat:primary/stage:production/defects/defect:AIR")!.badge).toBeUndefined();
   });
 
+  it("keeps an empty Captures folder on a stage so columns can be added", () => {
+    const empty = buildSchemaTree({
+      ...input,
+      stages: input.stages.map((s) =>
+        s.stageId === "trimming" ? { ...s, captures: [] } : s,
+      ),
+    });
+    const folder = byId(empty, "cat:primary/stage:trimming/captures");
+    expect(folder?.kind).toBe("captures-folder");
+    expect(folder?.count).toBe(0);
+  });
+
+  it("keeps an empty Defects folder on a stage so the first code can be added", () => {
+    const empty = buildSchemaTree({
+      ...input,
+      defects: input.defects.filter((d) => !(d.stages ?? []).includes("trimming")),
+    });
+    const folder = byId(empty, "cat:primary/stage:trimming/defects");
+    expect(folder?.kind).toBe("defects-folder");
+    expect(folder?.count).toBe(0);
+    expect(folder?.children).toEqual([]);
+  });
+
   it("flags a defect scoped to nothing — it is invisible in Data Entry", () => {
     expect(byId(tree, "all-defects/defect:GHOST")!.badge).toBe("orphan");
   });
@@ -99,6 +134,14 @@ describe("buildSchemaTree", () => {
     const odd = buildSchemaTree({
       ...input,
       stages: [{ stageId: "mystery", label: "Mystery", category: "nope", captures: ["checked"] }],
+    });
+    expect(byId(odd, "cat:nope/stage:mystery")).toBeTruthy();
+  });
+
+  it("puts a stage with no category under Unassigned", () => {
+    const odd = buildSchemaTree({
+      ...input,
+      stages: [{ stageId: "mystery", label: "Mystery", captures: ["checked"] }],
     });
     expect(byId(odd, "cat:unassigned/stage:mystery")).toBeTruthy();
   });
@@ -144,9 +187,13 @@ describe("deleteIntentFor", () => {
     });
   });
 
-  it("refuses to delete a fixed category folder", () => {
+  it("deleting a section names how many stages live in it", () => {
     const node = tree.find((n) => n.id === "cat:assembly")!;
-    expect(deleteIntentFor(node, input)).toMatchObject({ kind: "not-deletable" });
+    expect(deleteIntentFor(node, input)).toEqual({
+      kind: "delete-section",
+      categoryId: "assembly",
+      stageCount: 2,
+    });
   });
 });
 
@@ -173,6 +220,6 @@ describe("an emptied category still offers a place to add back into", () => {
     const primary = emptied.find((n) => n.id === "cat:primary")!;
     expect(primary).toBeTruthy();
     expect(primary.children).toEqual([]);
-    expect(primary.locked).toBe(true);
+    expect(primary.locked).toBeFalsy();
   });
 });

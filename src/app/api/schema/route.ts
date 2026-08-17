@@ -18,6 +18,8 @@ import { getPolicyStore } from "@/core/policy/policy-store";
 import { DEFAULT_POLICY } from "@/core/policy/policy";
 import { mergePlantCatalog } from "@/core/ontology/plant-catalog";
 import { loadCatalog } from "@/core/ontology/load-catalog";
+import { aliasesForDefect } from "@/lib/schema/defect-payload";
+import { resolveSections, sectionMarkerStage, slugSectionId } from "@/lib/schema/sections";
 import { getModStore } from "@/core/ontology/store/mod-store";
 import {
   getKnowledgeStore,
@@ -139,11 +141,15 @@ export async function GET() {
     const company = companyId();
     // Policy rides along so the client gets all plant config in one round trip
     // (RegistryProvider already fetches this). Writes go to /api/policy.
-    const [catalog, mappings, policyVersion] = await Promise.all([
+    const [catalogRaw, mappings, policyVersion] = await Promise.all([
       loadCatalog(company),
       loadMappings(company),
       getPolicyStore().current(company),
     ]);
+    const catalog = {
+      ...catalogRaw,
+      sections: resolveSections(catalogRaw),
+    };
 
     const configured =
       catalog.stages.length > 0 ||
@@ -203,15 +209,24 @@ const UpsertStageBody = z.object({
 });
 const UpsertDefectBody = z.object({
   action: z.literal("upsert-defect"),
-  defect: DefectDef,
+  // aliases.min(1) on DefectDef is what made the tree "Add defect" look
+  // like a no-op — the editor sent []. Accept empty and fill the code in.
+  defect: DefectDef.extend({ aliases: z.array(z.string()).default([]) }),
 });
 const UpsertSizeBody = z.object({
   action: z.literal("upsert-size"),
   size: SizeDef,
 });
 const DeleteBody = z.object({
-  action: z.enum(["delete-stage", "delete-defect", "delete-size"]),
+  action: z.enum(["delete-stage", "delete-defect", "delete-size", "delete-section"]),
   id: z.string().min(1),
+});
+const UpsertSectionBody = z.object({
+  action: z.literal("upsert-section"),
+  section: z.object({
+    id: z.string().min(1).optional(),
+    label: z.string().min(1),
+  }),
 });
 const FiscalBody = z.object({
   action: z.literal("set-fiscal-year-start"),
@@ -243,6 +258,7 @@ const BodySchema = z.discriminatedUnion("action", [
   UpsertStageBody,
   UpsertDefectBody,
   UpsertSizeBody,
+  UpsertSectionBody,
   DeleteBody,
   FiscalBody,
   UpsertMappingBody,
@@ -276,11 +292,37 @@ export async function POST(req: NextRequest) {
         catalog = await store.upsertStage(company, body.stage);
         break;
       case "upsert-defect":
-        catalog = await store.upsertDefect(company, body.defect);
+        catalog = await store.upsertDefect(company, {
+          ...body.defect,
+          aliases: aliasesForDefect(body.defect.defectCode, body.defect.aliases),
+        });
         break;
       case "upsert-size":
         catalog = await store.upsertSize(company, body.size);
         break;
+      case "upsert-section": {
+        const current = resolveSections(await store.get(company));
+        const label = body.section.label.trim();
+        const id =
+          (body.section.id ?? "").trim() ||
+          slugSectionId(label, new Set(current.map((s) => s.id)));
+        catalog = await store.upsertSection(company, { id, label });
+        // Stamp the title onto stages so a rename survives even if the
+        // `sections` column is not on this database yet. An empty new
+        // section gets a marker stage (no captures → hidden from Data Entry).
+        let stages = catalog.stages.map((s) =>
+          s.category === id ? { ...s, sectionLabel: label } : s,
+        );
+        if (!stages.some((s) => s.category === id)) {
+          stages = [...stages, { ...sectionMarkerStage(id, label), sectionLabel: label }];
+        }
+        catalog = await store.put(company, {
+          ...catalog,
+          stages,
+          sections: resolveSections({ ...catalog, stages }),
+        });
+        break;
+      }
       case "delete-stage":
         catalog = await store.deleteStage(company, body.id);
         break;
@@ -289,6 +331,9 @@ export async function POST(req: NextRequest) {
         break;
       case "delete-size":
         catalog = await store.deleteSize(company, body.id);
+        break;
+      case "delete-section":
+        catalog = await store.deleteSection(company, body.id);
         break;
       case "set-fiscal-year-start": {
         const cur = await store.get(company);

@@ -15,16 +15,21 @@ import { getModStore } from "@/core/ontology/store/mod-store";
 import {
   plantCatalog,
   mergePlantCatalog,
+  STAGE_CATEGORIES,
   STAGE_CATEGORY,
   type StageCategory,
 } from "@/core/ontology/plant-catalog";
+import { resolveSections } from "@/lib/schema/sections";
 
 /**
  * Bump when the authored catalog gains (or repairs) a stage that already-seeded
  * plants must pick up. The backfill runs ONCE per tag, so a stage deleted on
  * Data Schema after that stays deleted — the catalog still outlives the code.
  */
-const SEED_TAG = "plant-catalog@eye-punching-hanging-secondary";
+const SEED_TAG = "plant-catalog@dipping-label-and-sections";
+
+/** Authored label the tree used to show under a folder of the same name. */
+const OLD_PRODUCTION_LABELS = new Set(["Production (Dipping)", "Production Dipping"]);
 
 /**
  * Stages whose authored `category` changed after plants were already seeded.
@@ -37,6 +42,13 @@ const RECATEGORISED: Record<string, StageCategory> = {
   "eye-punching": "secondary",
   hanging: "secondary",
 };
+
+/** Tags that already applied RECATEGORISED. A later SEED_TAG bump must not
+ *  move those stages again — the plant may have edited category since. */
+const RECATEGORISED_ALREADY = new Set([
+  "plant-catalog@eye-punching-hanging-secondary",
+  SEED_TAG,
+]);
 
 /**
  * Teach a stored catalog the authored stages it has never seen.
@@ -55,7 +67,16 @@ async function backfillAuthoredStages(
   company: string,
   catalog: CompanyCatalog,
 ): Promise<CompanyCatalog> {
-  if (catalog.lastMergedFrom === SEED_TAG) return catalog;
+  if (catalog.lastMergedFrom === SEED_TAG) {
+    if (catalog.sections?.length) return catalog;
+    return getCatalogStore().put(company, {
+      ...catalog,
+      sections: resolveSections({
+        sections: STAGE_CATEGORIES,
+        stages: catalog.stages,
+      }),
+    });
+  }
 
   const authored = plantCatalog().stages;
   const authoredById = new Map(authored.map((s) => [s.stageId, s]));
@@ -68,11 +89,17 @@ async function backfillAuthoredStages(
     const needsCaptures = (s.captures ?? []).length === 0 && (a.captures ?? []).length > 0;
     const needsCategory = !s.category && !!(a.category ?? STAGE_CATEGORY[s.stageId]);
     const recategorised = RECATEGORISED[s.stageId];
-    const needsMove = !!recategorised && s.category !== recategorised;
-    if (!needsCaptures && !needsCategory && !needsMove) return s;
+    const needsMove =
+      !!recategorised &&
+      s.category !== recategorised &&
+      !RECATEGORISED_ALREADY.has(catalog.lastMergedFrom ?? "");
+    const needsDippingLabel =
+      s.stageId === "production" && OLD_PRODUCTION_LABELS.has(s.label);
+    if (!needsCaptures && !needsCategory && !needsMove && !needsDippingLabel) return s;
     changed = true;
     return {
       ...s,
+      label: needsDippingLabel ? a.label : s.label,
       captures: needsCaptures ? a.captures : s.captures,
       category: needsMove
         ? recategorised
@@ -81,6 +108,8 @@ async function backfillAuthoredStages(
           : s.category,
     };
   });
+
+  if (!catalog.sections?.length) changed = true;
 
   // Insert missing authored stages at their authored position, so Data Entry
   // tabs still read down the process line instead of appending to the end.
@@ -99,9 +128,15 @@ async function backfillAuthoredStages(
       })
     : catalog.stages;
 
+  const sections = resolveSections({
+    sections: catalog.sections?.length ? catalog.sections : STAGE_CATEGORIES,
+    stages: merged,
+  });
+
   return getCatalogStore().put(company, {
     ...catalog,
     stages: merged,
+    sections,
     lastMergedFrom: SEED_TAG,
   });
 }

@@ -14,8 +14,8 @@
 import { NextResponse } from "next/server";
 import type { CompanyCatalog } from "@/core/ontology/store/catalog-store";
 import { loadCatalog } from "@/core/ontology/load-catalog";
-import { DEFECT_ORDER, STAGE_CATEGORY } from "@/core/ontology/plant-catalog";
-import type { MacroId } from "@/lib/entry/disposafe-matrix";
+import { DEFECT_ORDER, STAGE_CATEGORIES, STAGE_CATEGORY } from "@/core/ontology/plant-catalog";
+import { resolveSections } from "@/lib/schema/sections";
 
 const CAPTURE_COLUMNS: Record<string, { key: string; label: string }> = {
   checked:  { key: "checked",      label: "Checked Qty" },
@@ -31,7 +31,7 @@ export type EntryTemplateStage = {
   stageId: string;
   label: string;
   /** Shop-floor section — Data Entry tabs filter chips by this. */
-  category: MacroId;
+  category: string;
   sizeWise: boolean;
   isQualityGate: boolean;
   columns: { key: string; label: string; type: "number"; required: boolean }[];
@@ -41,6 +41,7 @@ export type EntryTemplateStage = {
 export type EntryTemplate = {
   stages: EntryTemplateStage[];
   sizes: { sizeId: string; label: string }[];
+  sections: { id: string; label: string }[];
   /** Where this schema came from, for the "From:" hint on the entry grid. */
   source: string;
 };
@@ -60,7 +61,7 @@ export function templateFrom(catalog: CompanyCatalog, source = "Plant catalog"):
         const i = order.indexOf(code);
         return i === -1 ? order.length : i; // unknown/plant-added codes go last
       };
-      const category = (s.category ?? STAGE_CATEGORY[s.stageId] ?? "assembly") as MacroId;
+      const category = s.category ?? STAGE_CATEGORY[s.stageId] ?? "assembly";
       return {
         stageId: s.stageId,
         label: s.label,
@@ -82,7 +83,15 @@ export function templateFrom(catalog: CompanyCatalog, source = "Plant catalog"):
       };
     });
 
-  return { stages, sizes: catalog.sizes, source };
+  return {
+    stages,
+    sizes: catalog.sizes,
+    sections: resolveSections({
+      sections: catalog.sections?.length ? catalog.sections : STAGE_CATEGORIES,
+      stages: catalog.stages,
+    }),
+    source,
+  };
 }
 
 export async function GET() {

@@ -13,7 +13,7 @@
 //
 // See docs/2026-08-15-schema-tree-design.md.
 
-import { STAGE_CATEGORIES } from "@/core/ontology/plant-catalog";
+import { isSectionMarker, resolveSections, type CatalogSection } from "@/lib/schema/sections";
 
 export type SchemaNodeKind =
   | "category"
@@ -70,6 +70,7 @@ export interface SchemaTreeStage {
   stageId: string;
   label: string;
   category?: string | null;
+  sectionLabel?: string | null;
   captures?: string[];
   upstream?: string[];
   isQualityGate?: boolean;
@@ -97,6 +98,7 @@ export interface SchemaTreeInput {
   stages: SchemaTreeStage[];
   defects: SchemaTreeDefect[];
   sizes: SchemaTreeSize[];
+  sections?: CatalogSection[];
   mappings?: SchemaTreeMapping[];
 }
 
@@ -193,7 +195,8 @@ function aliasFolder(
 
 /** Project the flat catalog into the directory tree the Data Schema page renders. */
 export function buildSchemaTree(input: SchemaTreeInput): SchemaNode[] {
-  const { stages, defects, sizes } = input;
+  const { defects, sizes } = input;
+  const stages = input.stages.filter((s) => !isSectionMarker(s.stageId));
   const mappings = input.mappings ?? [];
 
   const defectsByStage = new Map<string, SchemaTreeDefect[]>();
@@ -208,9 +211,10 @@ export function buildSchemaTree(input: SchemaTreeInput): SchemaNode[] {
 
   const out: SchemaNode[] = [];
 
-  // ── Category folders (fixed set, fixed order) ───────────────────────────
+  // ── Section folders (catalog order, then any unrecognised category) ─────
+  const sections = resolveSections(input);
   const claimed = new Set<string>();
-  for (const cat of STAGE_CATEGORIES) {
+  for (const cat of sections) {
     const inCat = stages.filter((s) => (s.category ?? "") === cat.id);
     for (const s of inCat) claimed.add(s.stageId);
     const catId = `cat:${cat.id}`;
@@ -221,7 +225,6 @@ export function buildSchemaTree(input: SchemaTreeInput): SchemaNode[] {
       kind: "category",
       label: cat.label,
       count: inCat.length,
-      locked: true,
       ref: { categoryId: cat.id },
       children: orderByCascade(inCat).map((s) =>
         stageNode(`${catId}/stage:${s.stageId}`, s, showAliases),
@@ -229,8 +232,6 @@ export function buildSchemaTree(input: SchemaTreeInput): SchemaNode[] {
     });
   }
 
-  // A stage with an unrecognised category is shown rather than silently
-  // dropped — the same rule source-trace.ts uses for unclassified stages.
   const orphanStages = stages.filter((s) => !claimed.has(s.stageId));
   if (orphanStages.length > 0) {
     out.push({
@@ -239,7 +240,6 @@ export function buildSchemaTree(input: SchemaTreeInput): SchemaNode[] {
       label: "Unassigned stages",
       count: orphanStages.length,
       badge: "orphan",
-      locked: true,
       children: orderByCascade(orphanStages).map((s) =>
         stageNode(`cat:unassigned/stage:${s.stageId}`, s, true),
       ),
@@ -251,47 +251,45 @@ export function buildSchemaTree(input: SchemaTreeInput): SchemaNode[] {
     const scoped = defectsByStage.get(s.stageId) ?? [];
     const children: SchemaNode[] = [];
 
-    if (captures.length > 0) {
-      children.push({
-        id: `${id}/captures`,
-        kind: "captures-folder",
-        label: "Captures",
-        count: captures.length,
+    children.push({
+      id: `${id}/captures`,
+      kind: "captures-folder",
+      label: "Captures",
+      count: captures.length,
+      ref: { stageId: s.stageId },
+      children: captures.map((c) => ({
+        id: `${id}/captures/${c}`,
+        kind: "capture" as const,
+        label: c,
         ref: { stageId: s.stageId },
-        children: captures.map((c) => ({
-          id: `${id}/captures/${c}`,
-          kind: "capture" as const,
-          label: c,
-          ref: { stageId: s.stageId },
-          children: [],
-        })),
-      });
-    }
+        children: [],
+      })),
+    });
 
-    if (scoped.length > 0) {
-      children.push({
-        id: `${id}/defects`,
-        kind: "defects-folder",
-        label: "Defects",
-        count: scoped.length,
-        ref: { stageId: s.stageId },
-        children: scoped.map((d) => {
-          const others = (d.stages ?? []).filter((x) => x !== s.stageId);
-          return {
-            id: `${id}/defects/defect:${d.defectCode}`,
-            kind: "defect" as const,
-            label: d.defectCode,
-            sublabel: others.length
-              ? `also on ${others.map((o) => stageLabel.get(o) ?? o).join(", ")}`
-              : d.label,
-            badge: others.length ? ("shared" as const) : undefined,
-            // scopedUnderStageId is what makes a delete here an UNSCOPE.
-            ref: { defectCode: d.defectCode, scopedUnderStageId: s.stageId },
-            children: [],
-          };
-        }),
-      });
-    }
+    // Always emit the folder, even when empty — otherwise there is nowhere
+    // in the tree to add the first defect to a stage.
+    children.push({
+      id: `${id}/defects`,
+      kind: "defects-folder",
+      label: "Defects",
+      count: scoped.length,
+      ref: { stageId: s.stageId },
+      children: scoped.map((d) => {
+        const others = (d.stages ?? []).filter((x) => x !== s.stageId);
+        return {
+          id: `${id}/defects/defect:${d.defectCode}`,
+          kind: "defect" as const,
+          label: d.defectCode,
+          sublabel: others.length
+            ? `also on ${others.map((o) => stageLabel.get(o) ?? o).join(", ")}`
+            : d.label,
+          badge: others.length ? ("shared" as const) : undefined,
+          // scopedUnderStageId is what makes a delete here an UNSCOPE.
+          ref: { defectCode: d.defectCode, scopedUnderStageId: s.stageId },
+          children: [],
+        };
+      }),
+    });
 
     if (showAliases) {
       children.push(...aliasFolder(id, mappings, s.stageId, ["stage-alias"]));
@@ -409,18 +407,28 @@ export type DeleteIntent =
   | { kind: "unscope-defect"; defectCode: string; stageId: string; remaining: string[] }
   | { kind: "delete-defect"; defectCode: string; affectedStages: string[] }
   | { kind: "delete-stage"; stageId: string; orphanedDefects: string[] }
+  | { kind: "delete-section"; categoryId: string; stageCount: number }
   | { kind: "delete-size"; sizeId: string }
   | { kind: "delete-mapping"; mappingKind: string; mappingKey: string }
+  | { kind: "remove-capture"; stageId: string; capture: string }
   | { kind: "not-deletable"; reason: string };
 
 export function deleteIntentFor(
   node: SchemaNode,
   input: SchemaTreeInput,
 ): DeleteIntent {
-  if (node.locked) {
-    return { kind: "not-deletable", reason: "Section folders are fixed." };
-  }
   const ref = node.ref ?? {};
+
+  if (node.kind === "category" && ref.categoryId) {
+    const stageCount = input.stages.filter(
+      (s) => (s.category ?? "") === ref.categoryId && !isSectionMarker(s.stageId),
+    ).length;
+    return { kind: "delete-section", categoryId: ref.categoryId, stageCount };
+  }
+
+  if (node.kind === "capture" && ref.stageId) {
+    return { kind: "remove-capture", stageId: ref.stageId, capture: node.label };
+  }
 
   if (node.kind === "defect" && ref.defectCode) {
     const defect = input.defects.find((d) => d.defectCode === ref.defectCode);

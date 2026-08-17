@@ -293,7 +293,7 @@ export type ShiftBatchRecord = {
   id: string;
   date: string;
   operator: string;
-  macro: MacroId;
+  macro: string;
   /**
    * @deprecated Retired local process id (p15-visual, …). New writes store
    * the ledger `stageId` here too so old readers still have a value.

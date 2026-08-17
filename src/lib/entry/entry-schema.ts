@@ -22,7 +22,7 @@ export type ExtraField = "trolleys" | "bin";
 export type EntryStation = {
   stageId: string;
   label: string;
-  category: MacroId;
+  category: string;
   columns: QtyKey[];
   defects: DefectDef[];
   extras: ExtraField[];
@@ -31,6 +31,7 @@ export type EntryStation = {
 export type ResolvedEntrySchema = {
   source: "catalog" | "builtin";
   stations: EntryStation[];
+  sections?: { id: string; label: string }[];
 };
 
 /** Minimal template shape — avoids importing the App Router module from lib. */
@@ -42,6 +43,7 @@ export type EntryTemplateLike = {
     columns?: { key: string }[];
     defects?: { defectCode: string; label: string }[];
   }[];
+  sections?: { id: string; label: string }[];
 };
 
 /**
@@ -86,11 +88,9 @@ function qtyFromTemplateKey(key: string): QtyKey | null {
   return null;
 }
 
-function categoryOf(stageId: string, explicit?: string): MacroId {
-  if (explicit === "primary" || explicit === "secondary" || explicit === "assembly") {
-    return explicit;
-  }
-  return (STAGE_CATEGORY[stageId] as MacroId | undefined) ?? "assembly";
+function categoryOf(stageId: string, explicit?: string): string {
+  if (explicit && explicit.trim()) return explicit.trim();
+  return STAGE_CATEGORY[stageId] ?? "assembly";
 }
 
 function fromTemplate(template: EntryTemplateLike): ResolvedEntrySchema {
@@ -112,7 +112,7 @@ function fromTemplate(template: EntryTemplateLike): ResolvedEntrySchema {
       extras: extrasFor(s.stageId),
     };
   });
-  return { source: "catalog", stations };
+  return { source: "catalog", stations, sections: template.sections };
 }
 
 function fromSeed(): ResolvedEntrySchema {
@@ -170,7 +170,7 @@ export function resolveEntrySchema(
 
 export function stationsIn(
   schema: ResolvedEntrySchema,
-  category: MacroId,
+  category: string,
 ): EntryStation[] {
   return schema.stations.filter((s) => s.category === category);
 }
@@ -202,15 +202,27 @@ export function previousAcceptedStageId(
   return null;
 }
 
-export function schemaCategories(schema: ResolvedEntrySchema): {
-  id: MacroId;
+export function schemaCategories(
+  schema: ResolvedEntrySchema,
+  sections?: { id: string; label: string }[],
+): {
+  id: string;
   label: string;
 }[] {
   const present = new Set(schema.stations.map((s) => s.category));
-  return STAGE_CATEGORIES.filter((c) => present.has(c.id)).map((c) => ({
+  const cats = sections?.length
+    ? sections
+    : schema.sections?.length
+      ? schema.sections
+      : STAGE_CATEGORIES;
+  const listed = cats.filter((c) => present.has(c.id)).map((c) => ({
     id: c.id,
     label: c.label,
   }));
+  for (const id of present) {
+    if (!listed.some((c) => c.id === id)) listed.push({ id, label: id });
+  }
+  return listed;
 }
 
 export function seedDefectsForStage(stageId: string): DefectDef[] {

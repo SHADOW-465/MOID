@@ -1,14 +1,14 @@
 // Shared StageDayRecord builder for Data Entry matrix + Ask MOID agent.
 // Keep this the only place that maps ShiftBatchRecord → ledger shape.
 
-import type { MacroId, ShiftBatchRecord } from "@/lib/entry/disposafe-matrix";
+import type { ShiftBatchRecord } from "@/lib/entry/disposafe-matrix";
 import type { StageDayRecord } from "@/lib/ingest/emit";
 
 function sv(value: number, cell: string, header: string) {
   return { value, cell, header };
 }
 
-export function qtyHeaderFor(macro: MacroId): string {
+export function qtyHeaderFor(macro: string): string {
   if (macro === "primary") return "Quantity Produced";
   if (macro === "secondary") return "Quantity";
   return "Checked Qty";

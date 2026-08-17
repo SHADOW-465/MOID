@@ -48,7 +48,7 @@ const HELD = ["checked", "accepted", "hold", "rejected"] as const;
 const PASS = ["checked", "accepted", "rejected"] as const;
 
 export const STAGES: Stage[] = [
-  { stageId: "production", label: "Production (Dipping)", effectiveFrom: null, effectiveTo: null,
+  { stageId: "production", label: "Dipping", effectiveFrom: null, effectiveTo: null,
     upstream: [], captures: [...PASS], ...FLOW, sizeWise: true, category: "primary" },
   { stageId: "eye-punching", label: "Eye Punching", effectiveFrom: null, effectiveTo: null,
     upstream: ["production"], captures: [...PASS], ...FLOW, category: "secondary" },
@@ -93,11 +93,12 @@ export const STAGE_CATEGORY: Record<string, StageCategory> = Object.fromEntries(
   STAGES.filter((s) => s.category).map((s) => [s.stageId, s.category as StageCategory]),
 );
 
+export type CatalogSection = { id: string; label: string };
+
 /**
- * The plant's three sections. This list is FIXED — the Data Schema tree renders
- * these as locked folders that cannot be renamed, added to, or deleted, so a
- * deployment can't be reorganised and re-pointed at a different plant. What
- * lives inside them (stages, defects, sizes, aliases) is fully editable.
+ * Authored shop-floor sections. These are the seed, not a lock — Data Schema
+ * can rename, add or delete sections (password-gated). Ids stay stable so
+ * existing stage.category values and analytics defaults keep matching.
  */
 export const STAGE_CATEGORIES: { id: StageCategory; label: string }[] = [
   { id: "primary", label: "Production Dipping" },
@@ -291,6 +292,7 @@ export function plantCatalog(): CompanyCatalog {
     stages: STAGES,
     defects: DEFECTS,
     sizes: SIZES,
+    sections: STAGE_CATEGORIES.map((s) => ({ ...s })),
     fiscalYearStartMonth: FISCAL_YEAR_START_MONTH,
     updatedAt: null,
     lastMergedFrom: null,
@@ -348,10 +350,21 @@ export function mergePlantCatalog(existing: CompanyCatalog): CompanyCatalog {
   const sizes = authored.sizes.map((a) => sizeById.get(a.sizeId) ?? a);
   for (const s of existing.sizes) if (!sizes.some((x) => x.sizeId === s.sizeId)) sizes.push(s);
 
+  const sectionById = new Map(
+    (existing.sections ?? []).map((s) => [s.id, s]),
+  );
+  const sections: CatalogSection[] = STAGE_CATEGORIES.map((a) => {
+    const cur = sectionById.get(a.id);
+    sectionById.delete(a.id);
+    return cur ? { id: a.id, label: cur.label } : { id: a.id, label: a.label };
+  });
+  sections.push(...sectionById.values());
+
   return {
     stages,
     defects,
     sizes,
+    sections,
     fiscalYearStartMonth: existing.fiscalYearStartMonth || FISCAL_YEAR_START_MONTH,
     updatedAt: new Date().toISOString(),
     lastMergedFrom: "plant-catalog",

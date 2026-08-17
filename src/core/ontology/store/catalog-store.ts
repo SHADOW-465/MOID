@@ -18,10 +18,14 @@ import { shouldUseSupabase } from "@/lib/store";
 import { createServerClient } from "@/lib/supabase";
 import { filterIncomingForCatalogMerge } from "@/core/ontology/catalog-diff";
 
+export type CatalogSection = { id: string; label: string };
+
 export interface CompanyCatalog {
   stages: z.infer<typeof StageDef>[];
   defects: z.infer<typeof DefectDef>[];
   sizes: z.infer<typeof SizeDef>[];
+  /** Shop-floor sections. Absent on older rows — readers fall back to STAGE_CATEGORIES. */
+  sections?: CatalogSection[];
   fiscalYearStartMonth: number;
   /** ISO timestamp of last write (merge / edit / delete). */
   updatedAt: string | null;
@@ -33,6 +37,7 @@ export const EMPTY_CATALOG: CompanyCatalog = {
   stages: [],
   defects: [],
   sizes: [],
+  sections: [],
   fiscalYearStartMonth: 4,
   updatedAt: null,
   lastMergedFrom: null,
@@ -60,9 +65,11 @@ export interface CatalogStore {
   upsertStage(companyId: string, stage: z.infer<typeof StageDef>): Promise<CompanyCatalog>;
   upsertDefect(companyId: string, defect: z.infer<typeof DefectDef>): Promise<CompanyCatalog>;
   upsertSize(companyId: string, size: z.infer<typeof SizeDef>): Promise<CompanyCatalog>;
+  upsertSection(companyId: string, section: CatalogSection): Promise<CompanyCatalog>;
   deleteStage(companyId: string, stageId: string): Promise<CompanyCatalog>;
   deleteDefect(companyId: string, defectCode: string): Promise<CompanyCatalog>;
   deleteSize(companyId: string, sizeId: string): Promise<CompanyCatalog>;
+  deleteSection(companyId: string, sectionId: string): Promise<CompanyCatalog>;
   clear(companyId: string): Promise<void>;
 }
 
@@ -118,6 +125,7 @@ function mergeInto(
     stages: [...stages.values()],
     defects: [...defects.values()],
     sizes: [...sizes.values()],
+    sections: base.sections ?? [],
     fiscalYearStartMonth: base.stages.length
       ? base.fiscalYearStartMonth
       : (incoming.fiscalYearStartMonth ?? base.fiscalYearStartMonth),
@@ -137,6 +145,7 @@ class MemoryCatalogStore implements CatalogStore {
       stages: catalog.stages,
       defects: catalog.defects,
       sizes: catalog.sizes,
+      sections: catalog.sections ?? [],
       fiscalYearStartMonth: catalog.fiscalYearStartMonth,
       updatedAt: catalog.updatedAt ?? nowIso(),
       lastMergedFrom: catalog.lastMergedFrom ?? null,
@@ -219,6 +228,26 @@ class MemoryCatalogStore implements CatalogStore {
       lastMergedFrom: cur.lastMergedFrom,
     });
   }
+  async upsertSection(companyId: string, section: CatalogSection) {
+    const cur = await this.get(companyId);
+    const sections = upsertBy(cur.sections ?? [], section, (a, b) => a.id === b.id);
+    return this.put(companyId, { ...cur, sections, lastMergedFrom: cur.lastMergedFrom });
+  }
+  async deleteSection(companyId: string, sectionId: string) {
+    const cur = await this.get(companyId);
+    const realStages = (cur.stages ?? []).filter(
+      (s) => s.category === sectionId && !s.stageId.startsWith("__sec:"),
+    );
+    if (realStages.length > 0) {
+      throw new Error("Move or delete the stages in this section first.");
+    }
+    return this.put(companyId, {
+      ...cur,
+      stages: (cur.stages ?? []).filter((s) => s.category !== sectionId || !s.stageId.startsWith("__sec:")),
+      sections: (cur.sections ?? []).filter((s) => s.id !== sectionId),
+      lastMergedFrom: cur.lastMergedFrom,
+    });
+  }
   async clear(companyId: string) {
     this.byCompany.delete(companyId);
   }
@@ -229,6 +258,7 @@ type CatalogDbRow = {
   stages: CompanyCatalog["stages"];
   defects: CompanyCatalog["defects"];
   sizes: CompanyCatalog["sizes"];
+  sections?: CompanyCatalog["sections"];
   fiscal_year_start_month: number;
   updated_at: string | null;
   last_merged_from: string | null;
@@ -239,6 +269,7 @@ function fromDb(r: CatalogDbRow): CompanyCatalog {
     stages: r.stages ?? [],
     defects: r.defects ?? [],
     sizes: r.sizes ?? [],
+    sections: r.sections ?? [],
     fiscalYearStartMonth: r.fiscal_year_start_month ?? 4,
     updatedAt: r.updated_at,
     lastMergedFrom: r.last_merged_from,
@@ -276,23 +307,35 @@ class SupabaseCatalogStore implements CatalogStore {
 
   async put(companyId: string, catalog: Omit<CompanyCatalog, "updatedAt"> & { updatedAt?: string | null }) {
     const updatedAt = catalog.updatedAt ?? nowIso();
+    const row = {
+      company_id: companyId,
+      stages: catalog.stages,
+      defects: catalog.defects,
+      sizes: catalog.sizes,
+      sections: catalog.sections ?? [],
+      fiscal_year_start_month: catalog.fiscalYearStartMonth,
+      updated_at: updatedAt,
+      last_merged_from: catalog.lastMergedFrom ?? null,
+    };
     const { data, error } = await this.db()
       .from("company_catalog")
-      .upsert(
-        {
-          company_id: companyId,
-          stages: catalog.stages,
-          defects: catalog.defects,
-          sizes: catalog.sizes,
-          fiscal_year_start_month: catalog.fiscalYearStartMonth,
-          updated_at: updatedAt,
-          last_merged_from: catalog.lastMergedFrom ?? null,
-        },
-        { onConflict: "company_id" },
-      )
+      .upsert(row, { onConflict: "company_id" })
       .select("*")
       .single();
-    if (error) throw error;
+    if (error) {
+      const msg = error.message ?? "";
+      if (/sections/i.test(msg) && /column|schema cache|does not exist/i.test(msg)) {
+        const { sections: _drop, ...legacy } = row;
+        const retry = await this.db()
+          .from("company_catalog")
+          .upsert(legacy, { onConflict: "company_id" })
+          .select("*")
+          .single();
+        if (retry.error) throw retry.error;
+        return { ...fromDb(retry.data as CatalogDbRow), sections: catalog.sections ?? [] };
+      }
+      throw error;
+    }
     return fromDb(data as CatalogDbRow);
   }
 
@@ -370,6 +413,26 @@ class SupabaseCatalogStore implements CatalogStore {
       lastMergedFrom: cur.lastMergedFrom,
     });
   }
+  async upsertSection(companyId: string, section: CatalogSection) {
+    const cur = await this.get(companyId);
+    const sections = upsertBy(cur.sections ?? [], section, (a, b) => a.id === b.id);
+    return this.put(companyId, { ...cur, sections, lastMergedFrom: cur.lastMergedFrom });
+  }
+  async deleteSection(companyId: string, sectionId: string) {
+    const cur = await this.get(companyId);
+    const realStages = (cur.stages ?? []).filter(
+      (s) => s.category === sectionId && !s.stageId.startsWith("__sec:"),
+    );
+    if (realStages.length > 0) {
+      throw new Error("Move or delete the stages in this section first.");
+    }
+    return this.put(companyId, {
+      ...cur,
+      stages: (cur.stages ?? []).filter((s) => s.category !== sectionId || !s.stageId.startsWith("__sec:")),
+      sections: (cur.sections ?? []).filter((s) => s.id !== sectionId),
+      lastMergedFrom: cur.lastMergedFrom,
+    });
+  }
   async clear(companyId: string) {
     const { error } = await this.db().from("company_catalog").delete().eq("company_id", companyId);
     if (error) throw error;
@@ -378,10 +441,11 @@ class SupabaseCatalogStore implements CatalogStore {
 
 const g = globalThis as unknown as { __companyCatalogStore?: CatalogStore };
 export function getCatalogStore(): CatalogStore {
-  if (!g.__companyCatalogStore) {
+  const cur = g.__companyCatalogStore;
+  if (!cur || typeof cur.upsertSection !== "function") {
     g.__companyCatalogStore = shouldUseSupabase() ? new SupabaseCatalogStore() : new MemoryCatalogStore();
   }
-  return g.__companyCatalogStore;
+  return g.__companyCatalogStore!;
 }
 
 /** Test helper — wipe singleton between suites. */

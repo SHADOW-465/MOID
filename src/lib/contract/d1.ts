@@ -114,7 +114,9 @@ export const StageDef = z.object({
   /** Shop-floor section. Drives the Sources filter — analytics default to
    *  assembly only, because that is what the plant's own reports mean by
    *  "rejection". Optional so older persisted registries still parse. */
-  category: z.enum(["primary", "secondary", "assembly"]).optional(),
+  category: z.string().min(1).optional(),
+  /** Denormalized section title so a rename survives if `sections` is not stored. */
+  sectionLabel: z.string().min(1).optional(),
 });
 
 export const SizeDef = z.object({

@@ -55,11 +55,10 @@ test("every stage belongs to a shop-floor section", () => {
   expect(cat("primary")).not.toContain("eye-punching");
 });
 
-test("the three shop-floor sections are a fixed set — the schema tree locks them", () => {
+test("the authored shop-floor sections seed the catalog", () => {
   expect(STAGE_CATEGORIES.map((c) => c.id)).toEqual(["primary", "secondary", "assembly"]);
-  // Renaming a section is a code edit, never a user action (see the schema tree
-  // design doc): the id is what every rollup keys on, the label is display only.
   expect(STAGE_CATEGORIES.find((c) => c.id === "primary")!.label).toBe("Production Dipping");
+  expect(STAGES.find((s) => s.stageId === "production")!.label).toBe("Dipping");
 });
 
 test("defects are scoped to stages that exist, and the four vocabularies stay separate", () => {
