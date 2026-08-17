@@ -982,22 +982,15 @@ export default function BatchMatrixEntry({
       return;
     }
 
-    // A lot that has cleared every gate is finished. Landing back on the first
-    // gate with that same code almost always means the operator started the
-    // next lot and the carried-over code was never changed — the single most
-    // likely way a whole lot ends up filed under its predecessor's name.
+    // NOTE: there is deliberately no "this lot is finished" block here.
     //
-    // Corrections to a finished lot belong in the saved-entries list below,
-    // where the change is deliberate and attributed. The form only makes new
-    // entries.
-    if (!editingId && lotProgress?.status === "complete") {
-      setErr(
-        `${batchKey} has already cleared all ${lotProgress.totalCount} gates — it is a finished lot. ` +
-          `If this is the next lot, change the Batch date (or size) to give it its own code. ` +
-          `To correct ${batchKey}, use Edit on its row in Saved this shift.`,
-      );
-      return;
-    }
+    // A previous version blocked any save when lotProgress.status was
+    // "complete", but "complete" only means the four ASSEMBLY QUALITY GATES
+    // have entries — it says nothing about Valve Fixing, Primary Pack
+    // Inspection, or any primary/secondary station. So finishing the gates
+    // locked the lot out of every other station permanently. The real signal
+    // for "you are re-entering something" is that THIS station already has an
+    // entry for THIS lot, which existingLedgerEntry checks below.
 
     // /api/ingest supersedes direct entry by date · stage · size · batch. If a
     // revision changes any of those, the OLD ledger row keys differently and
@@ -1704,9 +1697,12 @@ export default function BatchMatrixEntry({
                   }}
                 >
                   <LotProgress progress={lotProgress} activeStageId={stageId} />
-                  {lotProgress.status === "complete" && !editingId && (
-                    // The finished-lot case, said before they type rather than
-                    // at save: this code belongs to a lot that is already done.
+                  {stageAlreadyDone && !editingId && (
+                    // Said before they type: THIS station already has an entry
+                    // for THIS lot, so either they are correcting it or the
+                    // carried-over lot code was never changed. Keyed on the
+                    // station actually selected — keying it on "all gates done"
+                    // locked finished lots out of every remaining station.
                     <div
                       style={{
                         margin: "8px 0 0",
@@ -1719,9 +1715,9 @@ export default function BatchMatrixEntry({
                         lineHeight: 1.5,
                       }}
                     >
-                      <strong>This lot is finished.</strong> {batchId} has cleared all{" "}
-                      {lotProgress.totalCount} gates. Starting the next lot? Give it its own code
-                      before entering counts.
+                      <strong>{processName} is already recorded for {batchId}</strong> on{" "}
+                      {shortEntryDate(stageAlreadyDone.date)}. Saving here replaces it. If this is
+                      the next lot, give it its own code first.
                       <button
                         type="button"
                         onClick={() => setBatchDate(today())}
@@ -1741,27 +1737,6 @@ export default function BatchMatrixEntry({
                         Start a new lot dated today
                       </button>
                     </div>
-                  )}
-                  {stageAlreadyDone && lotProgress.status !== "complete" && (
-                    // Contained, not floating orange text. The station name is
-                    // already selected above, so it is not repeated here, and
-                    // the date reads the way a person says it.
-                    <p
-                      style={{
-                        margin: "8px 0 0",
-                        padding: "6px 8px",
-                        borderRadius: "var(--radius-sm)",
-                        border: "1px solid color-mix(in srgb, var(--warning) 35%, transparent)",
-                        background: "var(--warning-weak)",
-                        color: "var(--warning)",
-                        fontSize: "var(--text-2xs)",
-                        lineHeight: 1.45,
-                      }}
-                    >
-                      Already recorded for this lot on{" "}
-                      <strong>{shortEntryDate(stageAlreadyDone.date)}</strong>. Saving adds a second
-                      entry rather than replacing it.
-                    </p>
                   )}
                 </div>
               )}
