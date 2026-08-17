@@ -13,7 +13,7 @@ export type NotificationHistoryEntry = {
 };
 
 export type EntryExceptionPayload = {
-  kind: "qty_mismatch" | "defect_mismatch" | "reconcile";
+  kind: string;
   date: string;
   batchId?: string;
   stageId?: string;

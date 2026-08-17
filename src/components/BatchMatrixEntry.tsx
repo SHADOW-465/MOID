@@ -43,6 +43,7 @@ import {
   formatBatchIdInput,
   frDigitsFromSize,
   isValidBatchId,
+  canonicalBatchId,
   toCanonicalSize,
   toDisplaySize,
 } from "@/lib/entry/batch-id";
@@ -54,6 +55,7 @@ import {
 } from "@/lib/entry/shift-window";
 import { entryKey, hasValidGrant } from "@/lib/entry/edit-grants";
 import { toStageDayRecord, qtyHeaderFor } from "@/lib/entry/to-stage-day-record";
+import { collectEntryReasons, remarksFromReasons, warningNeedsReason } from "@/lib/entry/exception-reasons";
 import { readPrefill, clearPrefill } from "@/lib/agent/prefill";
 import { useEvents } from "@/components/app/EventsContext";
 import { usePersona } from "@/components/app/PersonaContext";
@@ -78,7 +80,7 @@ function shortEntryDate(iso: string | null): string {
 const DRAFT_KEY = "moid_entry_draft_batch";
 
 interface BatchDraft {
-  macro: MacroId;
+  macro: string;
   /** Ledger stageId. Older drafts stored `micro` (p15-visual, …) instead. */
   stageId?: string;
   /** @deprecated Retired local process id — still read on restore. */
@@ -130,7 +132,7 @@ export default function BatchMatrixEntry({
   const { events, refreshEvents } = useEvents();
   const { canWrite, canConfigure, canEraseLedger, persona } = usePersona();
 
-  const [macro, setMacro] = useState<MacroId>("assembly");
+  const [macro, setMacro] = useState<string>("assembly");
   const [stageId, setStageId] = useState("visual");
   const [date, setDate] = useState(today);
   const [size, setSize] = useState("14Fr");
@@ -561,6 +563,22 @@ export default function BatchMatrixEntry({
     setAckReasons({});
   }, [warningKey]);
 
+  // Pass is "this lot at this station again" — never a leftover from Visual
+  // when the operator has moved on to Balloon. Sign-out appeared to "fix" it
+  // because pass is not in the draft and reset to 1 on a fresh mount.
+  const passCtx = `${stageId}|${canonicalBatchId(batchId) ?? batchId.trim().toUpperCase()}`;
+  const passCtxRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (passCtxRef.current === null) {
+      passCtxRef.current = passCtx;
+      return;
+    }
+    if (passCtxRef.current === passCtx) return;
+    passCtxRef.current = passCtx;
+    setPass(1);
+    setPassReason("");
+  }, [passCtx]);
+
   const shiftConfig = useMemo(() => readShiftWindowConfig(), [tick]);
   const withinShift = useMemo(
     () => isWithinShiftWindow(shift, new Date(), shiftConfig),
@@ -648,7 +666,7 @@ export default function BatchMatrixEntry({
       `Switch to ${what}?\n\nThe quantities you have typed stay in the form — only the defect reasons that do not exist at the new station are dropped.`,
     );
 
-  const selectMacro = (id: MacroId) => {
+  const selectMacro = (id: string) => {
     if (id === macro) return;
     const first = schema ? stationsIn(schema, id)[0] : undefined;
     const label = first?.label ?? id;
@@ -924,6 +942,7 @@ export default function BatchMatrixEntry({
   async function notifyException(opts: {
     kind: string;
     reason: string;
+    warningMessage?: string;
     defectSum?: number;
     reject?: number;
   }) {
@@ -938,11 +957,15 @@ export default function BatchMatrixEntry({
       dSum != null
         ? ` · Defects sum ${dSum}${rej !== dSum ? ` vs Rejected ${rej}` : ""}`
         : "";
-    const title = `Entry saved over a warning: ${opts.kind}`;
+    const title =
+      opts.kind === "repeat-pass"
+        ? `Repeat pass noted: ${processName}`
+        : `Entry saved over a warning: ${opts.kind}`;
+    const warningBit = opts.warningMessage ? ` Warning: ${opts.warningMessage}.` : "";
     const body =
       `${operator.trim() || "Operator"} saved ${batchId.trim().toUpperCase() || "(no batch)"} · ` +
       `${processName} · ${size} · ${date}. ` +
-      `${balanceLine}. Reason: ${opts.reason}`;
+      `${balanceLine}.${warningBit} Reason: ${opts.reason}`;
 
     await postNotification({
       type: "entry_exception",
@@ -1038,21 +1061,32 @@ export default function BatchMatrixEntry({
       document.getElementById("entry-verdict")?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
+    const missingReason = verdict.warnings.filter(
+      (w) => warningNeedsReason(w.code) && !(ackReasons[w.code] ?? "").trim(),
+    );
+    if (missingReason.length > 0) {
+      setErr("Add a reason for the GM on each exception before saving.");
+      document.getElementById("entry-verdict")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
 
-    // A warning accepted with a reason is an exception the GM should see.
-    for (const w of verdict.warnings) {
-      const reason = ackReasons[w.code]?.trim();
-      if (reason) {
-        await notifyException({ kind: w.code, reason }).catch(() => {});
-      }
+    // Operator-written reasons go to the GM inbox and onto the row remarks.
+    const notes = collectEntryReasons({
+      warnings: verdict.warnings,
+      ackReasons,
+      pass,
+      passReason,
+    });
+    for (const note of notes) {
+      await notifyException({
+        kind: note.kind,
+        reason: note.reason,
+        warningMessage: note.warningMessage,
+      }).catch(() => {});
     }
 
     const rec = buildPendingRecord();
-    const reasons = verdict.warnings
-      .map((w) => (ackReasons[w.code]?.trim() ? `${w.code}: ${ackReasons[w.code].trim()}` : null))
-      .filter(Boolean)
-      .join(" | ");
-    if (reasons) rec.remarks = rec.remarks ? `${rec.remarks} | ${reasons}` : reasons;
+    rec.remarks = remarksFromReasons(notes, rec.remarks);
     await finalizeSave(rec);
   }
 
@@ -1405,7 +1439,7 @@ export default function BatchMatrixEntry({
             </div>
           </>
         )}
-        {schemaSource === "builtin" && !isAssembly && MATRIX_STAGES[macro].processes.length > 0 && (
+        {schemaSource === "builtin" && !isAssembly && (macro === "primary" || macro === "secondary") && MATRIX_STAGES[macro].processes.length > 0 && (
           <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
             {MATRIX_STAGES[macro].processes.map((p) => (
               <span key={p.id} style={chipBadge}>{p.name}</span>
@@ -2039,12 +2073,20 @@ export default function BatchMatrixEntry({
                   {b.action}
                 </div>
               )}
+              {b.code === "pass-needs-reason" && (
+                <input
+                  value={passReason}
+                  onChange={(e) => setPassReason(e.target.value)}
+                  placeholder={`Why did this lot come through ${processName} again?`}
+                  aria-label="Reason this lot came through this station again"
+                  style={{ ...inp, marginTop: 8 }}
+                />
+              )}
             </div>
           ))}
 
           {verdict.warnings.map((w) => {
             const on = !!acked[w.code];
-            const needsReason = w.code === "rejected-not-fully-explained";
             return (
               <div
                 key={w.code}
@@ -2063,19 +2105,45 @@ export default function BatchMatrixEntry({
                     {w.action}
                   </div>
                 )}
-                <label style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 8, fontSize: 12.5, cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={on}
-                    onChange={(e) => setAcked((cur) => ({ ...cur, [w.code]: e.target.checked }))}
-                  />
-                  {w.code === "station-already-recorded"
-                    ? "Yes — replace the entry that is already there"
-                    : "I have checked this and want to save anyway"}
-                </label>
-                {/* The escape hatch. Strict-by-default would otherwise corner an
-                    operator whose lot genuinely came through twice into
-                    inventing a fake lot code to get the work saved. */}
+                {w.code === "pass-without-first" ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPass(1);
+                      setPassReason("");
+                    }}
+                    style={{
+                      marginTop: 8,
+                      fontSize: 12.5,
+                      fontWeight: 700,
+                      padding: "6px 10px",
+                      borderRadius: 8,
+                      border: "1px solid var(--accent)",
+                      background: "var(--accent)",
+                      color: "var(--text-invert)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    This is the first time at {processName}
+                  </button>
+                ) : (
+                  <label style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 8, fontSize: 12.5, cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      onChange={(e) => {
+                        setAcked((cur) => ({ ...cur, [w.code]: e.target.checked }));
+                        if (w.code === "station-already-recorded" && e.target.checked) {
+                          setPass(1);
+                          setPassReason("");
+                        }
+                      }}
+                    />
+                    {w.code === "station-already-recorded"
+                      ? "Yes — replace the existing entry (rewrite)"
+                      : "I have checked this and want to save anyway"}
+                  </label>
+                )}
                 {w.code === "station-already-recorded" && (
                   <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed var(--border-strong)" }}>
                     <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, cursor: "pointer" }}>
@@ -2085,6 +2153,9 @@ export default function BatchMatrixEntry({
                         onChange={(e) => {
                           setPass(e.target.checked ? 2 : 1);
                           if (!e.target.checked) setPassReason("");
+                          if (e.target.checked) {
+                            setAcked((cur) => ({ ...cur, "station-already-recorded": false }));
+                          }
                         }}
                       />
                       No — this lot came through {processName} again (keep both)
@@ -2093,17 +2164,17 @@ export default function BatchMatrixEntry({
                       <input
                         value={passReason}
                         onChange={(e) => setPassReason(e.target.value)}
-                        placeholder="Why did it come through again? (required)"
+                        placeholder={`Why did it come through ${processName} again? (required)`}
                         style={{ ...inp, marginTop: 7 }}
                       />
                     )}
                   </div>
                 )}
-                {on && needsReason && (
+                {on && warningNeedsReason(w.code) && (
                   <input
                     value={ackReasons[w.code] ?? ""}
                     onChange={(e) => setAckReasons((cur) => ({ ...cur, [w.code]: e.target.value }))}
-                    placeholder="Why is the cause unknown? (sent to the GM)"
+                    placeholder="Reason for the GM (required)"
                     style={{ ...inp, marginTop: 7 }}
                   />
                 )}

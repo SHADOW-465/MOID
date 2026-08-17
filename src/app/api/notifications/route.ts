@@ -22,11 +22,11 @@ export async function GET(req: NextRequest) {
     statusParam === "acked" || statusParam === "approved" || statusParam === "denied"
       ? statusParam
       : "open";
-  const list = listNotifications({
+  const list = await listNotifications({
     status: status as "open" | "all" | "closed" | "acked" | "approved" | "denied",
     type: type || undefined,
   });
-  return NextResponse.json({ notifications: list, openCount: openCount() });
+  return NextResponse.json({ notifications: list, openCount: await openCount() });
 }
 
 export async function POST(req: NextRequest) {
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     if (!body?.type || !body?.title || !body?.body) {
       return NextResponse.json({ error: "type, title, body required" }, { status: 400 });
     }
-    const n = createNotification({
+    const n = await createNotification({
       type: body.type,
       title: body.title,
       body: body.body,
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
       targetPersona: body.targetPersona ?? "gm",
       payload: body.payload ?? {},
     });
-    return NextResponse.json({ notification: n, openCount: openCount() });
+    return NextResponse.json({ notification: n, openCount: await openCount() });
   } catch (err: unknown) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Failed to create notification" },
@@ -75,7 +75,7 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    const existing = listNotifications({ status: "all" }).find((n) => n.id === id);
+    const existing = (await listNotifications({ status: "all" })).find((n) => n.id === id);
     if (!existing) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }
@@ -86,7 +86,7 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    const updated = patchNotification(id, {
+    const updated = await patchNotification(id, {
       action,
       actor: actorPersona,
       note,
@@ -107,7 +107,7 @@ export async function PATCH(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ notification: updated, grant, openCount: openCount() });
+    return NextResponse.json({ notification: updated, grant, openCount: await openCount() });
   } catch (err: unknown) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Failed to patch notification" },

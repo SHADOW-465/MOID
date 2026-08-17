@@ -7,12 +7,12 @@ import {
 } from "@/lib/notifications/store";
 
 describe("notification store trail", () => {
-  beforeEach(() => {
-    __resetNotificationsForTests();
+  beforeEach(async () => {
+    await __resetNotificationsForTests();
   });
 
-  it("creates open alerts and keeps an action trail on ack", () => {
-    const n = createNotification({
+  it("creates open alerts and keeps an action trail on ack", async () => {
+    const n = await createNotification({
       type: "entry_exception",
       title: "Entry saved with quantity exception",
       body: "Op saved 26F27-14 with mismatch",
@@ -29,9 +29,9 @@ describe("notification store trail", () => {
     });
     expect(n.status).toBe("open");
     expect(n.history).toEqual([]);
-    expect(openCount()).toBe(1);
+    expect(await openCount()).toBe(1);
 
-    const updated = patchNotification(n.id, {
+    const updated = await patchNotification(n.id, {
       action: "ack",
       actor: "gm",
       note: "Reviewed — OK to leave",
@@ -42,9 +42,9 @@ describe("notification store trail", () => {
     expect(updated?.history).toHaveLength(1);
     expect(updated?.history[0].action).toBe("ack");
     expect(updated?.history[0].by).toBe("gm");
-    expect(openCount()).toBe(0);
+    expect(await openCount()).toBe(0);
 
-    const closed = listNotifications({ status: "closed" });
+    const closed = await listNotifications({ status: "closed" });
     expect(closed).toHaveLength(1);
     expect(closed[0].id).toBe(n.id);
   });

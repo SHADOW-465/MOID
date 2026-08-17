@@ -276,8 +276,8 @@ export function checkEntry(
       blocks.push({
         code: "pass-needs-reason",
         severity: "block",
-        message: `Pass ${draft.pass} needs a reason.`,
-        action: "Say why this lot came through this station again — a re-inspection, a split run.",
+        message: `This lot is marked as coming through ${station} again (pass ${draft.pass}).`,
+        action: "Type why below — a re-inspection or a split run. If this is the first time at this station, it is not a second pass.",
       });
     }
     const first = ledger.get(identityKey({ ...identity, pass: 1 }));
@@ -285,8 +285,8 @@ export function checkEntry(
       warnings.push({
         code: "pass-without-first",
         severity: "warn",
-        message: `This is marked pass ${draft.pass}, but there is no first pass on the ledger for ${station}.`,
-        action: "Check the pass number, or record the first pass instead.",
+        message: `This is marked as a repeat at ${station}, but this lot has not been through ${station} yet.`,
+        action: "Treat it as the first time at this station.",
       });
     }
   }

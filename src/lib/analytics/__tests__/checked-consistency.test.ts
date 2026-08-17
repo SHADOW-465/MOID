@@ -120,7 +120,7 @@ test("sectionBreakdown gives each section its own numerator and denominator", ()
 
   expect(byKey.primary.checkedQty).toBe(6400);
   expect(byKey.primary.rejectedQty).toBe(64);
-  expect(byKey.primary.entryLabel).toBe("Production");
+  expect(byKey.primary.entryLabel).toBe("Dipping");
 
   expect(byKey.assembly.checkedQty).toBe(5930);
   expect(byKey.assembly.rejectedQty).toBe(286 + 40 + 12 + 8);
