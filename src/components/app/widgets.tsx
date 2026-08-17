@@ -4,11 +4,11 @@ import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import type { SeriesPoint, StageRow, DefectRow, StageTrendPoint } from "@/lib/analytics";
 import Icon from "@/components/editorial/Icon";
 import { useTweaks } from "@/components/editorial/TweaksContext";
-import { 
-  useContainerWidth, 
-  getBaseSpacing, 
-  hoverIndexFromPixels, 
-  shouldShowLabel 
+import {
+  useContainerWidth,
+  getBaseSpacing,
+  hoverIndexFromPixels,
+  shouldShowLabel
 } from "@/lib/chart-utils";
 
 /** Shared hover tooltip card used by every time-series chart. Positioned over the
@@ -62,12 +62,12 @@ export function ChartTip({ leftPx, topPx, below, title, rows }: {
   }, [leftPx, topPx, below, rows.length]);
 
   const activeBelow = offset.forceBelow !== null ? offset.forceBelow : below;
-  const yTransform = activeBelow 
-    ? "translate(-50%, 12px)" 
+  const yTransform = activeBelow
+    ? "translate(-50%, 12px)"
     : "translate(-50%, calc(-100% - 12px))";
 
   return (
-    <div 
+    <div
       ref={ref}
       style={{
         position: "absolute", left: leftPx, top: topPx,
@@ -142,24 +142,24 @@ function AnimatedValue({ value }: { value: string }) {
   useEffect(() => {
     if (value === prevValueRef.current) return;
     prevValueRef.current = value;
-    
+
     const match = value.match(/([\d,.]+)/);
     if (!match) {
       setDisplayValue(value);
       return;
     }
-    
+
     const numStr = match[1];
     const isPercent = value.includes("%");
     const isCurrency = value.includes("₹") || value.includes("Rs");
     const hasComma = numStr.includes(",");
     const targetNum = parseFloat(numStr.replace(/,/g, ""));
-    
+
     if (isNaN(targetNum)) {
       setDisplayValue(value);
       return;
     }
-    
+
     const startNum = prevNumRef.current ?? targetNum;
     prevNumRef.current = targetNum;
 
@@ -167,10 +167,10 @@ function AnimatedValue({ value }: { value: string }) {
       setDisplayValue(value);
       return;
     }
-    
+
     const duration = 600; // ms
     const startTime = performance.now();
-    
+
     let frameId: number;
     const update = (now: number) => {
       const elapsed = now - startTime;
@@ -178,7 +178,7 @@ function AnimatedValue({ value }: { value: string }) {
       // power3.out equivalent
       const ease = 1 - Math.pow(1 - progress, 3);
       const current = startNum + (targetNum - startNum) * ease;
-      
+
       let formatted = "";
       if (isPercent) {
         formatted = `${current.toFixed(2)}%`;
@@ -189,20 +189,20 @@ function AnimatedValue({ value }: { value: string }) {
           formatted = `₹${formatted}`;
         }
       }
-      
+
       setDisplayValue(value.replace(/[\d,.]+/, formatted.replace(/[^0-9.]/g, "")));
-      
+
       if (progress < 1) {
         frameId = requestAnimationFrame(update);
       } else {
         setDisplayValue(value);
       }
     };
-    
+
     frameId = requestAnimationFrame(update);
     return () => cancelAnimationFrame(frameId);
   }, [value]);
-  
+
   return <span>{displayValue}</span>;
 }
 
@@ -416,7 +416,7 @@ export function Kpi({
 
 function Spark({ points, tone }: { points: SeriesPoint[]; tone?: "good" | "warn" | "bad" }) {
   if (!points || points.length < 2) return null;
-  const v = points.map((p) => p.value); 
+  const v = points.map((p) => p.value);
   const max = Math.max(...v, 1e-6), min = Math.min(...v, 0);
   const W = 80, H = 16;
   const d = points.map((p, i) => `${(i / (points.length - 1)) * W},${H - ((p.value - min) / (max - min || 1)) * H}`).join(" ");
@@ -448,11 +448,11 @@ export function GaugeChart({ value, label, subtext }: { value: number; label: st
   const max = 10.0;
   const pct = Math.min(value / max, 1.0);
   const angle = pct * Math.PI - Math.PI; // -Math.PI to 0
-  
+
   const cx = 100, cy = 100, r = 70;
   const needleX = cx + Math.cos(angle) * (r - 12);
   const needleY = cy + Math.sin(angle) * (r - 12);
-  
+
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "10px 0" }}>
       <svg width="200" height="110" viewBox="0 0 200 110" style={{ overflow: "visible" }}>
@@ -479,20 +479,20 @@ export function GaugeChart({ value, label, subtext }: { value: number; label: st
   );
 }
 
-export function LineChart({ 
-  points, 
-  target, 
-  fmt, 
-  mean, 
+export function LineChart({
+  points,
+  target,
+  fmt,
+  mean,
   color = "#C8421C",
   stage,
   metric,
   height = 280
-}: { 
-  points: SeriesPoint[]; 
-  target?: number; 
-  fmt: (n: number) => string; 
-  mean?: boolean; 
+}: {
+  points: SeriesPoint[];
+  target?: number;
+  fmt: (n: number) => string;
+  mean?: boolean;
   color?: string;
   stage?: string;
   metric?: string;
@@ -501,7 +501,7 @@ export function LineChart({
   const [zoom, setZoom] = useState(1.0);
   const [scrollLeft, setScrollLeft] = useState(0);
   const [hover, setHover] = useState<number | null>(null);
-  
+
   const { t } = useTweaks();
   const { ref: containerRef, width: containerWidth } = useContainerWidth(660);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -521,7 +521,7 @@ export function LineChart({
     if (testStr.includes("₹") || testStr.includes("Lakhs")) {
       defaultMax = 100000;
     }
-  } catch (e) {}
+  } catch (e) { }
   const max = maxVal === 0 ? defaultMax : maxVal;
   const avg = v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0;
 
@@ -532,8 +532,8 @@ export function LineChart({
   const isScrollable = totalNeededWidth > containerWidth;
   const canvasWidth = isScrollable ? totalNeededWidth : containerWidth;
 
-  const spacing = isScrollable 
-    ? currentSpacing 
+  const spacing = isScrollable
+    ? currentSpacing
     : (containerWidth - padX * 2) / Math.max(numPoints - 1, 1);
 
   const x = (i: number) => padX + i * spacing;
@@ -593,21 +593,21 @@ export function LineChart({
         <ZoomButton onClick={(e) => { e.stopPropagation(); setZoom(1.0); }} title="Fit Viewport">FIT</ZoomButton>
       </div>
 
-      <div 
+      <div
         ref={wrapperRef}
         onScroll={(e) => setScrollLeft(e.currentTarget.scrollLeft)}
         onWheel={handleWheel}
-        style={{ 
-          width: "100%", 
-          overflowX: "auto", 
+        style={{
+          width: "100%",
+          overflowX: "auto",
           position: "relative",
           scrollbarWidth: "thin",
         }}
       >
-        <svg 
-          width={canvasWidth} 
-          height={H} 
-          viewBox={`0 0 ${canvasWidth} ${H}`} 
+        <svg
+          width={canvasWidth}
+          height={H}
+          viewBox={`0 0 ${canvasWidth} ${H}`}
           style={{ display: "block", overflow: "visible" }}
           onMouseMove={handleMouseMove}
         >
@@ -704,14 +704,14 @@ export function LineChart({
 
 const SERIES_COLORS = ["#2563EB", "#0D9488", "#D97706", "#DC2626", "#EC4899", "#65A30D"];
 
-export function MultiLine({ 
-  data, 
-  stages, 
+export function MultiLine({
+  data,
+  stages,
   fmt,
   height = 296
-}: { 
-  data: StageTrendPoint[]; 
-  stages: { stageId: string; label: string }[]; 
+}: {
+  data: StageTrendPoint[];
+  stages: { stageId: string; label: string }[];
   fmt?: (n: number) => string;
   height?: number;
 }) {
@@ -747,7 +747,7 @@ export function MultiLine({
     } else if (!testStr.includes("%") && maxVal > 1) {
       defaultMax = 10;
     }
-  } catch (e) {}
+  } catch (e) { }
   const max = maxVal === 0 ? defaultMax : maxVal;
 
   const numPoints = data.length;
@@ -757,8 +757,8 @@ export function MultiLine({
   const isScrollable = totalNeededWidth > containerWidth;
   const canvasWidth = isScrollable ? totalNeededWidth : containerWidth;
 
-  const spacing = isScrollable 
-    ? currentSpacing 
+  const spacing = isScrollable
+    ? currentSpacing
     : (containerWidth - padX * 2) / Math.max(numPoints - 1, 1);
 
   const x = (i: number) => padX + i * spacing;
@@ -787,7 +787,7 @@ export function MultiLine({
     setHover(idx);
   };
 
-  const maxValAtHover = hover != null 
+  const maxValAtHover = hover != null
     ? Math.max(...stages.map((s) => data[hover].perStage[s.stageId] ?? 0))
     : 0;
 
@@ -812,21 +812,21 @@ export function MultiLine({
         <ZoomButton onClick={(e) => { e.stopPropagation(); setZoom(1.0); }} title="Fit Viewport">FIT</ZoomButton>
       </div>
 
-      <div 
+      <div
         ref={wrapperRef}
         onScroll={(e) => setScrollLeft(e.currentTarget.scrollLeft)}
         onWheel={handleWheel}
-        style={{ 
-          width: "100%", 
-          overflowX: "auto", 
+        style={{
+          width: "100%",
+          overflowX: "auto",
           position: "relative",
           scrollbarWidth: "thin",
         }}
       >
-        <svg 
-          width={canvasWidth} 
-          height={H} 
-          viewBox={`0 0 ${canvasWidth} ${H}`} 
+        <svg
+          width={canvasWidth}
+          height={H}
+          viewBox={`0 0 ${canvasWidth} ${H}`}
           style={{ width: canvasWidth, height: H, display: "block" }}
           onMouseMove={handleMouseMove}
         >
@@ -946,12 +946,12 @@ export function ProcessFlow({ rows }: { rows: StageRow[] }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {rows.map((r, i) => (
         <div key={r.stageId}>
-          <div style={{ 
-            border: "1px solid var(--border)", 
-            borderRadius: "var(--radius-sm)", 
-            padding: "10px 12px", 
-            display: "flex", 
-            justifyContent: "space-between", 
+          <div style={{
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-sm)",
+            padding: "10px 12px",
+            display: "flex",
+            justifyContent: "space-between",
             alignItems: "center",
             background: "var(--surface)"
           }}>
@@ -964,9 +964,9 @@ export function ProcessFlow({ rows }: { rows: StageRow[] }) {
                 Checked: {r.checked.toLocaleString()} | Rej: {r.rejected.toLocaleString()} | Yield: {(r.yield * 100).toFixed(1)}%
               </div>
             </div>
-            <span style={{ 
-              fontFamily: "var(--font-mono)", 
-              fontWeight: 800, 
+            <span style={{
+              fontFamily: "var(--font-mono)",
+              fontWeight: 800,
               fontSize: 13,
               color: r.rejRate > 0.05 ? "var(--critical)" : "var(--positive)",
               background: r.rejRate > 0.05 ? "var(--critical-weak)" : "var(--positive-weak)",
@@ -1037,10 +1037,10 @@ export function AuditVerificationTable({
           {items.map((item, idx) => (
             <tr key={idx} style={{ borderBottom: "1px solid var(--border)" }}>
               <td style={{ padding: "8px 0", color: "var(--text-2)" }}>{item.label}</td>
-              <td style={{ 
-                padding: "8px 0", 
-                textAlign: "right", 
-                fontFamily: "var(--font-mono)", 
+              <td style={{
+                padding: "8px 0",
+                textAlign: "right",
+                fontFamily: "var(--font-mono)",
                 fontWeight: 700,
                 color: item.ok ? "var(--positive)" : item.warn ? "var(--warning)" : "var(--text)"
               }}>
@@ -1131,14 +1131,14 @@ export const rupee = (n: number) => `₹ ${(n / 100000).toFixed(2)} Lakhs`;
 export const num = (n: number) => n.toLocaleString("en-IN");
 
 /** Donut — composition share (e.g. rejections by stage or defect). Inline SVG arcs. */
-export function Donut({ 
-  data, 
+export function Donut({
+  data,
   fmt,
   size = 160,
   fontSize = 12,
   hideLegend = false
-}: { 
-  data: { label: string; value: number; color?: string }[]; 
+}: {
+  data: { label: string; value: number; color?: string }[];
   fmt?: (n: number) => string;
   size?: number;
   fontSize?: number;

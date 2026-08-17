@@ -13,14 +13,14 @@ import OpenWipStrip from "@/components/app/OpenWipStrip";
 import type { AuditEventLike } from "@/lib/analytics/audit-sessions";
 import { draftFromRecommendation, blankDraft, titleFromText, type CapaRecord } from "@/lib/capa-store";
 import { useTweaks } from "@/components/editorial/TweaksContext";
-import { 
-  Card, 
-  Kpi, 
-  Empty, 
-  LineChart, 
-  MultiLine, 
-  BarsH, 
-  ProcessFlow, 
+import {
+  Card,
+  Kpi,
+  Empty,
+  LineChart,
+  MultiLine,
+  BarsH,
+  ProcessFlow,
   GaugeChart,
   AuditVerificationTable,
   StageSizeHeatmap,
@@ -172,7 +172,7 @@ export default function Dashboard() {
 
   const m = useMemo(() => {
     if (!events || events.length === 0) return null;
-    
+
     // Find all distinct periods in current events for the active grain
     const allPeriods = periodsIn(events, t.grain);
     const latestPeriod = allPeriods[allPeriods.length - 1];
@@ -224,7 +224,7 @@ export default function Dashboard() {
     const szTrend = sizeTrend(events, trendScope, selectedSize);
     const cTrend = copqTrend(events, trendScope);
 
-    const worstSize = orderedSizes.length > 0 ? [...orderedSizes].sort((a,b) => b.rejRate - a.rejRate)[0] : null;
+    const worstSize = orderedSizes.length > 0 ? [...orderedSizes].sort((a, b) => b.rejRate - a.rejRate)[0] : null;
     const sizeWiseInsight = worstSize
       ? worstSize.rejRate > 0
         ? `Catheter size ${worstSize.size} shows the highest quality deviation with a rejection rate of ${(worstSize.rejRate * 100).toFixed(2)}% YTD.`
@@ -236,10 +236,10 @@ export default function Dashboard() {
       : `No trend data available for size ${selectedSize} in the active period.`;
 
     return {
-      rate, 
-      rejected, 
-      checked, 
-      fpy: fpyVal, 
+      rate,
+      rejected,
+      checked,
+      fpy: fpyVal,
       stages: orderedStages,
       defects,
       tr,
@@ -250,8 +250,8 @@ export default function Dashboard() {
       weekly,
       copq: copqRes?.value ?? 0,
       savings: savings ?? 0,
-      trust, 
-      audit, 
+      trust,
+      audit,
       status,
       sizeTrend: szTrend,
       copqTrend: cTrend,
@@ -296,7 +296,7 @@ export default function Dashboard() {
   // Executive summary points
   const exec = useMemo(() => {
     if (!m || m.checked === 0) return [];
-    
+
     let rateDiff = "";
     if (m.tr && m.tr.length >= 2) {
       const last = m.tr[m.tr.length - 1].value;
@@ -385,7 +385,7 @@ export default function Dashboard() {
     }
     const cur = m.tr[m.tr.length - 1];
     const prev = m.tr[m.tr.length - 2];
-    
+
     const rateChange = cur.value - prev.value;
     const rateDiffSign = rateChange >= 0 ? "↑" : "↓";
     const rateDiffText = `${rateDiffSign} ${(Math.abs(rateChange) * 100).toFixed(2)}% vs ${prev.label}`;
@@ -599,576 +599,576 @@ export default function Dashboard() {
               />
             )
           ) : (
-          <>
-          {/* Section 1: Executive KPIs */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: "var(--gap-grid)" }}>
-            <Kpi
-              primary
-              label="Overall Rejection"
-              value={pct(m.rate)}
-              detail={`${num(m.rejected)} rejected · ${num(m.checked)} checked`}
-              sub={stats.rateDiff}
-              tone={m.rate > targetRej ? "bad" : "good"}
-              spark={m.tr}
-              onClick={() => openModal(
-                `${grainLabel} Rejection Rate — Drill-down`,
-                kpiNarrative("rate", `The rejection rate stands at ${pct(m.rate)} (${num(m.rejected)} of ${num(m.checked)} checked), compared to the target of ${pct(targetRej)} (${stats.rateDiff}).`),
-                <div style={{ minHeight: 220, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={m.tr} target={targetRej} fmt={pct} /></div>,
-                { rows: rejectionSrc(), value: pct(m.rate), metricKind: "rejection_rate" },
-              )}
-            />
-            <Kpi
-              primary
-              label="First Pass Yield"
-              value={pct(m.fpy)}
-              detail={`${num(m.checked)} entered · ${num(m.rejected)} rejected`}
-              sub={stats.fpyDiff}
-              tone={m.fpy >= (1 - targetRej) ? "good" : "bad"}
-              spark={m.tr.map(p => ({ ...p, value: 1 - p.value }))}
-              onClick={() => openModal(
-                `${grainLabel} First Pass Yield — Drill-down`,
-                kpiNarrative("fpy", `First Pass Yield stands at ${pct(m.fpy)} for the latest period (${stats.fpyDiff}).`),
-                <div style={{ minHeight: 220, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={m.tr.map(p => ({ ...p, value: 1 - p.value }))} fmt={pct} /></div>,
-                { rows: rejectionSrc(), value: pct(m.fpy), metricKind: "rejection_rate" },
-              )}
-            />
-            <Kpi
-              label="Top Rejecting Stage"
-              value={worstStageByRejs}
-              detail={
-                worstStageRow
-                  ? `${num(worstStageRow.rejected)} rejected · ${num(worstStageRow.checked)} checked`
-                  : undefined
-              }
-              sub={worstStageRow ? `${pct(worstStageRow.rejRate)} rejection rate` : "—"}
-              tone={worstStageRow && worstStageRow.rejRate > targetRej ? "bad" : "warn"}
-              // No rejecting stage in scope → nothing to drill into. Opening a
-              // "— — Drill-down" on an empty trace is worse than not opening.
-              onClick={worstStageRow ? () => openModal(
-                `${worstStageRow.label} — Drill-down`,
-                kpiNarrative("bottleneck", `${worstStageRow.label} is the top bottleneck stage, contributing ${num(worstStageRow.rejected)} rejections (${pct(worstStageRow.rejRate)} rejection rate).`),
-                <div style={{ minHeight: 220, display: "flex", flexDirection: "column", justifyContent: "center" }}><ProcessFlow rows={m.stages} /></div>,
-                { rows: srcRows({ stageId: worstStageRow.stageId, types: ["production", "inspection", "rejection"] }), value: pct(worstStageRow.rejRate), metricKind: "rejection_rate"},
-              ) : undefined}
-            />
-            <Kpi
-              label="Top Defect"
-              value={m.defects[0]?.label ?? "—"}
-              detail={
-                m.defects[0]
-                  ? `${num(m.defects[0].rejected)} rejected`
-                  : undefined
-              }
-              sub={m.defects[0] ? `${m.defects[0].pct.toFixed(1)}% of all rejections` : "—"}
-              tone="warn"
-              onClick={() => m.defects[0] && openModal(
-                `Top Defect — ${m.defects[0].label}`,
-                `The top defect category is ${m.defects[0].label}, accounting for ${m.defects[0].rejected.toLocaleString()} rejects (${m.defects[0].pct.toFixed(1)}% of all rejections).`,
-                <div style={{ minHeight: 220, display: "flex", flexDirection: "column", justifyContent: "center" }}><ParetoChart analysis={calculatePareto(m.defects.map(d => ({ label: d.label, value: d.rejected }))) || { items: [], totalDefects: 0, vitalFewCount: 0, vitalFewContribution: 0, criticalAreaText: "" }} showTable={true} /></div>,
-                { rows: srcRows({ defectCode: m.defects[0].label, types: ["rejection"] }), value: m.defects[0].rejected.toLocaleString() , metricKind: "pareto"}
-              )}
-            />
-            <Kpi
-              primary
-              label="COPQ (₹)"
-              value={rupee(m.copq)}
-              detail={m.rejected > 0 ? `${num(m.rejected)} rejected units` : undefined}
-              sub={stats.copqDiff || "Cost of poor quality"}
-              tone={m.copq > 0 ? "bad" : "good"}
-              spark={m.copqTrend}
-              onClick={() => openModal(
-                `COPQ Trend (${grainLabel})`,
-                kpiNarrative("copq", `Cost of Poor Quality (COPQ) is ${rupee(m.copq)} for the latest period (${stats.copqDiff}).`),
-                <div style={{ minHeight: 220, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={m.copqTrend} fmt={rupee} /></div>,
-                { rows: srcRows({ types: ["inspection", "rejection"] }), value: rupee(m.copq) , metricKind: "copq"},
-              )}
-            />
-          </div>
-
-          {/* Not a sixth KPI: this is a worklist, not a rate. */}
-          <OpenWipStrip events={(events ?? []) as AuditEventLike[]} />
-
-          {/* Row 1: Primary Rejection Analytics (3-column layout) */}
-          <div style={{ 
-            display: "grid", 
-            gridTemplateColumns: "repeat(3, minmax(0, 1fr))", 
-            gap: "var(--gap-grid)",
-            marginTop: "var(--gap-grid)"
-          }}>
-            {/* Card 1: Rejection Trend */}
-            <Card 
-              title="Rejection Trend" 
-              sub={`Target (${(targetRej * 100).toFixed(0)}%) & Mean`} 
-              onClick={() => openModal(`Rejection Trend (${grainLabel})`, `${grainLabel} rejection trend lines compared to the target limit of ${(targetRej * 100).toFixed(0)}% and the period mean limit.`, <div style={{ minHeight: 240, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={m.tr} target={targetRej} fmt={pct} mean /></div>, { rows: rejectionSrc(), value: pct(m.rate), metricKind: "rejection_rate" })}
-            >
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-between", height: "100%" }}>
-                <div style={{ flex: 1, minHeight: 180, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                  <LineChart points={m.tr} target={targetRej} fmt={pct} mean height={180} />
-                </div>
-                <div style={{ marginTop: "var(--space-2)", display: "flex" }}>
-                  <a 
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      openModal(`Rejection Trend (${grainLabel})`, `${grainLabel} rejection trend lines compared to the target limit of ${(targetRej * 100).toFixed(0)}% and the period mean limit.`, <div style={{ minHeight: 240, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={m.tr} target={targetRej} fmt={pct} mean /></div>, { rows: rejectionSrc(), value: pct(m.rate), metricKind: "rejection_rate" });
-                    }}
-                    style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--accent)", textDecoration: "none" }}
-                  >
-                    View full trend →
-                  </a>
-                </div>
-              </div>
-            </Card>
- 
-            {/* Card 2: Rejection By Stage */}
-            <Card 
-              title="Rejection By Stage" 
-              sub="YTD Rejection Shares"
-              onClick={() => openModal("Stage-wise Rejection (YTD)", "Total rejections share by process stages.", <div style={{ minHeight: 240, display: "flex", flexDirection: "column", justifyContent: "center" }}><Donut data={m.stages.map((s) => ({ label: s.label, value: s.rejected }))} size={220} fontSize={13.5} /></div>, { rows: srcRows({ types: ["inspection", "rejection"] }), value: num(m.rejected) , metricKind: "rejected" })}
-            >
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-between", height: "100%" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
-                  <div style={{ display: "flex", justifyContent: "center", padding: "4px 0" }}>
-                    <Donut data={m.stages.map((s) => ({ label: s.label.split(" ")[0], value: s.rejected }))} size={130} fontSize={10} hideLegend={true} />
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)", marginTop: "var(--space-3)", borderTop: "1px solid var(--border)", paddingTop: "var(--space-3)" }}>
-                    {m.stages.slice(0, 4).map((s, idx) => {
-                      const colors = ["#2563EB", "#0D9488", "#D97706", "#DC2626", "#EC4899", "#65A30D"];
-                      const share = ((s.rejected / (m.rejected || 1)) * 100).toFixed(1);
-                      return (
-                        <div key={s.stageId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--text-sm)", gap: 8 }}>
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 600, color: "var(--text)", minWidth: 0 }}>
-                            <span style={{ width: 7, height: 7, borderRadius: "50%", background: colors[idx % colors.length], flexShrink: 0 }} />
-                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.label}</span>
-                          </span>
-                          <span className="num" style={{ fontWeight: 600, flexShrink: 0 }}>
-                            {pct(s.rejRate)}{" "}
-                            <span className="muted" style={{ fontWeight: 500, fontSize: "var(--text-xs)", fontFamily: "var(--font-sans)" }}>
-                              ({share}%)
-                            </span>
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-                <div style={{ marginTop: "var(--space-2)", display: "flex" }}>
-                  <a 
-                    href="/stage-analysis"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                    }}
-                    style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--accent)", textDecoration: "none" }}
-                  >
-                    View stage analysis →
-                  </a>
-                </div>
-              </div>
-            </Card>
- 
-            {/* Card 3: Top Defects (Pareto) */}
-            <Card 
-              title="Top Defects (Pareto)" 
-              sub="YTD Rejections"
-              onClick={() => openModal(
-                "Defect Pareto (All Stages)", 
-                "Six Sigma Pareto analysis highlighting the vital few defect categories responsible for most rejects.", 
-                <div style={{ minHeight: 240, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                  <ParetoChart analysis={calculatePareto(m.defects.map(d => ({ label: d.label, value: d.rejected }))) || { items: [], totalDefects: 0, vitalFewCount: 0, vitalFewContribution: 0, criticalAreaText: "No defect data available for this period." }} showTable={false} />
-                </div>, 
-                { rows: srcRows({ types: ["rejection"] }), value: num(m.defects.reduce((s, d) => s + d.rejected, 0)) , metricKind: "pareto"}
-              )}
-            >
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-between", height: "100%" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
-                  <div style={{ 
-                    display: "grid", 
-                    gridTemplateColumns: "20px minmax(0, 1.3fr) 55px 70px 60px", 
-                    gap: "var(--space-2)", 
-                    fontSize: 10, 
-                    fontWeight: 700, 
-                    textTransform: "uppercase", 
-                    letterSpacing: "0.05em", 
-                    color: "var(--text-3)", 
-                    paddingBottom: "var(--space-2)", 
-                    borderBottom: "1px solid var(--border)" 
-                  }}>
-                    <div></div>
-                    <div>Defect</div>
-                    <div style={{ textAlign: "right" }}>Rejection %</div>
-                    <div></div>
-                    <div style={{ textAlign: "right" }}>% of Total</div>
-                  </div>
-                  {m.defects.length === 0 ? (
-                    <Empty label="No defect data available for this period." />
-                  ) : (
-                    m.defects.slice(0, 5).map((d, i) => {
-                      const colors = ["#C8421C", "#2563EB", "#D97706", "#0D9488", "#EC4899"];
-                      const rejRate = getDefectRejRate(d);
-                      return (
-                        <div key={d.label} style={{ 
-                          display: "grid", 
-                          gridTemplateColumns: "22px minmax(0, 1.3fr) 58px 70px 56px", 
-                          gap: "var(--space-2)", 
-                          alignItems: "center", 
-                          fontSize: "var(--text-sm)",
-                          padding: "4px 0",
-                          borderBottom: i < 4 ? "1px solid var(--border)" : "none"
-                        }}>
-                          <span style={{ color: "var(--text-3)", fontWeight: 600 }}>{i + 1}</span>
-                          <span style={{ fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.label}>{d.label}</span>
-                          <span className="num" style={{ textAlign: "right", fontWeight: 600, color: "var(--text)" }}>{(rejRate * 100).toFixed(1)}%</span>
-                          <div style={{ display: "flex", alignItems: "center", paddingLeft: 6 }}>
-                            <div style={{ width: "100%", height: 5, background: "var(--surface-3)", borderRadius: 3, overflow: "hidden", border: "1px solid var(--border)" }}>
-                              <div style={{ width: `${d.pct}%`, height: "100%", background: colors[i % colors.length], borderRadius: 3 }} />
-                            </div>
-                          </div>
-                          <span style={{ textAlign: "right", fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--text-2)" }}>{d.pct.toFixed(0)}%</span>
-                        </div>
-                      );
-                    })
+            <>
+              {/* Section 1: Executive KPIs */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: "var(--gap-grid)" }}>
+                <Kpi
+                  primary
+                  label="Overall Rejection"
+                  value={pct(m.rate)}
+                  detail={`${num(m.rejected)} rejected · ${num(m.checked)} checked`}
+                  sub={stats.rateDiff}
+                  tone={m.rate > targetRej ? "bad" : "good"}
+                  spark={m.tr}
+                  onClick={() => openModal(
+                    `${grainLabel} Rejection Rate — Drill-down`,
+                    kpiNarrative("rate", `The rejection rate stands at ${pct(m.rate)} (${num(m.rejected)} of ${num(m.checked)} checked), compared to the target of ${pct(targetRej)} (${stats.rateDiff}).`),
+                    <div style={{ minHeight: 220, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={m.tr} target={targetRej} fmt={pct} /></div>,
+                    { rows: rejectionSrc(), value: pct(m.rate), metricKind: "rejection_rate" },
                   )}
-                </div>
-                <div style={{ marginTop: "var(--space-2)", display: "flex" }}>
-                  <a 
-                    href="/defect-analysis"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                    }}
-                    style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--accent)", textDecoration: "none" }}
-                  >
-                    View defect Pareto →
-                  </a>
-                </div>
-              </div>
-            </Card>
-          </div>
- 
-          {/* Row 2: Stage wise Rejection Trend (Full Width) */}
-          <div style={{ 
-            display: "grid", 
-            gridTemplateColumns: "1fr", 
-            gap: "var(--gap-grid)",
-            marginTop: "var(--gap-grid)"
-          }}>
-            <Card 
-              title={`Stage-wise Rejection Trend (${grainLabel})`} 
-              sub="per-stage + Total — hover for values" 
-              onClick={() => openModal(`Stage-wise Rejection Trend (${grainLabel})`, "Each line is a station's rejection rate over its own checked quantity; the Total line is the plant rejection rule for that period. Recomputed from raw counts.", <div style={{ minHeight: 240, display: "flex", flexDirection: "column", justifyContent: "center" }}><MultiLine data={m.cumTrend} stages={[...m.stagesAll.map((s) => ({ stageId: s.stageId, label: s.label })), { stageId: CUM_TOTAL_KEY, label: "Total" }]} /></div>, { rows: rejectionSrc(), value: pct(m.rate), metricKind: "rejection_rate" })}
-            >
-              <MultiLine data={m.cumTrend} stages={[...m.stagesAll.map((s) => ({ stageId: s.stageId, label: s.label })), { stageId: CUM_TOTAL_KEY, label: "Total" }]} height={180} />
-            </Card>
-          </div>
-
-          {/* Row 4: Stage x Size Concentration Heatmap */}
-          {m.stageSize.length > 0 && (
-            <div style={{ marginTop: "var(--gap-grid)" }}>
-              <Card
-                title="Stage x Size Concentration"
-                sub="Rejection rate by stage and catheter size (warmer cells indicate concentration hotspots)"
-                onClick={() => openModal(
-                  "Stage x Size Concentration",
-                  "Rejection rate for every stage x size combination present in the selected period — darker/warmer cells indicate where quality problems concentrate.",
-                  <div style={{ minHeight: 200 }}><StageSizeHeatmap cells={m.stageSize} /></div>,
-                  { rows: srcRows({ types: ["production", "inspection"] }), value: m.stageSize.length ? `${(Math.max(...m.stageSize.map(c => c.rejRate)) * 100).toFixed(1)}%` : "—" , metricKind: "rejection_rate"},
-                )}
-              >
-                <StageSizeHeatmap cells={m.stageSize} />
-              </Card>
-            </div>
-          )}
- 
-          {/* Row 5: Size Analytics */}
-          {(() => {
-            const hasSizeYtd = m.sizes.length > 0;
-            const hasSizeTrend = hasSizeYtd && m.sizeTrend.length > 0;
-            if (!hasSizeYtd) return null;
-            const gridCols = hasSizeTrend ? "minmax(0, 1fr) minmax(0, 2fr)" : "minmax(0, 1fr)";
-            return (
-              <div style={{ 
-                display: "grid", 
-                gridTemplateColumns: gridCols, 
-                gap: "var(--gap-grid)",
-                marginTop: "var(--gap-grid)"
-              }}>
-                <Card 
-                  title="Rejection by Size (YTD)" 
-                  sub={m.worstSize ? `Worst: ${m.worstSize.size}` : "YTD"}
-                  onClick={() => openModal("Size-wise Rejection (YTD)", m.sizeWiseInsight, <div style={{ minHeight: 240, display: "flex", flexDirection: "column", justifyContent: "center" }}><BarsH rows={m.sizes.map((s) => ({ label: s.size, value: s.rejRate * 100, sub: `${s.rejected.toLocaleString("en-IN")} rejected of ${s.checked.toLocaleString("en-IN")}` }))} fmt={(n) => `${n.toFixed(1)}%`} /></div>, { rows: srcRows({ types: ["inspection", "rejection"] }).filter(r => r.size), value: m.sizes.length ? `${(Math.max(...m.sizes.map(s => s.rejRate)) * 100).toFixed(1)}%` : "—", metricKind: "size" })}
-                >
-                  <BarsH rows={m.sizes.map((s) => ({ label: s.size, value: s.rejRate * 100, sub: `${s.rejected.toLocaleString("en-IN")} rejected of ${s.checked.toLocaleString("en-IN")}` }))} fmt={(n) => `${n.toFixed(1)}%`} />
-                </Card>
-
-                {hasSizeTrend && (
-                  <Card 
-                    title={`Size Trend (${selectedSize})`} 
-                    onClick={() => openModal(`Size-wise Trend (${selectedSize})`, m.sizeTrendInsight, <div style={{ minHeight: 240, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={m.sizeTrend} fmt={pct} /></div>, { rows: srcRows({ types: ["production", "inspection"], size: selectedSize }), value: m.sizeTrend.length ? pct(m.sizeTrend[m.sizeTrend.length - 1].value) : "—" , metricKind: "size" })}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }} onClick={(e) => e.stopPropagation()}>
-                      <span className="muted" style={{ fontSize: 11, fontWeight: 600 }}>Size:</span>
-                      <Select
-                        value={selectedSize}
-                        onChange={setSelectedSize}
-                        options={(m.sizes.length > 0 ? m.sizes.map((s) => s.size) : ["Fr10", "Fr12", "Fr14", "Fr16", "Fr18", "Fr20", "Fr22", "Fr24"]).map((sz) => ({ value: sz, label: sz }))}
-                        block={false}
-                        mono
-                        size="sm"
-                        ariaLabel="Size for trend"
-                        style={{ minWidth: 92 }}
-                      />
-                    </div>
-                    <LineChart points={m.sizeTrend} fmt={pct} height={180} />
-                  </Card>
-                )}
-              </div>
-            );
-          })()}
- 
-          {/* Row 6: COPQ & Audit Trail */}
-          {(() => {
-            const hasCopq = m.copqTrend.length > 0;
-            const colList = [
-              hasCopq ? "minmax(0, 1fr)" : null,
-              "minmax(0, 1.2fr)"
-            ].filter(Boolean);
-            const gridCols = colList.join(" ");
-            return (
-              <div style={{ 
-                display: "grid", 
-                gridTemplateColumns: gridCols, 
-                gap: "var(--gap-grid)",
-                marginTop: "var(--gap-grid)"
-              }}>
-                {hasCopq && (
-                  <Card 
-                    title={`COPQ Trend (${grainLabel})`} 
-                    onClick={() => openModal(`COPQ Trend (${grainLabel})`, `Cost of poor quality trends across historical periods.`, <div style={{ minHeight: 240, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={m.copqTrend} fmt={rupee} /></div>, { rows: srcRows({ types: ["inspection", "rejection"] }), value: rupee(m.copq) , metricKind: "copq" })}
-                  >
-                    <LineChart points={m.copqTrend} fmt={rupee} height={180} />
-                  </Card>
-                )}
- 
-                <Card 
-                  title="Audit &amp; Verification" 
-                  onClick={() => openModal("Audit & Verification", "Counted off the ledger in the current scope — no targets, no estimates.", <div style={{ minHeight: 200, display: "flex", flexDirection: "column", justifyContent: "center" }}><AuditVerificationTable summary={m.audit} /></div>)}
-                >
-                  <AuditVerificationTable summary={m.audit} />
-                  <div style={{ marginTop: 12, display: "flex", justifyContent: "center" }}>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); router.push("/audit"); }}
-                      style={{
-                        background: "var(--surface-2)",
-                        border: "1px solid var(--border-strong)",
-                        borderRadius: "var(--radius-sm)",
-                        padding: "6px 16px",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        width: "100%"
-                      }}
-                    >
-                      View Audit Trail
-                    </button>
-                  </div>
-                </Card>
-              </div>
-            );
-          })()}
-
-          {/* Quality Status strip — comparison frame (target / watch / prior) + integrity. */}
-          <div style={{ marginTop: "var(--gap-grid)" }}>
-            <QualityStatusStrip status={m.status} />
-          </div>
-
-          {/* Production funnel: entry qty → loss at each gate → final good.
-              Gate click = mid-path entry (stage analysis with carried scope). */}
-          {m.stages.length > 0 && (
-            <div style={{ marginTop: "var(--gap-grid)" }}>
-              <Card
-                title="Production Funnel"
-                sub={`${num(m.checked)} units entered · First Pass Yield ${pct(m.fpy)} · click a gate to investigate`}
-              >
-                <FunnelStrip
-                  stages={m.stages}
-                  entryChecked={m.checked}
-                  fpy={m.fpy}
-                  targetRej={targetRej}
-                  onGateClick={(row) => {
-                    // Mid-path entry: Stage Analysis with gate + period carried (EX-1 / F7).
-                    goInvestigation(router.push.bind(router), "/stage-analysis", {
-                      ...m.investigationBase,
-                      stage: row.stageId,
-                      metric: "stage",
-                      label: row.label,
-                    });
-                  }}
                 />
-              </Card>
-            </div>
-          )}
+                <Kpi
+                  primary
+                  label="First Pass Yield"
+                  value={pct(m.fpy)}
+                  detail={`${num(m.checked)} entered · ${num(m.rejected)} rejected`}
+                  sub={stats.fpyDiff}
+                  tone={m.fpy >= (1 - targetRej) ? "good" : "bad"}
+                  spark={m.tr.map(p => ({ ...p, value: 1 - p.value }))}
+                  onClick={() => openModal(
+                    `${grainLabel} First Pass Yield — Drill-down`,
+                    kpiNarrative("fpy", `First Pass Yield stands at ${pct(m.fpy)} for the latest period (${stats.fpyDiff}).`),
+                    <div style={{ minHeight: 220, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={m.tr.map(p => ({ ...p, value: 1 - p.value }))} fmt={pct} /></div>,
+                    { rows: rejectionSrc(), value: pct(m.fpy), metricKind: "rejection_rate" },
+                  )}
+                />
+                <Kpi
+                  label="Top Rejecting Stage"
+                  value={worstStageByRejs}
+                  detail={
+                    worstStageRow
+                      ? `${num(worstStageRow.rejected)} rejected · ${num(worstStageRow.checked)} checked`
+                      : undefined
+                  }
+                  sub={worstStageRow ? `${pct(worstStageRow.rejRate)} rejection rate` : "—"}
+                  tone={worstStageRow && worstStageRow.rejRate > targetRej ? "bad" : "warn"}
+                  // No rejecting stage in scope → nothing to drill into. Opening a
+                  // "— — Drill-down" on an empty trace is worse than not opening.
+                  onClick={worstStageRow ? () => openModal(
+                    `${worstStageRow.label} — Drill-down`,
+                    kpiNarrative("bottleneck", `${worstStageRow.label} is the top bottleneck stage, contributing ${num(worstStageRow.rejected)} rejections (${pct(worstStageRow.rejRate)} rejection rate).`),
+                    <div style={{ minHeight: 220, display: "flex", flexDirection: "column", justifyContent: "center" }}><ProcessFlow rows={m.stages} /></div>,
+                    { rows: srcRows({ stageId: worstStageRow.stageId, types: ["production", "inspection", "rejection"] }), value: pct(worstStageRow.rejRate), metricKind: "rejection_rate" },
+                  ) : undefined}
+                />
+                <Kpi
+                  label="Top Defect"
+                  value={m.defects[0]?.label ?? "—"}
+                  detail={
+                    m.defects[0]
+                      ? `${num(m.defects[0].rejected)} rejected`
+                      : undefined
+                  }
+                  sub={m.defects[0] ? `${m.defects[0].pct.toFixed(1)}% of all rejections` : "—"}
+                  tone="warn"
+                  onClick={() => m.defects[0] && openModal(
+                    `Top Defect — ${m.defects[0].label}`,
+                    `The top defect category is ${m.defects[0].label}, accounting for ${m.defects[0].rejected.toLocaleString()} rejects (${m.defects[0].pct.toFixed(1)}% of all rejections).`,
+                    <div style={{ minHeight: 220, display: "flex", flexDirection: "column", justifyContent: "center" }}><ParetoChart analysis={calculatePareto(m.defects.map(d => ({ label: d.label, value: d.rejected }))) || { items: [], totalDefects: 0, vitalFewCount: 0, vitalFewContribution: 0, criticalAreaText: "" }} showTable={true} /></div>,
+                    { rows: srcRows({ defectCode: m.defects[0].label, types: ["rejection"] }), value: m.defects[0].rejected.toLocaleString(), metricKind: "pareto" }
+                  )}
+                />
+                <Kpi
+                  primary
+                  label="COPQ (₹)"
+                  value={rupee(m.copq)}
+                  detail={m.rejected > 0 ? `${num(m.rejected)} rejected units` : undefined}
+                  sub={stats.copqDiff || "Cost of poor quality"}
+                  tone={m.copq > 0 ? "bad" : "good"}
+                  spark={m.copqTrend}
+                  onClick={() => openModal(
+                    `COPQ Trend (${grainLabel})`,
+                    kpiNarrative("copq", `Cost of Poor Quality (COPQ) is ${rupee(m.copq)} for the latest period (${stats.copqDiff}).`),
+                    <div style={{ minHeight: 220, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={m.copqTrend} fmt={rupee} /></div>,
+                    { rows: srcRows({ types: ["inspection", "rejection"] }), value: rupee(m.copq), metricKind: "copq" },
+                  )}
+                />
+              </div>
 
-          {/* Attention rail: ranked next steps with carried investigation scope. */}
-          <div style={{ marginTop: "var(--gap-grid)" }}>
-            <AttentionRail
-              m={m}
-              targetRej={targetRej}
-              base={m.investigationBase}
-              onGo={(path, state) => goInvestigation(router.push.bind(router), path, state)}
-            />
-          </div>
- 
-          {/* Section 3: AI Diagnostics & Actionable Brief */}
-          <div style={{ marginTop: "var(--gap-grid)" }}>
-            <Card title="AI Diagnostics & Actionable Brief">
-              <div style={{ 
-                display: "grid", 
-                gridTemplateColumns: "minmax(0, 1.8fr) 1px minmax(0, 1.2fr)", 
-                gap: 32,
-                alignItems: "stretch"
+              {/* Not a sixth KPI: this is a worklist, not a rate. */}
+              <OpenWipStrip events={(events ?? []) as AuditEventLike[]} />
+
+              {/* Row 1: Primary Rejection Analytics (3-column layout) */}
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                gap: "var(--gap-grid)",
+                marginTop: "var(--gap-grid)"
               }}>
-                {/* Left Side: Diagnostic Summary */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 20, justifyContent: "space-between" }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                    <div
-                      className="h3"
-                      style={{
-                        fontSize: "var(--text-base)",
-                        fontWeight: 600,
-                        lineHeight: 1.45,
-                        color: "var(--text)",
-                      }}
-                    >
-                      {execBrief ? safeBolden(execBrief.headline) : (exec[0] ? safeBolden(exec[0]) : "Diagnostics Brief")}
+                {/* Card 1: Rejection Trend */}
+                <Card
+                  title="Rejection Trend"
+                  sub={`Target (${(targetRej * 100).toFixed(0)}%) & Mean`}
+                  onClick={() => openModal(`Rejection Trend (${grainLabel})`, `${grainLabel} rejection trend lines compared to the target limit of ${(targetRej * 100).toFixed(0)}% and the period mean limit.`, <div style={{ minHeight: 240, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={m.tr} target={targetRej} fmt={pct} mean /></div>, { rows: rejectionSrc(), value: pct(m.rate), metricKind: "rejection_rate" })}
+                >
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-between", height: "100%" }}>
+                    <div style={{ flex: 1, minHeight: 180, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                      <LineChart points={m.tr} target={targetRej} fmt={pct} mean height={180} />
                     </div>
-                    {execBrief ? (
-                      <div className="body" style={{ display: "flex", flexDirection: "column", gap: 8, lineHeight: 1.55 }}>
-                        <BriefRow label="COPQ Impact" value={execBrief.impact} />
-                        {execBrief.primaryDriver && <BriefRow label="Primary Driver" value={execBrief.primaryDriver} />}
-                      </div>
-                    ) : (
-                      <ul className="body" style={{ margin: 0, paddingLeft: 18, lineHeight: 1.65 }}>
-                        {exec.slice(1).map((bullet, i) => (
-                          <li key={i} style={{ listStyleType: "none", position: "relative", paddingLeft: 4, marginBottom: 8 }}>
-                            <span style={{
-                              position: "absolute",
-                              left: -16,
-                              top: 8,
-                              width: 6,
-                              height: 6,
-                              borderRadius: "50%",
-                              background: "var(--accent)"
-                            }} />
-                            {safeBolden(bullet)}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                    <div style={{ marginTop: "var(--space-2)", display: "flex" }}>
+                      <a
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          openModal(`Rejection Trend (${grainLabel})`, `${grainLabel} rejection trend lines compared to the target limit of ${(targetRej * 100).toFixed(0)}% and the period mean limit.`, <div style={{ minHeight: 240, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={m.tr} target={targetRej} fmt={pct} mean /></div>, { rows: rejectionSrc(), value: pct(m.rate), metricKind: "rejection_rate" });
+                        }}
+                        style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--accent)", textDecoration: "none" }}
+                      >
+                        View full trend →
+                      </a>
+                    </div>
                   </div>
+                </Card>
 
-                  {/* Integrated Callout: Worst Stage Bottleneck & Recovery.
-                      Hidden with no rejecting stage in scope — "— Bottleneck …
-                      rate of —" is a claim about nothing. */}
-                  {worstStageRow && (
+                {/* Card 2: Rejection By Stage */}
+                <Card
+                  title="Rejection By Stage"
+                  sub="YTD Rejection Shares"
+                  onClick={() => openModal("Stage-wise Rejection (YTD)", "Total rejections share by process stages.", <div style={{ minHeight: 240, display: "flex", flexDirection: "column", justifyContent: "center" }}><Donut data={m.stages.map((s) => ({ label: s.label, value: s.rejected }))} size={220} fontSize={13.5} /></div>, { rows: srcRows({ types: ["inspection", "rejection"] }), value: num(m.rejected), metricKind: "rejected" })}
+                >
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-between", height: "100%" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+                      <div style={{ display: "flex", justifyContent: "center", padding: "4px 0" }}>
+                        <Donut data={m.stages.map((s) => ({ label: s.label.split(" ")[0], value: s.rejected }))} size={130} fontSize={10} hideLegend={true} />
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)", marginTop: "var(--space-3)", borderTop: "1px solid var(--border)", paddingTop: "var(--space-3)" }}>
+                        {m.stages.slice(0, 4).map((s, idx) => {
+                          const colors = ["#2563EB", "#0D9488", "#D97706", "#DC2626", "#EC4899", "#65A30D"];
+                          const share = ((s.rejected / (m.rejected || 1)) * 100).toFixed(1);
+                          return (
+                            <div key={s.stageId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--text-sm)", gap: 8 }}>
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 600, color: "var(--text)", minWidth: 0 }}>
+                                <span style={{ width: 7, height: 7, borderRadius: "50%", background: colors[idx % colors.length], flexShrink: 0 }} />
+                                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.label}</span>
+                              </span>
+                              <span className="num" style={{ fontWeight: 600, flexShrink: 0 }}>
+                                {pct(s.rejRate)}{" "}
+                                <span className="muted" style={{ fontWeight: 500, fontSize: "var(--text-xs)", fontFamily: "var(--font-sans)" }}>
+                                  ({share}%)
+                                </span>
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div style={{ marginTop: "var(--space-2)", display: "flex" }}>
+                      <a
+                        href="/stage-analysis"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                        }}
+                        style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--accent)", textDecoration: "none" }}
+                      >
+                        View stage analysis →
+                      </a>
+                    </div>
+                  </div>
+                </Card>
+
+                {/* Card 3: Top Defects (Pareto) */}
+                <Card
+                  title="Top Defects (Pareto)"
+                  sub="YTD Rejections"
+                  onClick={() => openModal(
+                    "Defect Pareto (All Stages)",
+                    "Six Sigma Pareto analysis highlighting the vital few defect categories responsible for most rejects.",
+                    <div style={{ minHeight: 240, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                      <ParetoChart analysis={calculatePareto(m.defects.map(d => ({ label: d.label, value: d.rejected }))) || { items: [], totalDefects: 0, vitalFewCount: 0, vitalFewContribution: 0, criticalAreaText: "No defect data available for this period." }} showTable={false} />
+                    </div>,
+                    { rows: srcRows({ types: ["rejection"] }), value: num(m.defects.reduce((s, d) => s + d.rejected, 0)), metricKind: "pareto" }
+                  )}
+                >
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-between", height: "100%" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+                      <div style={{
+                        display: "grid",
+                        gridTemplateColumns: "20px minmax(0, 1.3fr) 55px 70px 60px",
+                        gap: "var(--space-2)",
+                        fontSize: 10,
+                        fontWeight: 700,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.05em",
+                        color: "var(--text-3)",
+                        paddingBottom: "var(--space-2)",
+                        borderBottom: "1px solid var(--border)"
+                      }}>
+                        <div></div>
+                        <div>Defect</div>
+                        <div style={{ textAlign: "right" }}>Rejection %</div>
+                        <div></div>
+                        <div style={{ textAlign: "right" }}>% of Total</div>
+                      </div>
+                      {m.defects.length === 0 ? (
+                        <Empty label="No defect data available for this period." />
+                      ) : (
+                        m.defects.slice(0, 5).map((d, i) => {
+                          const colors = ["#C8421C", "#2563EB", "#D97706", "#0D9488", "#EC4899"];
+                          const rejRate = getDefectRejRate(d);
+                          return (
+                            <div key={d.label} style={{
+                              display: "grid",
+                              gridTemplateColumns: "22px minmax(0, 1.3fr) 58px 70px 56px",
+                              gap: "var(--space-2)",
+                              alignItems: "center",
+                              fontSize: "var(--text-sm)",
+                              padding: "4px 0",
+                              borderBottom: i < 4 ? "1px solid var(--border)" : "none"
+                            }}>
+                              <span style={{ color: "var(--text-3)", fontWeight: 600 }}>{i + 1}</span>
+                              <span style={{ fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.label}>{d.label}</span>
+                              <span className="num" style={{ textAlign: "right", fontWeight: 600, color: "var(--text)" }}>{(rejRate * 100).toFixed(1)}%</span>
+                              <div style={{ display: "flex", alignItems: "center", paddingLeft: 6 }}>
+                                <div style={{ width: "100%", height: 5, background: "var(--surface-3)", borderRadius: 3, overflow: "hidden", border: "1px solid var(--border)" }}>
+                                  <div style={{ width: `${d.pct}%`, height: "100%", background: colors[i % colors.length], borderRadius: 3 }} />
+                                </div>
+                              </div>
+                              <span style={{ textAlign: "right", fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--text-2)" }}>{d.pct.toFixed(0)}%</span>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                    <div style={{ marginTop: "var(--space-2)", display: "flex" }}>
+                      <a
+                        href="/defect-analysis"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                        }}
+                        style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--accent)", textDecoration: "none" }}
+                      >
+                        View defect Pareto →
+                      </a>
+                    </div>
+                  </div>
+                </Card>
+              </div>
+
+              {/* Row 2: Stage wise Rejection Trend (Full Width) */}
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: "1fr",
+                gap: "var(--gap-grid)",
+                marginTop: "var(--gap-grid)"
+              }}>
+                <Card
+                  title={`Stage-wise Rejection Trend (${grainLabel})`}
+                  sub="per-stage + Total — hover for values"
+                  onClick={() => openModal(`Stage-wise Rejection Trend (${grainLabel})`, "Each line is a station's rejection rate over its own checked quantity; the Total line is the plant rejection rule for that period. Recomputed from raw counts.", <div style={{ minHeight: 240, display: "flex", flexDirection: "column", justifyContent: "center" }}><MultiLine data={m.cumTrend} stages={[...m.stagesAll.map((s) => ({ stageId: s.stageId, label: s.label })), { stageId: CUM_TOTAL_KEY, label: "Total" }]} /></div>, { rows: rejectionSrc(), value: pct(m.rate), metricKind: "rejection_rate" })}
+                >
+                  <MultiLine data={m.cumTrend} stages={[...m.stagesAll.map((s) => ({ stageId: s.stageId, label: s.label })), { stageId: CUM_TOTAL_KEY, label: "Total" }]} height={180} />
+                </Card>
+              </div>
+
+              {/* Row 4: Stage x Size Concentration Heatmap */}
+              {m.stageSize.length > 0 && (
+                <div style={{ marginTop: "var(--gap-grid)" }}>
+                  <Card
+                    title="Stage x Size Concentration"
+                    sub="Rejection rate by stage and catheter size (warmer cells indicate concentration hotspots)"
+                    onClick={() => openModal(
+                      "Stage x Size Concentration",
+                      "Rejection rate for every stage x size combination present in the selected period — darker/warmer cells indicate where quality problems concentrate.",
+                      <div style={{ minHeight: 200 }}><StageSizeHeatmap cells={m.stageSize} /></div>,
+                      { rows: srcRows({ types: ["production", "inspection"] }), value: m.stageSize.length ? `${(Math.max(...m.stageSize.map(c => c.rejRate)) * 100).toFixed(1)}%` : "—", metricKind: "rejection_rate" },
+                    )}
+                  >
+                    <StageSizeHeatmap cells={m.stageSize} />
+                  </Card>
+                </div>
+              )}
+
+              {/* Row 5: Size Analytics */}
+              {(() => {
+                const hasSizeYtd = m.sizes.length > 0;
+                const hasSizeTrend = hasSizeYtd && m.sizeTrend.length > 0;
+                if (!hasSizeYtd) return null;
+                const gridCols = hasSizeTrend ? "minmax(0, 1fr) minmax(0, 2fr)" : "minmax(0, 1fr)";
+                return (
                   <div style={{
                     display: "grid",
-                    gridTemplateColumns: "1.2fr 1fr",
-                    gap: 20,
-                    paddingTop: 16,
-                    borderTop: "1px solid var(--border)",
-                    marginTop: "auto"
+                    gridTemplateColumns: gridCols,
+                    gap: "var(--gap-grid)",
+                    marginTop: "var(--gap-grid)"
                   }}>
-                    <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: 6 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ 
-                          width: 8, 
-                          height: 8, 
-                          borderRadius: "50%", 
-                          background: "var(--critical)",
-                          boxShadow: "0 0 6px var(--critical)",
-                        }} />
-                        <span style={{ fontSize: "var(--text-md)", fontWeight: 600, fontFamily: "var(--font-display)", letterSpacing: "-0.01em" }}>
-                          {worstStageRow.label} Bottleneck
-                        </span>
-                      </div>
-                      <p className="small" style={{ margin: 0, color: "var(--text-3)", lineHeight: 1.45 }}>
-                        Quality deviation is concentrated here at a rejection rate of <strong style={{ fontWeight: 600, color: "var(--text)" }}>{pct(worstStageRow.rejRate)}</strong>.
-                      </p>
-                    </div>
+                    <Card
+                      title="Rejection by Size (YTD)"
+                      sub={m.worstSize ? `Worst: ${m.worstSize.size}` : "YTD"}
+                      onClick={() => openModal("Size-wise Rejection (YTD)", m.sizeWiseInsight, <div style={{ minHeight: 240, display: "flex", flexDirection: "column", justifyContent: "center" }}><BarsH rows={m.sizes.map((s) => ({ label: s.size, value: s.rejRate * 100, sub: `${s.rejected.toLocaleString("en-IN")} rejected of ${s.checked.toLocaleString("en-IN")}` }))} fmt={(n) => `${n.toFixed(1)}%`} /></div>, { rows: srcRows({ types: ["inspection", "rejection"] }).filter(r => r.size), value: m.sizes.length ? `${(Math.max(...m.sizes.map(s => s.rejRate)) * 100).toFixed(1)}%` : "—", metricKind: "size" })}
+                    >
+                      <BarsH rows={m.sizes.map((s) => ({ label: s.size, value: s.rejRate * 100, sub: `${s.rejected.toLocaleString("en-IN")} rejected of ${s.checked.toLocaleString("en-IN")}` }))} fmt={(n) => `${n.toFixed(1)}%`} />
+                    </Card>
 
-                    <div style={{ borderLeft: "1px solid var(--border)", paddingLeft: 20, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                      <div className="ui-label" style={{ marginBottom: 4 }}>
-                        Financial Recovery Potential
-                      </div>
-                      <div className="kpi" style={{ fontSize: "var(--text-2xl)", color: "var(--critical)" }}>
-                        {rupee(m.savings)}
-                      </div>
-                      <div className="small" style={{ marginTop: 2, color: "var(--text-3)" }}>
-                        YTD scrap reduction potential.
-                      </div>
-                    </div>
+                    {hasSizeTrend && (
+                      <Card
+                        title={`Size Trend (${selectedSize})`}
+                        onClick={() => openModal(`Size-wise Trend (${selectedSize})`, m.sizeTrendInsight, <div style={{ minHeight: 240, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={m.sizeTrend} fmt={pct} /></div>, { rows: srcRows({ types: ["production", "inspection"], size: selectedSize }), value: m.sizeTrend.length ? pct(m.sizeTrend[m.sizeTrend.length - 1].value) : "—", metricKind: "size" })}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }} onClick={(e) => e.stopPropagation()}>
+                          <span className="muted" style={{ fontSize: 11, fontWeight: 600 }}>Size:</span>
+                          <Select
+                            value={selectedSize}
+                            onChange={setSelectedSize}
+                            options={(m.sizes.length > 0 ? m.sizes.map((s) => s.size) : ["Fr10", "Fr12", "Fr14", "Fr16", "Fr18", "Fr20", "Fr22", "Fr24"]).map((sz) => ({ value: sz, label: sz }))}
+                            block={false}
+                            mono
+                            size="sm"
+                            ariaLabel="Size for trend"
+                            style={{ minWidth: 92 }}
+                          />
+                        </div>
+                        <LineChart points={m.sizeTrend} fmt={pct} height={180} />
+                      </Card>
+                    )}
                   </div>
-                  )}
-                </div>
+                );
+              })()}
 
-                {/* Vertical Divider Line */}
-                <div style={{ background: "var(--border)", height: "100%" }} />
+              {/* Row 6: COPQ & Audit Trail */}
+              {(() => {
+                const hasCopq = m.copqTrend.length > 0;
+                const colList = [
+                  hasCopq ? "minmax(0, 1fr)" : null,
+                  "minmax(0, 1.2fr)"
+                ].filter(Boolean);
+                const gridCols = colList.join(" ");
+                return (
+                  <div style={{
+                    display: "grid",
+                    gridTemplateColumns: gridCols,
+                    gap: "var(--gap-grid)",
+                    marginTop: "var(--gap-grid)"
+                  }}>
+                    {hasCopq && (
+                      <Card
+                        title={`COPQ Trend (${grainLabel})`}
+                        onClick={() => openModal(`COPQ Trend (${grainLabel})`, `Cost of poor quality trends across historical periods.`, <div style={{ minHeight: 240, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={m.copqTrend} fmt={rupee} /></div>, { rows: srcRows({ types: ["inspection", "rejection"] }), value: rupee(m.copq), metricKind: "copq" })}
+                      >
+                        <LineChart points={m.copqTrend} fmt={rupee} height={180} />
+                      </Card>
+                    )}
 
-                {/* Right Side: Action Plan (CAPA Items) */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-3)", display: "flex", alignItems: "center", gap: 8 }}>
-                    <Icon name="check" size={14} /> Recommended Actions
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, justifyContent: "center" }}>
-                    {recommendationCards.slice(0, 3).map((rec, i) => {
-                      const chipColor = rec.tone === "bad" ? "var(--critical)" : rec.tone === "warn" ? "var(--warning)" : "var(--positive)";
-                      const chipText = rec.tone === "bad" ? "Critical" : rec.tone === "warn" ? "Warning" : "Info";
-                      return (
-                        <div
-                          key={i}
+                    <Card
+                      title="Audit &amp; Verification"
+                      onClick={() => openModal("Audit & Verification", "Counted off the ledger in the current scope — no targets, no estimates.", <div style={{ minHeight: 200, display: "flex", flexDirection: "column", justifyContent: "center" }}><AuditVerificationTable summary={m.audit} /></div>)}
+                    >
+                      <AuditVerificationTable summary={m.audit} />
+                      <div style={{ marginTop: 12, display: "flex", justifyContent: "center" }}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); router.push("/audit"); }}
                           style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 8,
-                            padding: "12px 14px",
                             background: "var(--surface-2)",
-                            border: "1px solid var(--border)",
-                            borderRadius: "var(--radius-md)",
+                            border: "1px solid var(--border-strong)",
+                            borderRadius: "var(--radius-sm)",
+                            padding: "6px 16px",
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            width: "100%"
                           }}
                         >
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                            <span
+                          View Audit Trail
+                        </button>
+                      </div>
+                    </Card>
+                  </div>
+                );
+              })()}
+
+              {/* Quality Status strip — comparison frame (target / watch / prior) + integrity. */}
+              <div style={{ marginTop: "var(--gap-grid)" }}>
+                <QualityStatusStrip status={m.status} />
+              </div>
+
+              {/* Production funnel: entry qty → loss at each gate → final good.
+              Gate click = mid-path entry (stage analysis with carried scope). */}
+              {m.stages.length > 0 && (
+                <div style={{ marginTop: "var(--gap-grid)" }}>
+                  <Card
+                    title="Production Funnel"
+                    sub={`${num(m.checked)} units entered · First Pass Yield ${pct(m.fpy)} · click a gate to investigate`}
+                  >
+                    <FunnelStrip
+                      stages={m.stages}
+                      entryChecked={m.checked}
+                      fpy={m.fpy}
+                      targetRej={targetRej}
+                      onGateClick={(row) => {
+                        // Mid-path entry: Stage Analysis with gate + period carried (EX-1 / F7).
+                        goInvestigation(router.push.bind(router), "/stage-analysis", {
+                          ...m.investigationBase,
+                          stage: row.stageId,
+                          metric: "stage",
+                          label: row.label,
+                        });
+                      }}
+                    />
+                  </Card>
+                </div>
+              )}
+
+              {/* Attention rail: ranked next steps with carried investigation scope. */}
+              <div style={{ marginTop: "var(--gap-grid)" }}>
+                <AttentionRail
+                  m={m}
+                  targetRej={targetRej}
+                  base={m.investigationBase}
+                  onGo={(path, state) => goInvestigation(router.push.bind(router), path, state)}
+                />
+              </div>
+
+              {/* Section 3: AI Diagnostics & Actionable Brief */}
+              <div style={{ marginTop: "var(--gap-grid)" }}>
+                <Card title="AI Diagnostics & Actionable Brief">
+                  <div style={{
+                    display: "grid",
+                    gridTemplateColumns: "minmax(0, 1.8fr) 1px minmax(0, 1.2fr)",
+                    gap: 32,
+                    alignItems: "stretch"
+                  }}>
+                    {/* Left Side: Diagnostic Summary */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 20, justifyContent: "space-between" }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                        <div
+                          className="h3"
+                          style={{
+                            fontSize: "var(--text-base)",
+                            fontWeight: 600,
+                            lineHeight: 1.45,
+                            color: "var(--text)",
+                          }}
+                        >
+                          {execBrief ? safeBolden(execBrief.headline) : (exec[0] ? safeBolden(exec[0]) : "Diagnostics Brief")}
+                        </div>
+                        {execBrief ? (
+                          <div className="body" style={{ display: "flex", flexDirection: "column", gap: 8, lineHeight: 1.55 }}>
+                            <BriefRow label="COPQ Impact" value={execBrief.impact} />
+                            {execBrief.primaryDriver && <BriefRow label="Primary Driver" value={execBrief.primaryDriver} />}
+                          </div>
+                        ) : (
+                          <ul className="body" style={{ margin: 0, paddingLeft: 18, lineHeight: 1.65 }}>
+                            {exec.slice(1).map((bullet, i) => (
+                              <li key={i} style={{ listStyleType: "none", position: "relative", paddingLeft: 4, marginBottom: 8 }}>
+                                <span style={{
+                                  position: "absolute",
+                                  left: -16,
+                                  top: 8,
+                                  width: 6,
+                                  height: 6,
+                                  borderRadius: "50%",
+                                  background: "var(--accent)"
+                                }} />
+                                {safeBolden(bullet)}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+
+                      {/* Integrated Callout: Worst Stage Bottleneck & Recovery.
+                      Hidden with no rejecting stage in scope — "— Bottleneck …
+                      rate of —" is a claim about nothing. */}
+                      {worstStageRow && (
+                        <div style={{
+                          display: "grid",
+                          gridTemplateColumns: "1.2fr 1fr",
+                          gap: 20,
+                          paddingTop: 16,
+                          borderTop: "1px solid var(--border)",
+                          marginTop: "auto"
+                        }}>
+                          <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: 6 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span style={{
+                                width: 8,
+                                height: 8,
+                                borderRadius: "50%",
+                                background: "var(--critical)",
+                                boxShadow: "0 0 6px var(--critical)",
+                              }} />
+                              <span style={{ fontSize: "var(--text-md)", fontWeight: 600, fontFamily: "var(--font-display)", letterSpacing: "-0.01em" }}>
+                                {worstStageRow.label} Bottleneck
+                              </span>
+                            </div>
+                            <p className="small" style={{ margin: 0, color: "var(--text-3)", lineHeight: 1.45 }}>
+                              Quality deviation is concentrated here at a rejection rate of <strong style={{ fontWeight: 600, color: "var(--text)" }}>{pct(worstStageRow.rejRate)}</strong>.
+                            </p>
+                          </div>
+
+                          <div style={{ borderLeft: "1px solid var(--border)", paddingLeft: 20, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                            <div className="ui-label" style={{ marginBottom: 4 }}>
+                              Financial Recovery Potential
+                            </div>
+                            <div className="kpi" style={{ fontSize: "var(--text-2xl)", color: "var(--critical)" }}>
+                              {rupee(m.savings)}
+                            </div>
+                            <div className="small" style={{ marginTop: 2, color: "var(--text-3)" }}>
+                              YTD scrap reduction potential.
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Vertical Divider Line */}
+                    <div style={{ background: "var(--border)", height: "100%" }} />
+
+                    {/* Right Side: Action Plan (CAPA Items) */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-3)", display: "flex", alignItems: "center", gap: 8 }}>
+                        <Icon name="check" size={14} /> Recommended Actions
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, justifyContent: "center" }}>
+                        {recommendationCards.slice(0, 3).map((rec, i) => {
+                          const chipColor = rec.tone === "bad" ? "var(--critical)" : rec.tone === "warn" ? "var(--warning)" : "var(--positive)";
+                          const chipText = rec.tone === "bad" ? "Critical" : rec.tone === "warn" ? "Warning" : "Info";
+                          return (
+                            <div
+                              key={i}
                               style={{
-                                fontSize: 10,
-                                fontWeight: 700,
-                                textTransform: "uppercase",
-                                letterSpacing: "0.04em",
-                                padding: "2px 8px",
-                                borderRadius: 4,
-                                color: chipColor,
-                                background: `color-mix(in srgb, ${chipColor} 12%, transparent)`,
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: 8,
+                                padding: "12px 14px",
+                                background: "var(--surface-2)",
+                                border: "1px solid var(--border)",
+                                borderRadius: "var(--radius-md)",
                               }}
                             >
-                              {chipText}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => openCapa(i, rec.text, rec.evidence)}
-                              style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--accent)", background: "none", border: "none", cursor: "pointer", padding: 0, whiteSpace: "nowrap" }}
-                            >
-                              Create CAPA →
-                            </button>
-                          </div>
-                          <div style={{ fontSize: "var(--text-md)", lineHeight: 1.5, color: "var(--text)", fontWeight: 500 }}>{safeBolden(rec.text)}</div>
-                        </div>
-                      );
-                    })}
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                                <span
+                                  style={{
+                                    fontSize: 10,
+                                    fontWeight: 700,
+                                    textTransform: "uppercase",
+                                    letterSpacing: "0.04em",
+                                    padding: "2px 8px",
+                                    borderRadius: 4,
+                                    color: chipColor,
+                                    background: `color-mix(in srgb, ${chipColor} 12%, transparent)`,
+                                  }}
+                                >
+                                  {chipText}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => openCapa(i, rec.text, rec.evidence)}
+                                  style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--accent)", background: "none", border: "none", cursor: "pointer", padding: 0, whiteSpace: "nowrap" }}
+                                >
+                                  Create CAPA →
+                                </button>
+                              </div>
+                              <div style={{ fontSize: "var(--text-md)", lineHeight: 1.5, color: "var(--text)", fontWeight: 500 }}>{safeBolden(rec.text)}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
-                </div>
+                </Card>
               </div>
-            </Card>
-          </div>
-          </>
+            </>
           )}
 
           {/* Ask the ledger your own question. Inherits the topbar's date range
@@ -1482,7 +1482,7 @@ function StationView({ events, stageId, label, scope, trendScope, grainLabel, ta
           detail={`${num(d.rejected)} rejected · ${num(d.checked)} checked`}
           tone={d.rate > targetRej ? "bad" : "good"}
           spark={d.trend}
-          onClick={() => openModal(`${label} — Rejection Rate`, `${label} rejection rate is ${pct(d.rate)} (${num(d.rejected)} of ${num(d.checked)} checked) for the selected range.`, <div style={{ minHeight: 280, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={d.trend} target={targetRej} fmt={pct} mean /></div>, { rows: srcRows({ stageId, types: ["production", "inspection", "rejection"] }), value: pct(d.rate) , metricKind: "rejection_rate" })}
+          onClick={() => openModal(`${label} — Rejection Rate`, `${label} rejection rate is ${pct(d.rate)} (${num(d.rejected)} of ${num(d.checked)} checked) for the selected range.`, <div style={{ minHeight: 280, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={d.trend} target={targetRej} fmt={pct} mean /></div>, { rows: srcRows({ stageId, types: ["production", "inspection", "rejection"] }), value: pct(d.rate), metricKind: "rejection_rate" })}
         />
         <Kpi label="Quantity Checked" value={num(d.checked)} detail="units entered this gate" />
         <Kpi label="Total Rejected" value={num(d.rejected)} detail={d.checked > 0 ? `${pct(d.rate)} of checked` : undefined} tone="bad" />
@@ -1490,7 +1490,7 @@ function StationView({ events, stageId, label, scope, trendScope, grainLabel, ta
       </div>
 
       <Card title={`${label} — Rejection % Trend (${grainLabel})`} sub="recomputed from raw checked / rejected"
-        onClick={() => openModal(`${label} — Rejection % Trend (${grainLabel})`, `${label} rejection rate per period, from this station's own checked and rejected counts.`, <div style={{ minHeight: 300, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={d.trend} target={targetRej} fmt={pct} mean /></div>, { rows: srcRows({ stageId, types: ["production", "inspection"] }), value: pct(d.rate) , metricKind: "rejection_rate" })}>
+        onClick={() => openModal(`${label} — Rejection % Trend (${grainLabel})`, `${label} rejection rate per period, from this station's own checked and rejected counts.`, <div style={{ minHeight: 300, display: "flex", flexDirection: "column", justifyContent: "center" }}><LineChart points={d.trend} target={targetRej} fmt={pct} mean /></div>, { rows: srcRows({ stageId, types: ["production", "inspection"] }), value: pct(d.rate), metricKind: "rejection_rate" })}>
         <LineChart points={d.trend} target={targetRej} fmt={pct} mean height={180} />
       </Card>
 
