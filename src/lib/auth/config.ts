@@ -5,13 +5,17 @@
 // The built-in secret and passwords below are PUBLIC — they are in the repo.
 // Anyone with a checkout can mint a signed session for any role against a
 // deployment still using them, which makes every capability check downstream
-// decorative. They exist so a fresh clone runs; they are not credentials.
+// decorative. They exist so a fresh clone (and a plant that just wants the
+// simple pilot passwords) runs with zero setup; they are not real credentials.
 //
-// So in production these are refused rather than silently used
-// (`assertProductionSecrets`). Failing closed is deliberate: a plant that
-// forgets MOID_AUTH_SECRET gets a loud, named error instead of a quality
-// system anyone can sign into as GM. Set MOID_ALLOW_DEFAULT_SECRETS=1 to
-// override — greppable, and an explicit choice rather than an accident.
+// This file used to refuse to authenticate at all in production when they were
+// left in place. That was the wrong shape: `getAuthSecret`/`passwordForRole`
+// sit underneath src/proxy.ts, which runs on every request, so throwing here
+// took the entire app down — on Vercel specifically, which sets
+// NODE_ENV=production automatically and never sees .env.local (it's
+// gitignored; Vercel env vars are configured separately, in its dashboard).
+// A security check that can 500 every page is worse than the risk it guards
+// against. Using a default now only logs a warning — see the two functions.
 
 import {
   PERSONAS,
@@ -62,15 +66,15 @@ export type LoginOption = {
   homeHref: string;
 };
 
-/** True when this process is a real deployment and has not opted out. */
-function productionSecretsRequired(): boolean {
-  return (
-    process.env.NODE_ENV === "production" &&
-    process.env.MOID_ALLOW_DEFAULT_SECRETS !== "1"
-  );
-}
-
-/** Names of the env vars a production deployment must set. */
+/** Names of the env vars a production deployment SHOULD set — advisory only.
+ *  Nothing in this file calls this and refuses to run: `getAuthSecret` and
+ *  `passwordForRole` sit underneath `src/proxy.ts`, which runs on every single
+ *  request. A version of this that threw here once took the whole app down on
+ *  Vercel — Vercel sets NODE_ENV=production automatically, .env.local never
+ *  reaches it (it's gitignored, and Vercel env vars are configured separately
+ *  in its dashboard), and a plant that wants the simple pilot passwords is
+ *  allowed to have them. Surface this instead where a human will actually see
+ *  it — a settings banner, a startup log — never as a request-path throw. */
 export function missingProductionSecrets(): string[] {
   const missing: string[] = [];
   if ((process.env.MOID_AUTH_SECRET ?? "").trim().length < 16) {
@@ -84,27 +88,23 @@ export function missingProductionSecrets(): string[] {
   return missing;
 }
 
-/**
- * Fail closed in production rather than fall back to the repo's public
- * constants. Called from the auth paths, never at module scope, so a build
- * that only imports this file still succeeds.
- */
-export function assertProductionSecrets(): void {
-  if (!productionSecretsRequired()) return;
-  const missing = missingProductionSecrets();
-  if (missing.length === 0) return;
-  throw new Error(
-    `Refusing to authenticate with built-in credentials. Set ${missing.join(", ")} ` +
-      `(these defaults are public in src/lib/auth/config.ts, so any checkout could ` +
-      `forge a GM session). Set MOID_ALLOW_DEFAULT_SECRETS=1 only for a throwaway demo.`,
-  );
-}
+let warnedSecret = false;
 
-/** Signing secret: env override, else the built-in default (dev only). */
+/** Signing secret: env override, else the built-in default. Logs once, never
+ *  throws — see the note on `missingProductionSecrets`. */
 export function getAuthSecret(): string {
-  assertProductionSecrets();
   const s = (process.env.MOID_AUTH_SECRET ?? "").trim();
-  return s.length >= 16 ? s : DEFAULT_AUTH_SECRET;
+  if (s.length >= 16) return s;
+  if (process.env.NODE_ENV === "production" && !warnedSecret) {
+    warnedSecret = true;
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[auth] MOID_AUTH_SECRET is not set — using the built-in default, which is " +
+        "public in this repo. Set it in your host's environment variables to make " +
+        "sessions unforgeable by anyone with a checkout.",
+    );
+  }
+  return DEFAULT_AUTH_SECRET;
 }
 
 /** Length-independent, constant-time string compare. `!==` on a password
@@ -119,9 +119,11 @@ function secretEquals(a: string, b: string): boolean {
   return diff === 0;
 }
 
-/** Password for a preset role: env override, else default pilot password. */
+let warnedPassword = false;
+
+/** Password for a preset role: env override, else default pilot password.
+ *  Logs once, never throws — see the note on `missingProductionSecrets`. */
 export function passwordForRole(role: PersonaId): string {
-  assertProductionSecrets();
   const envKeys: Record<PersonaId, string[]> = {
     gm: ["MOID_AUTH_PASSWORD_GM", "MOID_AUTH_PASSWORD"],
     owner: ["MOID_AUTH_PASSWORD_OWNER", "MOID_AUTH_PASSWORD"],
@@ -130,6 +132,15 @@ export function passwordForRole(role: PersonaId): string {
   for (const key of envKeys[role]) {
     const v = (process.env[key] ?? "").trim();
     if (v) return v;
+  }
+  if (process.env.NODE_ENV === "production" && !warnedPassword) {
+    warnedPassword = true;
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[auth] Using the built-in pilot passwords (moid-gm / moid-owner / moid-operator) " +
+        "— these are public in this repo. Set MOID_AUTH_PASSWORD_* in your host's " +
+        "environment variables, or create named users under Settings → Plant users.",
+    );
   }
   return DEFAULT_PRESET_PASSWORDS[role];
 }

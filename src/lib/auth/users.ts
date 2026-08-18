@@ -189,6 +189,19 @@ function isMissingTable(err: unknown): boolean {
   );
 }
 
+/** True for a database-level problem an operator has to go fix (grants,
+ *  connectivity) rather than something the request itself got wrong. Reads on
+ *  this table sit on the LOGIN path, so any of these must degrade to "no named
+ *  users" rather than take login down — the first version of this code only
+ *  handled the missing-table case, and 20260819_plant_users_grants.sql (the
+ *  migration that fixes the actual permission-denied cause) shipped as a
+ *  follow-up precisely because this check didn't catch it. */
+function isReadUnavailable(err: unknown): boolean {
+  if (isMissingTable(err)) return true;
+  const code = (err as { code?: string } | null)?.code;
+  return code === "42501"; // Postgres: insufficient_privilege
+}
+
 class SupabaseUserStore implements UserStore {
   private get client() {
     return createServerClient();
@@ -200,7 +213,11 @@ class SupabaseUserStore implements UserStore {
       .eq("company_id", companyId)
       .order("username");
     if (error) {
-      if (isMissingTable(error)) return [];
+      if (isReadUnavailable(error)) {
+        // eslint-disable-next-line no-console
+        console.error("[auth] plant_users unreadable, treating as empty:", error);
+        return [];
+      }
       throw error;
     }
     return (data ?? []).map(rowToUser).map(strip);
@@ -213,7 +230,15 @@ class SupabaseUserStore implements UserStore {
       .eq("username", normalizeUsername(username))
       .maybeSingle();
     if (error) {
-      if (isMissingTable(error)) return null;
+      if (isReadUnavailable(error)) {
+        // The login path reaches this. A DB-side misconfiguration must not
+        // block sign-in — it should just mean "no named user by this name",
+        // so the preset role login (which never touches this table) still
+        // works while someone fixes the underlying grant.
+        // eslint-disable-next-line no-console
+        console.error("[auth] plant_users unreadable, treating as no match:", error);
+        return null;
+      }
       throw error;
     }
     return data ? rowToUser(data) : null;

@@ -92,11 +92,20 @@ describe("production refuses the repo's public credentials", () => {
     expect(missingProductionSecrets()).toEqual(["MOID_AUTH_SECRET"]);
   });
 
-  it("throws in production, naming the variable to set", () => {
+  it("never throws in production, whatever is or isn't set — this is what runs on every request", () => {
+    // getAuthSecret/passwordForRole sit under src/proxy.ts, which runs on
+    // every single request. A version of this that threw here once took the
+    // entire app down on Vercel, which sets NODE_ENV=production automatically
+    // and never sees .env.local. A security check that can 500 every page is
+    // worse than the exposure it guards against.
     clearAuthEnv();
     setNodeEnv("production");
-    expect(() => getAuthSecret()).toThrow(/MOID_AUTH_SECRET/);
-    expect(() => passwordForRole("gm")).toThrow(/Refusing to authenticate/);
+    expect(() => getAuthSecret()).not.toThrow();
+    expect(() => passwordForRole("gm")).not.toThrow();
+    // …and still falls back to the usable (if public) defaults, so a plant
+    // that wants the simple pilot passwords keeps working unattended.
+    expect(getAuthSecret()).toBe(DEFAULT_AUTH_SECRET);
+    expect(passwordForRole("gm")).toBe(DEFAULT_PRESET_PASSWORDS.gm);
   });
 
   it("stays permissive in development so a fresh clone still runs", () => {
@@ -106,19 +115,12 @@ describe("production refuses the repo's public credentials", () => {
     expect(passwordForRole("gm")).toBe(DEFAULT_PRESET_PASSWORDS.gm);
   });
 
-  it("MOID_ALLOW_DEFAULT_SECRETS=1 is an explicit, greppable opt-out", () => {
-    clearAuthEnv();
-    setNodeEnv("production");
-    process.env.MOID_ALLOW_DEFAULT_SECRETS = "1";
-    expect(getAuthSecret()).toBe(DEFAULT_AUTH_SECRET);
-  });
-
-  it("a fully configured production deployment does not throw", () => {
+  it("a fully configured production deployment uses the real values", () => {
     clearAuthEnv();
     setNodeEnv("production");
     process.env.MOID_AUTH_SECRET = "a-real-secret-well-over-16-chars";
     process.env.MOID_AUTH_PASSWORD = "a-real-password";
-    expect(() => getAuthSecret()).not.toThrow();
+    expect(getAuthSecret()).toBe("a-real-secret-well-over-16-chars");
     expect(findUser("gm", "a-real-password")?.role).toBe("gm");
     expect(findUser("gm", DEFAULT_PRESET_PASSWORDS.gm)).toBeNull();
   });

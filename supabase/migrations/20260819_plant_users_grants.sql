@@ -1,0 +1,22 @@
+-- Fix: plant_users was the ONE table in this app granted to service_role only.
+-- Every other table (company_catalog, calculation_policy, plant_notifications,
+-- the event ledger, ...) grants anon + authenticated + service_role, because
+-- this app's actual security boundary is the Next.js API layer
+-- (lib/auth/guard.ts's requireCapability), not Postgres RLS — RLS everywhere
+-- else is just `USING (true)`, a formality PostgREST requires, not a real
+-- per-row policy.
+--
+-- Restricting this one table to service_role assumed every deployment sets
+-- SUPABASE_SERVICE_ROLE_KEY. This app doesn't require that anywhere else, and
+-- this deployment didn't set it either — so every read of plant_users (i.e.
+-- every login attempt) failed with `permission denied for table plant_users`
+-- (42501), which crashed login outright.
+--
+-- Bringing the grant in line with every other table is not a new exposure:
+-- the anon key already reads every other table in this schema, including the
+-- full event ledger. Hiding password hashes specifically, behind a boundary
+-- nothing else in the schema uses, protected against a threat model this app
+-- doesn't otherwise defend against — while breaking the deployments that
+-- protection was supposed to serve.
+
+GRANT ALL ON TABLE public.plant_users TO anon, authenticated, service_role;

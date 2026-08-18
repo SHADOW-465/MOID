@@ -25,28 +25,42 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const user = await authenticate(identity, password);
-  if (!user) {
-    // One message for unknown user, wrong password and disabled account —
-    // anything more specific is a way to enumerate who works here.
+  // Wrapped end to end: `authenticate` reaches Supabase (named-user lookup)
+  // and a database problem there — a bad grant, a network blip — must surface
+  // as a clean 500 an operator can act on, never an unhandled crash. This is
+  // what every other write route in the app already does; login didn't,
+  // which is exactly how a plant_users permission error took sign-in down.
+  try {
+    const user = await authenticate(identity, password);
+    if (!user) {
+      // One message for unknown user, wrong password and disabled account —
+      // anything more specific is a way to enumerate who works here.
+      return NextResponse.json(
+        { error: "Wrong username or password." },
+        { status: 401 },
+      );
+    }
+
+    const token = await createSessionToken(user);
+    const persona = PERSONAS[user.role];
+    const res = NextResponse.json({
+      ok: true,
+      user: {
+        username: user.username,
+        displayName: user.displayName,
+        role: user.role,
+        label: persona.label,
+        homeHref: persona.homeHref,
+      },
+    });
+    res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
+    return res;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[auth] login failed unexpectedly:", err);
     return NextResponse.json(
-      { error: "Wrong username or password." },
-      { status: 401 },
+      { error: "Sign-in is temporarily unavailable. Try again shortly." },
+      { status: 500 },
     );
   }
-
-  const token = await createSessionToken(user);
-  const persona = PERSONAS[user.role];
-  const res = NextResponse.json({
-    ok: true,
-    user: {
-      username: user.username,
-      displayName: user.displayName,
-      role: user.role,
-      label: persona.label,
-      homeHref: persona.homeHref,
-    },
-  });
-  res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
-  return res;
 }
