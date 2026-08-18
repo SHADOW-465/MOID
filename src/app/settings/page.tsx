@@ -19,6 +19,7 @@ import { useRegistry } from "@/components/app/RegistryContext";
 import { usePersona } from "@/components/app/PersonaContext";
 import CalculationRules from "@/components/settings/CalculationRules";
 import DisplayDefaults from "@/components/settings/DisplayDefaults";
+import PlantUsers from "@/components/settings/PlantUsers";
 import {
   DEFAULT_SHIFT_WINDOWS,
   readShiftWindowConfig,
@@ -33,7 +34,7 @@ import {
   type DataEntryExportConfig,
 } from "@/lib/entry/export-config";
 
-type SectionId = "rules" | "display" | "shifts" | "export" | "registry" | "custom" | "admin";
+type SectionId = "rules" | "display" | "shifts" | "export" | "registry" | "custom" | "users" | "admin";
 
 const SECTIONS: { id: SectionId; label: string; hint: string }[] = [
   { id: "rules", label: "Calculation rules", hint: "Targets, costs, rework handling" },
@@ -42,6 +43,7 @@ const SECTIONS: { id: SectionId; label: string; hint: string }[] = [
   { id: "export", label: "Data Entry export", hint: "Topbar Export on /data-entry" },
   { id: "registry", label: "Defect registry", hint: "Plant catalog (read-only)" },
   { id: "custom", label: "Custom codes", hint: "Plant-specific aliases" },
+  { id: "users", label: "Plant users", hint: "Who may sign in, and as what" },
   { id: "admin", label: "Administrative", hint: "Purge & schema reset" },
 ];
 
@@ -582,6 +584,8 @@ export default function SettingsPage() {
                   </div>
                 </div>
               )}
+
+              {section === "users" && <PlantUsers />}
 
               {section === "admin" && (
                 <div className="settings-admin">

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { findUser } from "@/lib/auth/config";
+import { authenticate } from "@/lib/auth/users";
 import {
   SESSION_COOKIE,
   createSessionToken,
@@ -25,10 +25,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const user = findUser(identity, password);
+  const user = await authenticate(identity, password);
   if (!user) {
+    // One message for unknown user, wrong password and disabled account —
+    // anything more specific is a way to enumerate who works here.
     return NextResponse.json(
-      { error: "Wrong password for that role." },
+      { error: "Wrong username or password." },
       { status: 401 },
     );
   }
@@ -39,6 +41,7 @@ export async function POST(req: NextRequest) {
     ok: true,
     user: {
       username: user.username,
+      displayName: user.displayName,
       role: user.role,
       label: persona.label,
       homeHref: persona.homeHref,
