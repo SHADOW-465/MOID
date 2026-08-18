@@ -9,6 +9,8 @@ import "./settings.css";
  */
 
 import { useEffect, useState } from "react";
+import Select from "@/components/ui/Select";
+import DatePicker from "@/components/ui/DatePicker";
 import AppShell from "@/components/app/AppShell";
 import Icon from "@/components/editorial/Icon";
 import { EMPTY_REGISTRY } from "@/core/ontology/empty-registry";
@@ -389,19 +391,20 @@ export default function SettingsPage() {
                     <>
                       <label className="settings-field">
                         <span className="settings-field-label">What to include</span>
-                        <select
-                          className="settings-input"
+                        <Select
                           value={exportCfg.channel}
-                          onChange={(e) =>
+                          onChange={(val) =>
                             setExportCfg((c) => ({
                               ...c,
-                              channel: e.target.value as DataEntryExportConfig["channel"],
+                              channel: val as DataEntryExportConfig["channel"],
                             }))
                           }
-                        >
-                          <option value="direct-entry">Data Entry only</option>
-                          <option value="all">All ledger events (incl. Excel ingest)</option>
-                        </select>
+                          options={[
+                            { value: "direct-entry", label: "Data Entry only" },
+                            { value: "all", label: "All ledger events (incl. Excel ingest)" },
+                          ]}
+                          ariaLabel="What to include"
+                        />
                       </label>
 
                       <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
@@ -424,24 +427,24 @@ export default function SettingsPage() {
                         <>
                           <label className="settings-field">
                             <span className="settings-field-label">From date (optional)</span>
-                            <input
-                              type="date"
-                              className="settings-input"
-                              value={exportCfg.from}
-                              onChange={(e) =>
-                                setExportCfg((c) => ({ ...c, from: e.target.value }))
+                            <DatePicker
+                              value={exportCfg.from ?? ""}
+                              onChange={(d) =>
+                                setExportCfg((c) => ({ ...c, from: d }))
                               }
+                              ariaLabel="From date"
+                              size="sm"
                             />
                           </label>
                           <label className="settings-field">
                             <span className="settings-field-label">To date (optional)</span>
-                            <input
-                              type="date"
-                              className="settings-input"
-                              value={exportCfg.to}
-                              onChange={(e) =>
-                                setExportCfg((c) => ({ ...c, to: e.target.value }))
+                            <DatePicker
+                              value={exportCfg.to ?? ""}
+                              onChange={(d) =>
+                                setExportCfg((c) => ({ ...c, to: d }))
                               }
+                              ariaLabel="To date"
+                              size="sm"
                             />
                           </label>
                           <p className="settings-field-help">

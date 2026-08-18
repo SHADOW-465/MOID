@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useLayoutEffect } from "react";
+import { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import type { SeriesPoint, StageRow, DefectRow, StageTrendPoint } from "@/lib/analytics";
 import Icon from "@/components/editorial/Icon";
 import { useTweaks } from "@/components/editorial/TweaksContext";
@@ -910,15 +910,16 @@ export function MultiLine({
 }
 
 
-export function BarsH({ rows, fmt }: { rows: { label: string; value: number; sub?: string }[]; fmt: (n: number) => string }) {
+export function BarsH({ rows, fmt, sort = true }: { rows: { label: string; value: number; sub?: string }[]; fmt: (n: number) => string; sort?: boolean }) {
   // Full width immediately — width:0→animate fails in print (snapshot before mount effect).
   if (!rows || rows.length === 0) {
     return <Empty label="No distribution records available." />;
   }
-  const max = Math.max(...rows.map((r) => r.value), 1e-6);
+  const displayRows = sort ? [...rows].sort((a, b) => b.value - a.value) : rows;
+  const max = Math.max(...displayRows.map((r) => r.value), 1e-6);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      {rows.map((r, i) => (
+      {displayRows.map((r, i) => (
         <div key={r.label}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, fontSize: 12.5, marginBottom: 5 }}>
             <span style={{ color: "var(--text)", fontWeight: 600, minWidth: 0 }}>
@@ -1150,17 +1151,21 @@ export function Donut({
     setMounted(true);
   }, []);
 
-  const total = data.reduce((s, d) => s + d.value, 0);
-  if (!data.length || total <= 0) return <Empty label="No data for the selected range." />;
+  const sortedData = useMemo(() => {
+    return [...data].sort((a, b) => b.value - a.value);
+  }, [data]);
+
+  const total = sortedData.reduce((s, d) => s + d.value, 0);
+  if (!sortedData.length || total <= 0) return <Empty label="No data for the selected range." />;
   const f = fmt ?? ((n: number) => Math.round(n).toLocaleString("en-IN"));
   const R = 62, C = 2 * Math.PI * R, cx = 80, cy = 80;
-  const col = (i: number) => data[i].color ?? SERIES_COLORS[i % SERIES_COLORS.length];
+  const col = (i: number) => sortedData[i].color ?? SERIES_COLORS[i % SERIES_COLORS.length];
   let acc = 0;
   return (
     <div style={{ position: "relative", display: "flex", gap: 24, alignItems: "center", justifyContent: "center", flexWrap: "wrap" }} onMouseLeave={() => setHover(null)}>
       <svg viewBox="0 0 160 160" style={{ width: size, height: size, flexShrink: 0 }}>
         <circle cx={cx} cy={cy} r={R} fill="none" stroke="var(--border)" strokeWidth={20} />
-        {data.map((d, i) => {
+        {sortedData.map((d, i) => {
           const frac = d.value / total, seg = frac * C, off = acc * C; acc += frac;
           const animatedSeg = mounted ? seg : 0;
           return <circle key={i} cx={cx} cy={cy} r={R} fill="none" stroke={col(i)} strokeWidth={hover === i ? 24 : 20}
@@ -1172,7 +1177,7 @@ export function Donut({
       </svg>
       {!hideLegend && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: fontSize }}>
-          {data.map((d, i) => (
+          {sortedData.map((d, i) => (
             <div key={i} onMouseEnter={() => setHover(i)} style={{ display: "flex", alignItems: "center", gap: 10, opacity: hover == null || hover === i ? 1 : 0.5, transition: "opacity 0.2s" }}>
               <span style={{ width: fontSize - 3, height: fontSize - 3, borderRadius: 2, background: col(i), flexShrink: 0 }} />
               <span style={{ color: "var(--text-2)", minWidth: fontSize * 8 }}>{d.label}</span>

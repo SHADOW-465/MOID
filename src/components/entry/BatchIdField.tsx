@@ -16,6 +16,7 @@
 //   Recorded on →  ledger event date only
 
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import DatePicker from "@/components/ui/DatePicker";
 import {
   buildBatchId,
   canonicalBatchId,
@@ -302,13 +303,10 @@ export default function BatchIdField({
             </p>
           </div>
 
-          <input
-            ref={dateRef}
-            type="date"
+          <DatePicker
             value={batchDate}
-            onChange={(e) => e.target.value && onBatchDateChange(e.target.value)}
-            aria-label="Lot date"
-            style={fieldStyle}
+            onChange={(d) => d && onBatchDateChange(d)}
+            ariaLabel="Lot date"
           />
 
           <div

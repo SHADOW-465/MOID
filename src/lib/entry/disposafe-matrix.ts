@@ -230,6 +230,15 @@ export const MATRIX_STAGES: Record<MacroId, MacroStage> = {
 };
 
 /**
+ * What the operator sees on a Data Entry defect tile: the plant code.
+ * Floor staff type and search COAG / PH / SD — never "Coagulum".
+ */
+export function defectEntryTitle(d: Pick<DefectDef, "key" | "name">): string {
+  const key = (d.key || "").trim();
+  return key || (d.name || "").trim();
+}
+
+/**
  * Single title for a defect card. Prefers short codes (COAG, SD) when the key
  * is a compact code; otherwise a clean human label without "(CODE)" duplication.
  */

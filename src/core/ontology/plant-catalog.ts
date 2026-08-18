@@ -93,6 +93,89 @@ export const STAGE_CATEGORY: Record<string, StageCategory> = Object.fromEntries(
   STAGES.filter((s) => s.category).map((s) => [s.stageId, s.category as StageCategory]),
 );
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Process order — the ONE place analytics learns where a gate sits on the line.
+//
+// Every screen that has to answer "which gate does this section enter at?" must
+// route through here. Two implementations of that question is what let View
+// Source and the dashboard disagree; deriving it from ledger order instead is
+// what made Overall Rejection read 3588%.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Authored process order: stageId → index on the line. */
+export const STAGE_ORDER: string[] = STAGES.map((s) => s.stageId);
+
+/** Display name: the catalog label minus its SOP suffix ("Visual Inspection
+ *  (P17)" → "Visual Inspection"). */
+export const STAGE_LABELS: Record<string, string> = Object.fromEntries(
+  STAGES.map((s) => [s.stageId, s.label.replace(/\s*\(.*\)$/, "")]),
+);
+
+const STAGE_ID_BY_LABEL = new Map(
+  Object.entries(STAGE_LABELS).map(([id, label]) => [label.toLowerCase(), id]),
+);
+
+/** A stageId from either an id or a display label; undefined when neither
+ *  names an authored stage. */
+export function resolveStageId(idOrLabel?: string | null): string | undefined {
+  const s = (idOrLabel || "").toLowerCase();
+  if (!s) return undefined;
+  if (STAGE_ORDER.includes(s)) return s;
+  return STAGE_ID_BY_LABEL.get(s);
+}
+
+/** Position on the line. Stages the catalog never authored sort last (99) — they
+ *  become their own section anyway, so they never displace a real entry gate. */
+export function stageSortKey(stageId?: string | null, stageLabel?: string | null): number {
+  const id = (stageId || stageLabel || "").toLowerCase();
+  const idx = STAGE_ORDER.indexOf(id);
+  if (idx >= 0) return idx;
+  // may be a pretty label ("Visual Inspection") rather than an id
+  const byLabel = STAGE_ID_BY_LABEL.get((stageLabel || "").toLowerCase());
+  return byLabel ? STAGE_ORDER.indexOf(byLabel) : 99;
+}
+
+/**
+ * The gate a section's units ENTER at — the denominator for that section.
+ *
+ * Gates inside a section are sequential: each one only ever sees what the
+ * previous gate passed, so the entry gate necessarily holds the LARGEST checked
+ * count. That physical fact is the rule, because it is the one that cannot be
+ * corrupted by ordering. Process order is the tiebreak, and it decides nothing
+ * on its own.
+ *
+ * Picking purely by order is what broke: with no verified catalog every stage is
+ * derived from the ledger, the order became event-arrival order, and Assembly's
+ * entry landed on Primary Pack Inspection (2,550 checked) instead of Visual
+ * (681,945) — every rejection in the section then divided by 2,550.
+ *
+ * When the two disagree the data is already inconsistent (a gate cannot inspect
+ * more than the one feeding it), and the larger denominator is the safe read: it
+ * can only understate a rate, never invent a 3588% one. Rework re-entering a
+ * gate under `reworkCountsAs: "checked"` can legitimately nudge a downstream
+ * gate past its entry — that shifts the denominator by a percent or two, which
+ * is the intended trade for making the catastrophic case unreachable.
+ *
+ * Returns null when nothing in the section recorded units.
+ */
+export function pickEntryGate(checkedByStage: Iterable<readonly [string, number]>): string | null {
+  let best: { stageId: string; checked: number; key: number } | null = null;
+  for (const [stageId, checked] of checkedByStage) {
+    if (!(checked > 0)) continue;
+    const key = stageSortKey(stageId);
+    if (
+      !best ||
+      checked > best.checked ||
+      // Ties break on process order, then on id, so the answer never depends on
+      // iteration order — the property the old "first one seen" rule lacked.
+      (checked === best.checked && (key < best.key || (key === best.key && stageId < best.stageId)))
+    ) {
+      best = { stageId, checked, key };
+    }
+  }
+  return best?.stageId ?? null;
+}
+
 export type CatalogSection = { id: string; label: string };
 
 /**

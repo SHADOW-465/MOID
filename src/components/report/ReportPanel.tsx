@@ -6,6 +6,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { useConfirm } from "@/components/ui/ConfirmContext";
 import ReportDocument from "./ReportDocument";
 import {
   presetFor,
@@ -263,9 +264,17 @@ export default function ReportPanel({
     setMsg(`Saved “${saved.name}”`);
   }
 
-  function handleDelete() {
+  const { confirm: confirmModal } = useConfirm();
+
+  async function handleDelete() {
     if (!activePresetId || activePresetId.startsWith("builtin:")) return;
-    if (!confirm("Delete this saved preset?")) return;
+    const ok = await confirmModal({
+      title: "Delete saved preset?",
+      description: "Delete this custom report layout preset? This cannot be undone.",
+      confirmText: "Delete Preset",
+      variant: "danger",
+    });
+    if (!ok) return;
     deleteNamedPreset(activePresetId);
     setActivePresetId(null);
     refreshPresets();

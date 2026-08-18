@@ -1,5 +1,6 @@
 import {
   defectDisplayLabel,
+  defectEntryTitle,
   defectsFor,
   MATRIX_STAGES,
   previousAssemblyStageId,
@@ -23,6 +24,13 @@ describe("Primary Production matrix UX helpers", () => {
     }
     expect(defectDisplayLabel(defs.find((d) => d.key === "COAG")!)).toBe("COAG");
     expect(defectDisplayLabel(defs.find((d) => d.key === "Overlaping")!)).toBe("Overlapping");
+  });
+
+  test("Data Entry tiles show the plant code, not the catalog label", () => {
+    expect(defectEntryTitle({ key: "COAG", name: "Coagulum" })).toBe("COAG");
+    expect(defectEntryTitle({ key: "PH", name: "Pin Hole" })).toBe("PH");
+    expect(defectEntryTitle({ key: "SD", name: "Split Dip" })).toBe("SD");
+    expect(defectEntryTitle({ key: "90/10", name: "90/10 Ratio Fail" })).toBe("90/10");
   });
 
   test("assembly balloon/valve titles are single-line without parenthetical codes", () => {

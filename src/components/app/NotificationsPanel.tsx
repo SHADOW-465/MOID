@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Icon from "@/components/editorial/Icon";
 import { usePersona } from "@/components/app/PersonaContext";
+import { useConfirm } from "@/components/ui/ConfirmContext";
 import type {
   PlantNotification,
   EntryExceptionPayload,
@@ -14,6 +15,7 @@ type Tab = "open" | "history";
 
 export default function NotificationsPanel() {
   const { persona, canApprove } = usePersona();
+  const { notify } = useConfirm();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<Tab>("open");
   const [items, setItems] = useState<PlantNotification[]>([]);
@@ -65,7 +67,7 @@ export default function NotificationsPanel() {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        alert(body.error ?? "Action failed");
+        notify(body.error ?? "Action failed", "error");
         return;
       }
       const data = await res.json();

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MOID (RAIS-Pro) — Plant Schema & Catalog</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Sans:wght@400;500;600;700&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-theme="porcelain">
+
+  <div class="app-shell">
+    
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="brand-box">
+        <span class="brand-logo-badge">MOID</span>
+        <div>
+          <div style="font-weight:700; font-size:13px; color:var(--text-ink)">Plant Intelligence</div>
+          <div class="mono" style="font-size:10px; color:var(--verified)">● 98.4% Ledger Trust</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="nav-section-label">Overview</div>
+        <a class="nav-item" href="index.html">
+          <span>Dashboard</span>
+        </a>
+      </div>
+
+      <div>
+        <div class="nav-section-label">Your Data</div>
+        <a class="nav-item" href="data-entry.html">
+          <span>Data Entry</span>
+        </a>
+        <a class="nav-item" href="staging.html">
+          <span>Staging & Files</span>
+        </a>
+      </div>
+
+      <div>
+        <div class="nav-section-label">Analysis</div>
+        <a class="nav-item" href="stage-analysis.html">
+          <span>Stage Analysis</span>
+        </a>
+        <a class="nav-item" href="size-analysis.html">
+          <span>Size Analysis</span>
+        </a>
+        <a class="nav-item" href="defect-analysis.html">
+          <span>Defect Pareto</span>
+        </a>
+      </div>
+
+      <div>
+        <div class="nav-section-label">Management</div>
+        <a class="nav-item" href="reports.html">
+          <span>Reports</span>
+        </a>
+        <a class="nav-item" href="audit.html">
+          <span>Audit Trail</span>
+        </a>
+        <a class="nav-item active" href="schema.html">
+          <span>Plant Schema</span>
+        </a>
+      </div>
+
+      <div class="persona-dock">
+        <div class="mono" style="font-weight:700; font-size:11px; padding:4px 8px; border-radius:var(--r-pill); background:var(--bg-well)">SA</div>
+        <div>
+          <div style="font-size:12px; font-weight:600; color:var(--text-ink)">System Admin</div>
+          <div style="font-size:10.5px; color:var(--text-secondary)">Master Catalog</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Workspace -->
+    <main class="workspace">
+      
+      <header class="topbar">
+        <div class="scope-cluster">
+          <span style="font-weight:600; font-size:14px">Plant Master Schema & Ontology Catalog</span>
+        </div>
+
+        <div class="top-actions">
+          <button class="btn-pill" onclick="toggleThemeMode()">
+            <span id="theme-btn-text">Dark Mode</span>
+          </button>
+          <button class="btn-pill btn-pill-primary" onclick="showToast('Catalog changes committed to master schema.')">
+            Save Schema Catalog
+          </button>
+        </div>
+      </header>
+
+      <div class="content-stream">
+        
+        <!-- Category 1: Inspection Gates -->
+        <div class="standard-card">
+          <div class="card-head">
+            <div class="card-title">1. Inspection Station Gates (Sequence & Order)</div>
+            <button class="btn-pill" style="font-size:11px; padding:4px 10px" onclick="showToast('Add Gate modal opened')">+ Add Gate</button>
+          </div>
+
+          <table class="soft-table">
+            <thead>
+              <tr><th>Sequence</th><th>Station ID</th><th>Gate Label</th><th>Category</th><th>Target Scrap %</th><th>Action</th></tr>
+            </thead>
+            <tbody>
+              <tr><td class="mono">1</td><td><strong class="mono">visual</strong></td><td>Visual Inspection</td><td>Primary Visual</td><td class="mono">4.50%</td><td><button class="btn-pill" style="font-size:10.5px; padding:2px 8px">Edit</button></td></tr>
+              <tr><td class="mono">2</td><td><strong class="mono">eye-punching</strong></td><td>Eye Punching</td><td>Mechanical</td><td class="mono">1.00%</td><td><button class="btn-pill" style="font-size:10.5px; padding:2px 8px">Edit</button></td></tr>
+              <tr><td class="mono">3</td><td><strong class="mono">balloon</strong></td><td>Balloon Wipe</td><td>Assembly</td><td class="mono">0.80%</td><td><button class="btn-pill" style="font-size:10.5px; padding:2px 8px">Edit</button></td></tr>
+              <tr><td class="mono">4</td><td><strong class="mono">valve-integrity</strong></td><td>Valve Integrity</td><td>Leak Testing</td><td class="mono">0.70%</td><td><button class="btn-pill" style="font-size:10.5px; padding:2px 8px">Edit</button></td></tr>
+              <tr><td class="mono">5</td><td><strong class="mono">final</strong></td><td>Final Packaging QC</td><td>Release QC</td><td class="mono">0.50%</td><td><button class="btn-pill" style="font-size:10.5px; padding:2px 8px">Edit</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Category 2: Defect Codes -->
+        <div class="standard-card">
+          <div class="card-head">
+            <div class="card-title">2. Defect Codes & Canonical Aliases</div>
+            <button class="btn-pill" style="font-size:11px; padding:4px 10px" onclick="showToast('Add Defect Code modal opened')">+ Add Defect Code</button>
+          </div>
+
+          <table class="soft-table">
+            <thead>
+              <tr><th>Defect Code</th><th>Defect Name</th><th>Associated Stage</th><th>Learned Excel Aliases</th><th>Severity</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong class="mono" style="color:var(--cobalt)">COAG</strong></td><td>Coagulation Lump</td><td>Visual Inspection</td><td class="mono" style="color:var(--text-secondary)">COAG, REJ_COAG, COAGULATION</td><td><span style="color:var(--breach)">● Critical</span></td></tr>
+              <tr><td><strong class="mono" style="color:var(--cobalt)">OVERLAPPING</strong></td><td>Overlapping Seam</td><td>Visual Inspection</td><td class="mono" style="color:var(--text-secondary)">OVERLAP, OVERLAPPING, OV_SEAM</td><td><span style="color:var(--breach)">● Critical</span></td></tr>
+              <tr><td><strong class="mono" style="color:var(--cobalt)">PINHOLE</strong></td><td>Pinhole Leak</td><td>Eye Punching</td><td class="mono" style="color:var(--text-secondary)">PIN_HOLE, PINHOLE, HOLE_LEAK</td><td><span style="color:var(--decide)">● Warning</span></td></tr>
+              <tr><td><strong class="mono">BUBBLE</strong></td><td>Surface Bubble</td><td>Visual Inspection</td><td class="mono" style="color:var(--text-secondary)">BUBBLE, AIR_BUBBLE</td><td><span style="color:var(--text-muted)">○ Minor</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+
+    </main>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

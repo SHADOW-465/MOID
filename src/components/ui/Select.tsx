@@ -23,6 +23,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 
 export interface SelectOption {
   value: string;
@@ -119,8 +120,9 @@ export default function Select({
     const r = el.getBoundingClientRect();
     const below = window.innerHeight - r.bottom;
     const drop = below < Math.min(MENU_MAX_H, 200) && r.top > below ? "up" : "down";
+    const menuWidth = Math.max(r.width, 180);
     setRect({
-      left: Math.max(8, Math.min(r.left, window.innerWidth - r.width - 8)),
+      left: Math.max(8, Math.min(r.left, window.innerWidth - menuWidth - 8)),
       top: drop === "down" ? r.bottom + GAP : r.top - GAP,
       width: r.width,
       drop,
@@ -337,31 +339,34 @@ export default function Select({
         <Chevron open={open} />
       </button>
 
-      {open && rect && (
-        <div
-          ref={menuRef}
-          id={listId}
-          role="listbox"
-          aria-label={ariaLabel}
-          className="select-menu"
-          style={{
-            position: "fixed",
-            left: rect.left,
-            top: rect.drop === "down" ? rect.top : undefined,
-            bottom: rect.drop === "up" ? window.innerHeight - rect.top : undefined,
-            width: Math.max(rect.width, 180),
-            maxHeight: MENU_MAX_H,
-            display: "flex",
-            flexDirection: "column",
-            zIndex: 1000,
-            background: "var(--surface)",
-            border: "1px solid var(--border-strong)",
-            borderRadius: "var(--radius-md)",
-            boxShadow: "var(--shadow-3), 0 0 0 1px color-mix(in srgb, var(--border) 60%, transparent)",
-            overflow: "hidden",
-            transformOrigin: rect.drop === "down" ? "top center" : "bottom center",
-          }}
-        >
+      {open &&
+        rect &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            ref={menuRef}
+            id={listId}
+            role="listbox"
+            aria-label={ariaLabel}
+            className="select-menu"
+            style={{
+              position: "fixed",
+              left: rect.left,
+              top: rect.drop === "down" ? rect.top : undefined,
+              bottom: rect.drop === "up" ? window.innerHeight - rect.top : undefined,
+              width: Math.max(rect.width, 180),
+              maxHeight: MENU_MAX_H,
+              display: "flex",
+              flexDirection: "column",
+              zIndex: 99999,
+              background: "var(--surface)",
+              border: "1px solid var(--border-strong)",
+              borderRadius: "var(--radius-md)",
+              boxShadow: "var(--shadow-3), 0 0 0 1px color-mix(in srgb, var(--border) 60%, transparent)",
+              overflow: "hidden",
+              transformOrigin: rect.drop === "down" ? "top center" : "bottom center",
+            }}
+          >
           {useSearch && (
             <div style={{ padding: 6, borderBottom: "1px solid var(--border)" }}>
               <input
@@ -477,9 +482,10 @@ export default function Select({
                 );
               })
             )}
-          </div>
-        </div>
-      )}
+            </div>
+          </div>,
+          document.body,
+        )}
     </>
   );
 }

@@ -8,6 +8,7 @@ import BatchMatrixEntry from "@/components/BatchMatrixEntry";
 import EntryHistory from "@/components/EntryHistory";
 import Tabs from "@/components/ui/Tabs";
 import type { AuditEntryRow, AuditEventLike } from "@/lib/analytics/audit-sessions";
+import { hydrateFromAuditRow, type EntryHydrate } from "@/lib/entry/hydrate-entry";
 
 type EntryMode = "matrix" | "history";
 
@@ -20,8 +21,8 @@ export default function DataEntryPage() {
   const { events } = useEvents();
   const [activeTab, setActiveTab] = useState<EntryMode>("matrix");
   const [success, setSuccess] = useState<string | null>(null);
-  /** Batch id handed to the entry form by History → Reuse. */
-  const [reuseBatch, setReuseBatch] = useState<string | null>(null);
+  /** History → Edit / Reuse lot payload for the entry form. */
+  const [hydrate, setHydrate] = useState<EntryHydrate | null>(null);
 
   /** Status History should open on, from ?status= (the dashboard WIP strip). */
   const [initialStatus, setInitialStatus] = useState<"all" | "open" | "complete">("all");
@@ -47,11 +48,19 @@ export default function DataEntryPage() {
     return () => window.clearTimeout(id);
   }, [success]);
 
-  const handleReuse = (row: AuditEntryRow) => {
-    setReuseBatch(row.batch);
+  const handleEdit = (row: AuditEntryRow) => {
+    setHydrate(hydrateFromAuditRow(row, "edit"));
     setActiveTab("matrix");
     setSuccess(
-      `Batch ${row.batch} loaded onto the form. Set Recorded on to today and enter this station's quantities.`,
+      `Loaded ${row.stageId} on ${row.batch} for edit — the recorded quantities are on the form. Save replaces this entry.`,
+    );
+  };
+
+  const handleReuse = (row: AuditEntryRow) => {
+    setHydrate(hydrateFromAuditRow(row, "reuse-lot"));
+    setActiveTab("matrix");
+    setSuccess(
+      `Lot ${row.batch} is on the form. Pick this station (or the next) and enter today's quantities.`,
     );
   };
 
@@ -132,12 +141,13 @@ export default function DataEntryPage() {
 
       {activeTab === "matrix" ? (
         <BatchMatrixEntry
-          prefillBatchId={reuseBatch}
-          onPrefillConsumed={() => setReuseBatch(null)}
+          hydrate={hydrate}
+          onHydrateConsumed={() => setHydrate(null)}
         />
       ) : (
         <EntryHistory
           events={(events ?? []) as AuditEventLike[]}
+          onEdit={handleEdit}
           onReuse={handleReuse}
           initialStatus={initialStatus}
         />

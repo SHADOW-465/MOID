@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import AppShell from "@/components/app/AppShell";
+import { useConfirm } from "@/components/ui/ConfirmContext";
 import { Card, Empty, Kpi, BarsH, LineChart, pct } from "@/components/app/widgets";
 import PageLoader from "@/components/app/PageLoader";
 import ExcelTabs from "@/components/app/ExcelTabs";
@@ -180,13 +181,19 @@ export default function WorkbooksPage() {
     persistOrder(next);
   };
 
+  const { confirm: confirmModal } = useConfirm();
+
   const deleteWorkbook = async (wb: WorkbookRow) => {
-    if (!confirm(
-      `Delete "${wb.fileName}" from Workbooks?\n\n` +
+    const ok = await confirmModal({
+      title: `Delete “${wb.fileName}”?`,
+      description:
         "• Ledger numbers already saved from this file are kept.\n" +
         "• Master plant schema (stages / defects / sizes) is kept — manage it on Data Schema.\n" +
         "• Only this file’s upload and column-mapping document are removed.",
-    )) return;
+      confirmText: "Delete Workbook",
+      variant: "danger",
+    });
+    if (!ok) return;
     setDeleting(wb.snapshotId);
     try {
       const res = await fetch(`/api/workbooks?snapshotId=${encodeURIComponent(wb.snapshotId)}`, { method: "DELETE" });

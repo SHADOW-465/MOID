@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MOID OS — Data Entry Matrix Prototype</title>
+  <style>
+    :root {
+      --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: "DM Mono", "IBM Plex Mono", monospace;
+      --bg: #0A0D12;
+      --bg-surface: #131924;
+      --bg-raised: #18202E;
+      --bg-hover: #1E2636;
+      --border: rgba(255, 255, 255, 0.085);
+      --border-focus: #3B82F6;
+      --text: #F0F4F8;
+      --text-muted: #64748B;
+      --accent: #C8421C;
+      --accent-hover: #DB4D24;
+      --ok: #10B981;
+      --ok-subtle: rgba(16, 185, 129, 0.12);
+      --warn: #F59E0B;
+      --warn-subtle: rgba(245, 158, 11, 0.12);
+      --bad: #EF4444;
+      --bad-subtle: rgba(239, 68, 68, 0.12);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 13px;
+      padding: 24px;
+      line-height: 1.5;
+    }
+    .mono { font-family: var(--font-mono); font-feature-settings: "tnum" 1; }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .title { font-size: 20px; font-weight: 700; }
+    .meta { font-size: 13px; color: var(--text-muted); }
+    .container {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 20px;
+      max-width: 1300px;
+      margin: 0 auto;
+    }
+    .card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 18px;
+      margin-bottom: 16px;
+    }
+    .card-title {
+      font-size: 14px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .form-group { display: flex; flex-direction: column; gap: 4px; }
+    label { font-size: 10px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); }
+    input, select {
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+      color: var(--text);
+      font-size: 13px;
+      outline: none;
+      font-family: inherit;
+    }
+    input:focus, select:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 1px var(--border-focus);
+    }
+    .defect-card {
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .defect-card:focus-within { border-color: var(--border-focus); }
+    .defect-code { font-weight: 600; font-size: 13px; }
+    .defect-input {
+      width: 50px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 4px;
+      color: var(--text);
+      text-align: right;
+      font-family: var(--font-mono);
+      font-weight: 600;
+      font-size: 13px;
+    }
+    .btn {
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      background: var(--bg-surface);
+      color: var(--text);
+      cursor: pointer;
+    }
+    .btn-primary { background: var(--accent); border-color: var(--accent); color: white; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .badge {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+    .badge-ok { background: var(--ok-subtle); color: var(--ok); }
+    .badge-warn { background: var(--warn-subtle); color: var(--warn); }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <div class="title">Shop-Floor Batch Matrix Entry</div>
+      <div class="meta">Direct station logging with strict mass-balance enforcement</div>
+    </div>
+    <div style="display:flex; gap:10px">
+      <a href="index.html" class="btn">← Back to Overview</a>
+      <button class="btn btn-primary" onclick="alert('Lot committed.')">Save & Log to Ledger</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <div>
+      <div class="card">
+        <div class="card-title">1. Station & Batch Context</div>
+        <div class="grid-4">
+          <div class="form-group">
+            <label>Inspection Gate</label>
+            <select><option>Visual Inspection (P15)</option><option>Eye Punching (P18)</option><option>Balloon Wipe (P21)</option><option>Valve Test (P24)</option><option>Final QC (P27)</option></select>
+          </div>
+          <div class="form-group">
+            <label>Catheter Size</label>
+            <select><option>Fr16 (Yellow)</option><option>Fr18 (Red)</option><option>Fr14 (Green)</option><option>Fr20 (Yellow/Black)</option></select>
+          </div>
+          <div class="form-group">
+            <label>Batch Number</label>
+            <input type="text" class="mono" value="26G28-14" />
+          </div>
+          <div class="form-group">
+            <label>Operator</label>
+            <input type="text" value="OP-104 (Day Shift)" />
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">2. Quantity Disposition</div>
+        <div class="grid-4">
+          <div class="form-group">
+            <label>Checked / Input</label>
+            <input id="q-chk" type="number" class="mono" value="500" oninput="updateMath()" />
+          </div>
+          <div class="form-group">
+            <label>Accepted</label>
+            <input id="q-acc" type="number" class="mono" value="465" oninput="updateMath()" />
+          </div>
+          <div class="form-group">
+            <label>Hold</label>
+            <input id="q-hld" type="number" class="mono" value="0" oninput="updateMath()" />
+          </div>
+          <div class="form-group">
+            <label>Rejected</label>
+            <input id="q-rej" type="number" class="mono" value="35" oninput="updateMath()" />
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">
+          <span>3. Defect Code Breakdown</span>
+          <span id="tally-tag" class="badge badge-ok mono">Tally: 35 / 35</span>
+        </div>
+        <div class="grid-3">
+          <div class="defect-card"><span class="defect-code">COAG</span><input id="d-coag" class="defect-input" value="18" oninput="updateMath()" /></div>
+          <div class="defect-card"><span class="defect-code">OVERLAPPING</span><input id="d-over" class="defect-input" value="10" oninput="updateMath()" /></div>
+          <div class="defect-card"><span class="defect-code">PINHOLE</span><input id="d-pin" class="defect-input" value="7" oninput="updateMath()" /></div>
+          <div class="defect-card"><span class="defect-code">BUBBLE</span><input class="defect-input" value="0" oninput="updateMath()" /></div>
+          <div class="defect-card"><span class="defect-code">FLASH</span><input class="defect-input" value="0" oninput="updateMath()" /></div>
+          <div class="defect-card"><span class="defect-code">OTHERS</span><input class="defect-input" value="0" oninput="updateMath()" /></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Math Proof Sidebar -->
+    <div>
+      <div class="card" style="position:sticky; top:24px">
+        <div class="card-title">Live Mass Balance Meter</div>
+        <div id="stat-box" style="padding:8px 10px; background:var(--ok-subtle); border:1px solid rgba(16,185,129,0.2); border-radius:4px; font-weight:600; color:var(--ok); font-size:11px; margin-bottom:12px">
+          ✓ RECONCILED (0 DELTA)
+        </div>
+        <div style="font-size:12px; display:flex; flex-direction:column; gap:6px">
+          <div style="display:flex; justify-content:space-between"><span>Input:</span><span id="m-chk" class="mono">500</span></div>
+          <div style="display:flex; justify-content:space-between"><span>Accepted:</span><span id="m-acc" class="mono">-465</span></div>
+          <div style="display:flex; justify-content:space-between"><span>Hold:</span><span id="m-hld" class="mono">-0</span></div>
+          <div style="display:flex; justify-content:space-between; font-weight:600; border-top:1px solid var(--border); padding-top:6px"><span>Calculated Rej:</span><span id="m-rej" class="mono">35 (7.0%)</span></div>
+          <div style="display:flex; justify-content:space-between; margin-top:8px"><span>Defect Sum:</span><span id="m-def" class="mono">35</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function updateMath() {
+      const chk = +document.getElementById('q-chk').value || 0;
+      const acc = +document.getElementById('q-acc').value || 0;
+      const hld = +document.getElementById('q-hld').value || 0;
+      const rej = +document.getElementById('q-rej').value || 0;
+      const coag = +document.getElementById('d-coag').value || 0;
+      const over = +document.getElementById('d-over').value || 0;
+      const pin = +document.getElementById('d-pin').value || 0;
+      const defSum = coag + over + pin;
+
+      const calcRej = chk - acc - hld;
+      document.getElementById('m-chk').innerText = chk;
+      document.getElementById('m-acc').innerText = '-' + acc;
+      document.getElementById('m-hld').innerText = '-' + hld;
+      document.getElementById('m-rej').innerText = calcRej + ' (' + ((calcRej/chk)*100).toFixed(1) + '%)';
+      document.getElementById('m-def').innerText = defSum;
+
+      const box = document.getElementById('stat-box');
+      const tag = document.getElementById('tally-tag');
+      if (calcRej === rej && defSum === rej) {
+        box.style.background = 'var(--ok-subtle)';
+        box.style.color = 'var(--ok)';
+        box.innerText = '✓ RECONCILED (0 DELTA)';
+        tag.className = 'badge badge-ok mono';
+        tag.innerText = 'Tally: ' + defSum + ' / ' + rej;
+      } else {
+        box.style.background = 'var(--bad-subtle)';
+        box.style.color = 'var(--bad)';
+        box.innerText = '⚠ DISCREPANCY DETECTED';
+        tag.className = 'badge badge-warn mono';
+        tag.innerText = 'Mismatch: ' + defSum + ' vs ' + rej;
+      }
+    }
+  </script>
+</body>
+</html>

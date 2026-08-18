@@ -1,4 +1,4 @@
-import { type Scope, scopeEvents, periodKey, periodLabel, periodsIn } from "./scope";
+import { type Scope, scopeEvents, periodBucket, periodLabel, periodsIn } from "./scope";
 import type { SeriesPoint } from "./rejection";
 import type { Event } from "@/lib/store/types";
 
@@ -7,7 +7,7 @@ export function sizeTrend(events: Event[], scope: Scope, size: string): SeriesPo
   const ev = allEvents.filter((e) => "size" in e && (e as any).size === size);
   const periods = periodsIn(allEvents, scope.grain, { from: scope.dateFrom, to: scope.dateTo });
   return periods.map((p) => {
-    const bucket = ev.filter((e) => periodKey(e.occurredOn.start, scope.grain) === p);
+    const bucket = periodBucket(ev, scope.grain, p);
     let checked = 0;
     let rejected = 0;
     for (const e of bucket) {

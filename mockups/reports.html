@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MOID (RAIS-Pro) — Executive GM Reports</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Sans:wght@400;500;600;700&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-theme="porcelain">
+
+  <div class="app-shell">
+    
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="brand-box">
+        <span class="brand-logo-badge">MOID</span>
+        <div>
+          <div style="font-weight:700; font-size:13px; color:var(--text-ink)">Plant Intelligence</div>
+          <div class="mono" style="font-size:10px; color:var(--verified)">● 98.4% Ledger Trust</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="nav-section-label">Overview</div>
+        <a class="nav-item" href="index.html">
+          <span>Dashboard</span>
+        </a>
+      </div>
+
+      <div>
+        <div class="nav-section-label">Your Data</div>
+        <a class="nav-item" href="data-entry.html">
+          <span>Data Entry</span>
+        </a>
+        <a class="nav-item" href="staging.html">
+          <span>Staging & Files</span>
+        </a>
+      </div>
+
+      <div>
+        <div class="nav-section-label">Analysis</div>
+        <a class="nav-item" href="stage-analysis.html">
+          <span>Stage Analysis</span>
+        </a>
+        <a class="nav-item" href="size-analysis.html">
+          <span>Size Analysis</span>
+        </a>
+        <a class="nav-item" href="defect-analysis.html">
+          <span>Defect Pareto</span>
+        </a>
+      </div>
+
+      <div>
+        <div class="nav-section-label">Management</div>
+        <a class="nav-item active" href="reports.html">
+          <span>Reports</span>
+        </a>
+        <a class="nav-item" href="audit.html">
+          <span>Audit Trail</span>
+        </a>
+        <a class="nav-item" href="schema.html">
+          <span>Plant Schema</span>
+        </a>
+      </div>
+
+      <div class="persona-dock">
+        <div class="mono" style="font-weight:700; font-size:11px; padding:4px 8px; border-radius:var(--r-pill); background:var(--bg-well)">GM</div>
+        <div>
+          <div style="font-size:12px; font-weight:600; color:var(--text-ink)">General Manager</div>
+          <div style="font-size:10.5px; color:var(--text-secondary)">Monthly Reporting</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Workspace -->
+    <main class="workspace">
+      
+      <header class="topbar">
+        <div class="scope-cluster">
+          <span style="font-weight:600; font-size:14px">Executive Monthly Intelligence Report</span>
+          <span class="mono" style="font-size:11px; color:var(--text-secondary); background:var(--bg-well); padding:3px 8px; border-radius:var(--r-pill)">July 2025 (FY 25-26)</span>
+        </div>
+
+        <div class="top-actions">
+          <button class="btn-pill" onclick="toggleThemeMode()">
+            <span id="theme-btn-text">Dark Mode</span>
+          </button>
+          <button class="btn-pill btn-pill-primary" onclick="exportPdf()">
+            Export PDF Brief
+          </button>
+        </div>
+      </header>
+
+      <div class="content-stream">
+        
+        <!-- Document Sheet Layout -->
+        <div class="standard-card" style="max-width: 900px; margin: 0 auto; padding: 36px; background: var(--bg-card); box-shadow: var(--shadow-float)">
+          
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; padding-bottom: 20px; border-bottom: 2px solid var(--text-ink)">
+            <div>
+              <div style="font-size:24px; font-weight:700; letter-spacing:-0.03em">Monthly Manufacturing Quality Report</div>
+              <div style="font-size:13px; color:var(--text-secondary); margin-top:4px">Disposafe Catheter Manufacturing Facility · Plant Line 01</div>
+            </div>
+            <div class="mono" style="text-align:right; font-size:11px">
+              <div>REPORT: GM-2025-07-M</div>
+              <div style="color:var(--text-secondary)">COMPILED: 2025-08-01</div>
+            </div>
+          </div>
+
+          <!-- Section 1: Executive Summary -->
+          <div style="margin-top: 24px">
+            <div style="font-size:14px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:10px">1. Executive Summary</div>
+            <p style="font-size:13.5px; line-height:1.6; margin-bottom:12px">
+              During the month of <strong>July 2025</strong>, plant production totaled <strong>13,562 units checked</strong> at the primary gate. Overall line rejection rate was recorded at <strong style="color:var(--breach)">8.07% (1,095 total scrap units)</strong>, representing a <strong>+0.57% pt deviation</strong> above the plant quality specification limit of <strong>7.50%</strong>. First Pass Yield (FPY) was maintained at <strong>91.93%</strong>.
+            </p>
+          </div>
+
+          <!-- Section 2: Metric Table -->
+          <div style="margin-top: 24px">
+            <div style="font-size:14px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:10px">2. Key Performance Indicators</div>
+            <table class="soft-table">
+              <thead>
+                <tr><th>Metric Indicator</th><th>July 2025 Result</th><th>Target Specification</th><th>Historical Variance</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Plant Rejection Rate</td><td class="mono" style="font-weight:700; color:var(--breach)">8.07%</td><td class="mono">7.50%</td><td class="mono" style="color:var(--breach)">+0.57% ▲</td></tr>
+                <tr><td>First Pass Yield (FPY)</td><td class="mono" style="font-weight:700">91.93%</td><td class="mono">92.50%</td><td class="mono" style="color:var(--breach)">-0.57% ▼</td></tr>
+                <tr><td>Cost of Poor Quality (COPQ)</td><td class="mono" style="font-weight:700">₹43,450</td><td class="mono">₹30,000</td><td class="mono" style="color:var(--breach)">+₹13,450 ▲</td></tr>
+                <tr><td>Recoverable Opportunity</td><td class="mono" style="font-weight:700; color:var(--cobalt)">₹10,860</td><td class="mono">—</td><td class="mono" style="color:var(--verified)">Targeted</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Section 3: Bottleneck Diagnosis -->
+          <div style="margin-top: 24px">
+            <div style="font-size:14px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:10px">3. Bottleneck Analysis & Action Items</div>
+            <div style="background:var(--bg-well); border-radius:var(--r-card); padding:16px">
+              <div style="font-weight:600; margin-bottom:6px">Primary Driver: Visual Inspection Station (61.9% of total scrap)</div>
+              <div style="font-size:12.5px; color:var(--text-secondary); line-height:1.5">
+                • <strong>COAG (Coagulation)</strong> defect represents 41.1% of all plant rejections.<br/>
+                • <strong>Fr16 (Yellow)</strong> catheter size accounts for 49.5% of scrap concentration.<br/>
+                • <strong>Recommended Action:</strong> Recalibrate dipping tank temperature on Visual line and execute CAPA-2025-0812.
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </main>
+
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    function exportPdf() {
+      showToast('Generating official GM Monthly Brief PDF...');
+      setTimeout(() => window.print(), 300);
+    }
+  </script>
+</body>
+</html>

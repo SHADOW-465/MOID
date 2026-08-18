@@ -404,23 +404,61 @@ export function scopeEvents(events: Event[], scope: Scope): Event[] {
   return result;
 }
 
-/** Bucket key for a date under a grain. FY runs Apr(4)–Mar(3). */
+/** Bucket key for a date under a grain. FY runs Apr(4)–Mar(3).
+ *
+ *  Called once per event per period by the trend selectors, so it slices the ISO
+ *  string rather than `split("-").map(Number)` — the two throwaway arrays per
+ *  call dominated the dashboard's render cost. */
 export function periodKey(iso: string, grain: Grain): string {
-  const [y, m, d] = iso.split("-").map(Number);
   switch (grain) {
     case "day":
       return iso;
     case "month":
-      return `${y}-${String(m).padStart(2, "0")}`;
+      return iso.slice(0, 7);
     case "fy": {
-      const fy = m >= 4 ? y : y - 1;
+      const y = +iso.slice(0, 4);
+      const fy = +iso.slice(5, 7) >= 4 ? y : y - 1;
       return `FY${fy}-${String((fy + 1) % 100).padStart(2, "0")}`;
     }
     case "week": {
-      const { week } = weekOfMonthBounds(y, m, d);
-      return `${y}-${String(m).padStart(2, "0")}-W${week}`;
+      // Same fixed 7-day chunks weekOfMonthBounds defines; only the week number
+      // is needed here, and that part needs no Date allocation.
+      const week = Math.floor((+iso.slice(8, 10) - 1) / 7) + 1;
+      return `${iso.slice(0, 7)}-W${week}`;
     }
   }
+}
+
+/** Per-array cache of grain → period → events.
+ *
+ *  Every trend selector used to rebuild its buckets by scanning the FULL event
+ *  list once per period — O(periods × events), which on a 233k-event ledger over
+ *  68 weeks was ~16M periodKey calls per selector and made the dashboard take
+ *  minutes. One pass builds every bucket, and the four selectors share it. */
+const periodBucketCache = new WeakMap<Event[], Map<Grain, Map<string, Event[]>>>();
+
+export function bucketByPeriod(events: Event[], grain: Grain): Map<string, Event[]> {
+  let byGrain = periodBucketCache.get(events);
+  if (!byGrain) periodBucketCache.set(events, (byGrain = new Map()));
+  const hit = byGrain.get(grain);
+  if (hit) return hit;
+
+  const buckets = new Map<string, Event[]>();
+  for (const e of events) {
+    const key = periodKey(e.occurredOn.start, grain);
+    const list = buckets.get(key);
+    if (list) list.push(e);
+    else buckets.set(key, [e]);
+  }
+  byGrain.set(grain, buckets);
+  return buckets;
+}
+
+/** The bucket for one period — a stable [] so callers keep array identity (and
+ *  therefore the downstream aggregate caches) across selectors. */
+const EMPTY_BUCKET: Event[] = [];
+export function periodBucket(events: Event[], grain: Grain, period: string): Event[] {
+  return bucketByPeriod(events, grain).get(period) ?? EMPTY_BUCKET;
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -462,11 +500,31 @@ export function calendarPeriods(fromIso: string, toIso: string, grain: Grain): s
  *  empty periods stay visible. Bounds come from `range` (the selected date
  *  window) when given, else from the events' min/max dates. */
 export function periodsIn(events: Event[], grain: Grain, range?: { from?: string; to?: string }): string[] {
-  const dates = events.map((e) => e.occurredOn.start).sort();
-  const from = range?.from ?? dates[0];
-  const to = range?.to ?? dates[dates.length - 1];
+  let from = range?.from;
+  let to = range?.to;
+  // Only scan when a bound is actually missing — the callers that pass a full
+  // window were paying an O(n log n) sort over the whole ledger for nothing.
+  if (!from || !to) {
+    const { min, max } = dateBounds(events);
+    from = from ?? min;
+    to = to ?? max;
+  }
   if (!from || !to) return [];
   return calendarPeriods(from, to, grain);
+}
+
+/** Min/max occurredOn.start in one pass — the ledger is large enough that
+ *  sorting a copy of every date just to read its ends is measurable. */
+export function dateBounds(events: Event[]): { min?: string; max?: string } {
+  let min: string | undefined;
+  let max: string | undefined;
+  for (const e of events) {
+    const d = e.occurredOn.start;
+    if (!d) continue;
+    if (min === undefined || d < min) min = d;
+    if (max === undefined || d > max) max = d;
+  }
+  return { min, max };
 }
 
 export interface ScopeTweaks {
@@ -519,9 +577,7 @@ export function resolveScope(
   policy: CalculationPolicyT = DEFAULT_POLICY,
 ): Scope {
   const iso = (d: Date) => d.toISOString().slice(0, 10);
-  const dates = events.length ? events.map((e) => e.occurredOn.start).sort() : [];
-  const dataMin = dates[0];
-  const dataMax = dates[dates.length - 1];
+  const { min: dataMin, max: dataMax } = dateBounds(events);
   const anchor = dataMax ? new Date(`${dataMax}T00:00:00Z`) : new Date();
 
   let from: string | undefined = t.dateFrom || undefined;

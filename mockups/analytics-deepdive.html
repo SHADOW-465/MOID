@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MOID OS — Deep Diagnostic Analytics Prototype</title>
+  <style>
+    :root {
+      --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: "DM Mono", "IBM Plex Mono", monospace;
+      --bg: #0A0D12;
+      --bg-surface: #131924;
+      --bg-raised: #18202E;
+      --border: rgba(255, 255, 255, 0.085);
+      --border-focus: #3B82F6;
+      --text: #F0F4F8;
+      --text-muted: #64748B;
+      --accent: #C8421C;
+      --ok: #10B981;
+      --warn: #F59E0B;
+      --bad: #EF4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 13px;
+      padding: 24px;
+      line-height: 1.5;
+    }
+    .mono { font-family: var(--font-mono); font-feature-settings: "tnum" 1; }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .container { max-width: 1300px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 18px;
+    }
+    .card-title { font-size: 14px; font-weight: 600; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; }
+    .btn {
+      padding: 7px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      border: 1px solid var(--border);
+      background: var(--bg-surface);
+      color: var(--text);
+      text-decoration: none;
+      cursor: pointer;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; padding: 8px; color: var(--text-muted); font-size: 10px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; border-bottom: 1px solid var(--border); }
+    td { padding: 8px; border-bottom: 1px solid var(--border); }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <div style="font-size:20px; font-weight:700">Six-Sigma Defect & Stage Diagnostic</div>
+      <div style="font-size:13px; color:var(--text-muted)">Deep dimensional Pareto breakdown, size heatmaps, and cascaded yield curves</div>
+    </div>
+    <a href="index.html" class="btn">← Back to Dashboard</a>
+  </div>
+
+  <div class="container">
+    <div class="grid-2">
+      <!-- Stage Breakdown -->
+      <div class="card">
+        <div class="card-title">
+          <span>Inspection Station Loss Hierarchy</span>
+          <span class="mono" style="font-size:11px; color:var(--accent)">TOTAL SCRAP: 1,095 U</span>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Station</th><th>Checked</th><th>Rejected</th><th>Gate Loss %</th><th>Total Share</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>1. Visual Inspection</strong></td><td class="mono">13,562</td><td class="mono">678</td><td class="mono" style="color:var(--bad)">4.99%</td><td class="mono" style="font-weight:600">61.9%</td></tr>
+            <tr><td><strong>2. Eye Punching</strong></td><td class="mono">12,884</td><td class="mono">160</td><td class="mono" style="color:var(--warn)">1.24%</td><td class="mono">14.6%</td></tr>
+            <tr><td><strong>3. Balloon Wipe</strong></td><td class="mono">12,724</td><td class="mono">110</td><td class="mono">0.86%</td><td class="mono">10.0%</td></tr>
+            <tr><td><strong>4. Valve Integrity</strong></td><td class="mono">12,614</td><td class="mono">86</td><td class="mono">0.68%</td><td class="mono">7.9%</td></tr>
+            <tr><td><strong>5. Final QC Pack</strong></td><td class="mono">12,528</td><td class="mono">61</td><td class="mono">0.48%</td><td class="mono">5.6%</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Size Concentration -->
+      <div class="card">
+        <div class="card-title">
+          <span>Catheter Size Scrap Concentration (Fr Gauge)</span>
+          <span class="mono" style="font-size:11px; color:var(--ok)">VOLUME: 13,562 U</span>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Size (Gauge)</th><th>Volume In</th><th>Rejection Qty</th><th>Rejection Rate</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong class="mono">Fr16 (Yellow)</strong></td><td class="mono">6,240</td><td class="mono">542</td><td class="mono" style="color:var(--bad)">8.68%</td><td><span style="color:var(--bad)">● Critical</span></td></tr>
+            <tr><td><strong class="mono">Fr18 (Red)</strong></td><td class="mono">4,120</td><td class="mono">318</td><td class="mono" style="color:var(--warn)">7.71%</td><td><span style="color:var(--warn)">● Watch</span></td></tr>
+            <tr><td><strong class="mono">Fr14 (Green)</strong></td><td class="mono">2,100</td><td class="mono">148</td><td class="mono" style="color:var(--ok)">7.04%</td><td><span style="color:var(--ok)">● In-Spec</span></td></tr>
+            <tr><td><strong class="mono">Fr20 (Black)</strong></td><td class="mono">1,102</td><td class="mono">87</td><td class="mono" style="color:var(--ok)">7.89%</td><td><span style="color:var(--ok)">● In-Spec</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

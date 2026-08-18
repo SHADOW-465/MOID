@@ -15,6 +15,7 @@ import {
 } from "@/lib/entry/export-config";
 import { isDirectEntryEvent } from "@/lib/analytics/scope";
 import type { Event } from "@/lib/store/types";
+import DatePicker from "@/components/ui/DatePicker";
 import "./entry-export-panel.css";
 
 type DateMode = "all" | "topbar" | "custom";
@@ -270,23 +271,23 @@ export default function EntryExportPanel({
               </label>
             </div>
             {dateMode === "custom" && (
-              <div className="eep-dates-row">
+              <div className="eep-dates-row" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <label className="eep-field">
                   <span className="eep-field-label">From</span>
-                  <input
-                    type="date"
-                    className="eep-input"
+                  <DatePicker
                     value={from}
-                    onChange={(e) => setFrom(e.target.value)}
+                    onChange={(d) => setFrom(d)}
+                    ariaLabel="Export from date"
+                    size="sm"
                   />
                 </label>
                 <label className="eep-field">
                   <span className="eep-field-label">To</span>
-                  <input
-                    type="date"
-                    className="eep-input"
+                  <DatePicker
                     value={to}
-                    onChange={(e) => setTo(e.target.value)}
+                    onChange={(d) => setTo(d)}
+                    ariaLabel="Export to date"
+                    size="sm"
                   />
                 </label>
               </div>

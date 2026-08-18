@@ -31,10 +31,12 @@ import SchemaTree from "@/components/schema/SchemaTree";
 import SchemaDetail, { type SchemaDetailHandle } from "@/components/schema/SchemaDetail";
 import SchemaEditUnlock from "@/components/schema/SchemaEditUnlock";
 import { applySchemaDelete, canDeleteNode, deleteLabelFor } from "@/lib/schema/apply-delete";
+import { previewCatalogAction } from "@/lib/schema/catalog-preview";
 import { SCHEMA_EDIT_STORAGE_KEY } from "@/lib/schema/edit-lock";
 import { addActionFor } from "@/lib/schema/toolbar";
 import type { SchemaPendingCreate } from "@/lib/schema/toolbar";
 import { buildSchemaTree, filterTree, type SchemaNode } from "@/lib/schema/tree";
+import { useConfirm } from "@/components/ui/ConfirmContext";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -148,6 +150,7 @@ export default function SchemaPage() {
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [section, setSection] = useState<Section>("stages");
+  const { confirm: confirmModal, notify } = useConfirm();
 
   // ── Schema tree ─────────────────────────────────────────────────────────
   const [treeQuery, setTreeQuery] = useState("");
@@ -238,7 +241,7 @@ export default function SchemaPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/schema");
+      const res = await fetch("/api/schema", { cache: "no-store", credentials: "same-origin" });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "Failed to load schema");
       const cat: CatalogMeta = body.catalog ?? {
@@ -418,16 +421,16 @@ export default function SchemaPage() {
 
   const deleteWorkbook = async (wb: WorkbookRow) => {
     const name = fileBasename(wb.fileName);
-    if (
-      !confirm(
-        `Delete file “${name}” only?\n\n` +
-          "Removes this upload and its column-mapping document.\n" +
-          "Master schema (stages / defects / sizes) is NOT deleted.\n" +
-          "Ledger facts already published stay on the dashboard.",
-      )
-    ) {
-      return;
-    }
+    const ok = await confirmModal({
+      title: `Delete upload “${name}”?`,
+      description:
+        "Removes this upload and its column-mapping document.\n\n" +
+        "Master schema (stages / defects / sizes) is NOT deleted.\n" +
+        "Ledger facts already published stay on the dashboard.",
+      confirmText: "Delete Upload",
+      variant: "danger",
+    });
+    if (!ok) return;
     setDeletingId(wb.snapshotId);
     setError(null);
     try {
@@ -448,15 +451,16 @@ export default function SchemaPage() {
   };
 
   const deleteCluster = async (label: string, files: WorkbookRow[]) => {
-    if (
-      !confirm(
+    const ok = await confirmModal({
+      title: `Delete series “${label}”?`,
+      description:
         `Delete all ${files.length} file(s) in series “${label}”?\n\n` +
-          "Only these uploads and their mapping docs are removed.\n" +
-          "Master schema is NOT deleted.",
-      )
-    ) {
-      return;
-    }
+        "Only these uploads and their mapping docs are removed.\n" +
+        "Master schema is NOT deleted.",
+      confirmText: "Delete Series",
+      variant: "danger",
+    });
+    if (!ok) return;
     setBusy(true);
     setError(null);
     try {
@@ -488,10 +492,14 @@ export default function SchemaPage() {
     setBusy(true);
     setError(null);
     setStatus(null);
+    const previous = catalog;
+    const preview = catalog ? previewCatalogAction(catalog, body) : null;
+    if (preview) setCatalog(preview);
     try {
       const res = await fetch("/api/schema", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        cache: "no-store",
         body: JSON.stringify(body),
       });
       const data = await res.json();
@@ -509,18 +517,23 @@ export default function SchemaPage() {
       setDefectDraft(null);
       setSizeDraft(null);
       setMappingDraft(null);
-      await refreshRegistry();
+      await refreshRegistry({ force: true });
     } catch (e) {
+      if (previous) setCatalog(previous);
       setError(e instanceof Error ? e.message : "Update failed");
     } finally {
       setBusy(false);
     }
   };
 
-  const confirmDelete = (kind: "stage" | "defect" | "size", id: string, label: string) => {
-    if (!confirm(`Remove ${kind} “${label}” (${id}) from the master plant schema?\n\nThis does not delete ledger events. Workbooks are not affected.`)) {
-      return;
-    }
+  const confirmDelete = async (kind: "stage" | "defect" | "size", id: string, label: string) => {
+    const ok = await confirmModal({
+      title: `Remove ${kind} “${label}”?`,
+      description: `Remove ${kind} “${label}” (${id}) from the master plant schema?\n\nThis does not delete ledger events. Workbooks are not affected.`,
+      confirmText: `Remove ${kind}`,
+      variant: "danger",
+    });
+    if (!ok) return;
     const action =
       kind === "stage" ? "delete-stage" : kind === "defect" ? "delete-defect" : "delete-size";
     void mutate({ action, id }, `Removed ${kind} ${id}`);
@@ -528,20 +541,20 @@ export default function SchemaPage() {
 
   const mappingRowId = (m: Pick<SchemaMapping, "kind" | "key">) => `${m.kind}|${m.key}`;
 
-  const confirmDeleteMapping = (m: SchemaMapping) => {
+  const confirmDeleteMapping = async (m: SchemaMapping) => {
     if (m.source === "mod") {
       setError(
         "This mapping is still sourced from a verified workbook. Edit + Save to promote it into the editable brain first, then delete — or fix it on Staging for that file.",
       );
       return;
     }
-    if (
-      !confirm(
-        `Remove mapping “${m.key}” → ${m.canonicalId} (${MAPPING_KIND_LABEL[m.kind]}) from what MOID learned?\n\nThe resolver will no longer use this Excel→canonical rule. Ledger facts are not deleted.`,
-      )
-    ) {
-      return;
-    }
+    const ok = await confirmModal({
+      title: "Remove mapping rule?",
+      description: `Remove mapping “${m.key}” → ${m.canonicalId} (${MAPPING_KIND_LABEL[m.kind]}) from what MOID learned?\n\nThe resolver will no longer use this Excel→canonical rule. Ledger facts are not deleted.`,
+      confirmText: "Remove Mapping",
+      variant: "warning",
+    });
+    if (!ok) return;
     void mutate(
       { action: "delete-mapping", kind: m.kind, key: m.key },
       `Removed mapping ${m.key}`,
@@ -606,7 +619,7 @@ export default function SchemaPage() {
       setEditingMappingKey(null);
       setMappingDraft(null);
       setAdding(false);
-      await refreshRegistry();
+      await refreshRegistry({ force: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Update failed");
     } finally {
@@ -1027,10 +1040,14 @@ export default function SchemaPage() {
                           ? deleteLabelFor(selectedNode, treeInput)
                           : "This row cannot be deleted."
                     }
-                    onClick={() => {
+                    onClick={async () => {
                       if (!selectedNode) return;
-                      const err = applySchemaDelete(selectedNode, treeInput, mutate, () =>
-                        setSelectedNodeId(null),
+                      const err = await applySchemaDelete(
+                        selectedNode,
+                        treeInput,
+                        mutate,
+                        () => setSelectedNodeId(null),
+                        confirmModal,
                       );
                       if (err) setError(err);
                     }}
@@ -1099,7 +1116,6 @@ export default function SchemaPage() {
                     overflowY: "auto",
                     overflowX: "hidden",
                     minHeight: 0,
-                    overscrollBehavior: "contain",
                     scrollbarWidth: "thin",
                     scrollbarColor: "var(--border) transparent",
                   }}
@@ -1120,7 +1136,6 @@ export default function SchemaPage() {
                   minWidth: 0,
                   minHeight: 0,
                   height: "100%",
-                  overscrollBehavior: "contain",
                   scrollbarWidth: "thin",
                   scrollbarColor: "var(--border) transparent",
                 }}

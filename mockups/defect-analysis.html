@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MOID (RAIS-Pro) — Defect Pareto Analysis</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Sans:wght@400;500;600;700&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-theme="porcelain">
+
+  <div class="app-shell">
+    
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="brand-box">
+        <span class="brand-logo-badge">MOID</span>
+        <div>
+          <div style="font-weight:700; font-size:13px; color:var(--text-ink)">Plant Intelligence</div>
+          <div class="mono" style="font-size:10px; color:var(--verified)">● 98.4% Ledger Trust</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="nav-section-label">Overview</div>
+        <a class="nav-item" href="index.html">
+          <span>Dashboard</span>
+        </a>
+      </div>
+
+      <div>
+        <div class="nav-section-label">Your Data</div>
+        <a class="nav-item" href="data-entry.html">
+          <span>Data Entry</span>
+        </a>
+        <a class="nav-item" href="staging.html">
+          <span>Staging & Files</span>
+        </a>
+      </div>
+
+      <div>
+        <div class="nav-section-label">Analysis</div>
+        <a class="nav-item" href="stage-analysis.html">
+          <span>Stage Analysis</span>
+        </a>
+        <a class="nav-item" href="size-analysis.html">
+          <span>Size Analysis</span>
+        </a>
+        <a class="nav-item active" href="defect-analysis.html">
+          <span>Defect Pareto</span>
+        </a>
+      </div>
+
+      <div>
+        <div class="nav-section-label">Management</div>
+        <a class="nav-item" href="reports.html">
+          <span>Reports</span>
+        </a>
+        <a class="nav-item" href="audit.html">
+          <span>Audit Trail</span>
+        </a>
+        <a class="nav-item" href="schema.html">
+          <span>Plant Schema</span>
+        </a>
+      </div>
+
+      <div class="persona-dock">
+        <div class="mono" style="font-weight:700; font-size:11px; padding:4px 8px; border-radius:var(--r-pill); background:var(--bg-well)">QE</div>
+        <div>
+          <div style="font-size:12px; font-weight:600; color:var(--text-ink)">Quality Engineer</div>
+          <div style="font-size:10.5px; color:var(--text-secondary)">Pareto Six-Sigma</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Workspace -->
+    <main class="workspace">
+      
+      <header class="topbar">
+        <div class="scope-cluster">
+          <span style="font-weight:600; font-size:14px">Six-Sigma Defect Pareto (80/20 Vital Few)</span>
+          <span class="mono" style="font-size:11px; color:var(--cobalt); background:var(--bg-well); padding:3px 8px; border-radius:var(--r-pill)">1,095 Total Defect Scrap</span>
+        </div>
+
+        <div class="top-actions">
+          <button class="btn-pill" onclick="toggleThemeMode()">
+            <span id="theme-btn-text">Dark Mode</span>
+          </button>
+          <button class="btn-pill btn-pill-primary" onclick="openDrilldownModal('Vital Few Defect Action', 'COAG and OVERLAP account for 64.1% of all plant scrap.')">
+            + Action Vital Few
+          </button>
+        </div>
+      </header>
+
+      <div class="content-stream">
+        
+        <!-- Pareto Curve Graphic -->
+        <div class="standard-card">
+          <div class="card-head">
+            <div>
+              <div class="card-title">Cumulative Defect Distribution & 80% Vital Cutoff</div>
+              <div class="card-sub">Bars indicate individual defect volume; line indicates cumulative percentage</div>
+            </div>
+            <span class="mono" style="font-size:11px; color:var(--verified); font-weight:600">80/20 RULE APPLIES</span>
+          </div>
+
+          <svg width="100%" height="200" viewBox="0 0 900 200">
+            <!-- 80% Cutoff Line -->
+            <line x1="0" y1="50" x2="900" y2="50" stroke="var(--breach)" stroke-dasharray="4 4" stroke-width="1.5"></line>
+            <text x="810" y="44" fill="var(--breach)" font-family="var(--font-mono)" font-size="10" font-weight="700">80% CUTOFF</text>
+
+            <!-- Defect Bars (Pill geometry) -->
+            <!-- 1. COAG (450) -->
+            <rect x="60" y="70" width="80" height="130" rx="8" fill="var(--cobalt)"></rect>
+            <text x="100" y="60" text-anchor="middle" font-family="var(--font-mono)" font-size="11" font-weight="700" fill="var(--text-ink)">450 u</text>
+            <text x="100" y="190" text-anchor="middle" font-family="var(--font-mono)" font-size="11" font-weight="600" fill="white">COAG</text>
+
+            <!-- 2. OVERLAP (252) -->
+            <rect x="220" y="110" width="80" height="90" rx="8" fill="var(--cobalt)"></rect>
+            <text x="260" y="100" text-anchor="middle" font-family="var(--font-mono)" font-size="11" font-weight="700" fill="var(--text-ink)">252 u</text>
+            <text x="260" y="190" text-anchor="middle" font-family="var(--font-mono)" font-size="11" font-weight="600" fill="white">OVERLAP</text>
+
+            <!-- 3. PINHOLE (153) -->
+            <rect x="380" y="140" width="80" height="60" rx="8" fill="var(--cobalt)"></rect>
+            <text x="420" y="130" text-anchor="middle" font-family="var(--font-mono)" font-size="11" font-weight="700" fill="var(--text-ink)">153 u</text>
+            <text x="420" y="190" text-anchor="middle" font-family="var(--font-mono)" font-size="11" font-weight="600" fill="white">PINHOLE</text>
+
+            <!-- 4. VALVE_LK (88) -->
+            <rect x="540" y="160" width="80" height="40" rx="8" fill="var(--bg-well)"></rect>
+            <text x="580" y="150" text-anchor="middle" font-family="var(--font-mono)" font-size="11" font-weight="700" fill="var(--text-secondary)">88 u</text>
+            <text x="580" y="190" text-anchor="middle" font-family="var(--font-mono)" font-size="11" font-weight="600" fill="var(--text-secondary)">VALVE</text>
+
+            <!-- 5. OTHERS (152) -->
+            <rect x="700" y="142" width="80" height="58" rx="8" fill="var(--bg-well)"></rect>
+            <text x="740" y="132" text-anchor="middle" font-family="var(--font-mono)" font-size="11" font-weight="700" fill="var(--text-secondary)">152 u</text>
+            <text x="740" y="190" text-anchor="middle" font-family="var(--font-mono)" font-size="11" font-weight="600" fill="var(--text-secondary)">OTHERS</text>
+
+            <!-- Cumulative Line -->
+            <polyline points="100,118 260,78 420,58 580,48 740,32" fill="none" stroke="var(--breach)" stroke-width="2.5" stroke-linecap="round"></polyline>
+            <circle cx="100" cy="118" r="4" fill="var(--breach)"></circle>
+            <circle cx="260" cy="78" r="4" fill="var(--breach)"></circle>
+            <circle cx="420" cy="58" r="4" fill="var(--breach)"></circle>
+            <circle cx="580" cy="48" r="4" fill="var(--breach)"></circle>
+            <circle cx="740" cy="32" r="4" fill="var(--breach)"></circle>
+          </svg>
+        </div>
+
+        <!-- Defect Itemization Table -->
+        <div class="standard-card">
+          <div class="card-head">
+            <div class="card-title">Defect Mode Hierarchy Table</div>
+            <span class="mono" style="font-size:11px; color:var(--cobalt)">3 VITAL DEFECTS</span>
+          </div>
+
+          <table class="soft-table">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Defect Code</th>
+                <th>Defect Name</th>
+                <th>Primary Station</th>
+                <th>Rejections</th>
+                <th>Share %</th>
+                <th>Cumulative %</th>
+                <th>Classification</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr onclick="openDrilldownModal('COAG Defect Analysis', 'Primary driver: Visual Inspection (P17)')">
+                <td class="mono">1</td>
+                <td><strong class="mono" style="color:var(--cobalt)">COAG</strong></td>
+                <td>Coagulation Lump</td>
+                <td>Visual (P17)</td>
+                <td class="mono" style="font-weight:600">450</td>
+                <td class="mono" style="font-weight:600">41.1%</td>
+                <td class="mono" style="color:var(--breach); font-weight:700">41.1%</td>
+                <td><span style="color:var(--breach)">● Vital Few</span></td>
+              </tr>
+              <tr onclick="openDrilldownModal('OVERLAP Defect Analysis', 'Primary driver: Visual Inspection (P17)')">
+                <td class="mono">2</td>
+                <td><strong class="mono" style="color:var(--cobalt)">OVERLAPPING</strong></td>
+                <td>Overlapping Seam</td>
+                <td>Visual (P17)</td>
+                <td class="mono" style="font-weight:600">252</td>
+                <td class="mono" style="font-weight:600">23.0%</td>
+                <td class="mono" style="color:var(--breach); font-weight:700">64.1%</td>
+                <td><span style="color:var(--breach)">● Vital Few</span></td>
+              </tr>
+              <tr onclick="openDrilldownModal('PINHOLE Defect Analysis', 'Primary driver: Eye Punching (P18)')">
+                <td class="mono">3</td>
+                <td><strong class="mono" style="color:var(--cobalt)">PINHOLE</strong></td>
+                <td>Pinhole Leak</td>
+                <td>Eye Punch (P18)</td>
+                <td class="mono" style="font-weight:600">153</td>
+                <td class="mono" style="font-weight:600">14.0%</td>
+                <td class="mono" style="color:var(--decide); font-weight:700">78.1%</td>
+                <td><span style="color:var(--decide)">● Vital Few</span></td>
+              </tr>
+              <tr>
+                <td class="mono">4</td>
+                <td><strong class="mono">VALVE_LK</strong></td>
+                <td>Valve Integrity Leak</td>
+                <td>Valve Test (P24)</td>
+                <td class="mono">88</td>
+                <td class="mono">8.0%</td>
+                <td class="mono">86.1%</td>
+                <td><span style="color:var(--text-muted)">○ Useful Many</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+
+    </main>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

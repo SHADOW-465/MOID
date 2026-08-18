@@ -8,6 +8,8 @@
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useEvents } from "@/components/app/EventsContext";
+import DatePicker from "@/components/ui/DatePicker";
+import { useConfirm } from "@/components/ui/ConfirmContext";
 import AppShell from "@/components/app/AppShell";
 import Icon from "@/components/editorial/Icon";
 import {
@@ -284,17 +286,21 @@ export default function AuditPage() {
    * ponytail: gated in the UI only — the API has no auth to check against yet.
    * Move this to a server-side role check the moment real auth lands.
    */
+  const { confirm: confirmModal, notify } = useConfirm();
   const [erasing, setErasing] = useState<string | null>(null);
   const eraseRow = useCallback(
     async (row: AuditEntryRow) => {
       const shifts = row.shifts.length ? row.shifts : ["Day Shift"];
-      const ok = window.confirm(
-        `Permanently erase this row?\n\n` +
+      const ok = await confirmModal({
+        title: "Permanently erase this row?",
+        description:
           `${row.date} · ${row.batch} · ${row.stageId}${row.size ? ` · ${row.size}` : ""}\n` +
           `${row.checked.toLocaleString()} checked, ${row.rejected.toLocaleString()} rejected\n\n` +
-          `The numbers leave the dashboard and every analysis. This is an erase, ` +
-          `not a correction, and cannot be undone.`,
-      );
+          "The numbers leave the dashboard and every analysis. This is an erase, " +
+          "not a correction, and cannot be undone.",
+        confirmText: "Erase Ledger Row",
+        variant: "danger",
+      });
       if (!ok) return;
 
       setErasing(row.id);
@@ -311,14 +317,15 @@ export default function AuditPage() {
           deleted += body.deletedCount ?? 0;
         }
         if (deleted === 0) throw new Error("No matching ledger events — it may already be gone.");
+        notify("Row erased from ledger", "success");
         await refreshEvents();
       } catch (e) {
-        window.alert(`Could not erase: ${e instanceof Error ? e.message : "unknown error"}`);
+        notify(`Could not erase: ${e instanceof Error ? e.message : "unknown error"}`, "error");
       } finally {
         setErasing(null);
       }
     },
-    [refreshEvents],
+    [refreshEvents, confirmModal, notify],
   );
 
   const sessions = useMemo(() => {
@@ -1932,39 +1939,21 @@ function AuditCustomRangePill({
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", width: 34 }}>From</span>
-              <input
-                type="date"
+              <DatePicker
                 value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                style={{
-                  flex: 1,
-                  padding: "4px 6px",
-                  fontSize: 11.5,
-                  borderRadius: 6,
-                  border: "1px solid var(--border-strong)",
-                  background: "var(--surface)",
-                  color: "var(--text)",
-                  fontFamily: "inherit",
-                }}
+                onChange={(d) => setDateFrom(d)}
+                ariaLabel="Audit from date"
+                size="sm"
               />
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", width: 34 }}>To</span>
-              <input
-                type="date"
+              <DatePicker
                 value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                style={{
-                  flex: 1,
-                  padding: "4px 6px",
-                  fontSize: 11.5,
-                  borderRadius: 6,
-                  border: "1px solid var(--border-strong)",
-                  background: "var(--surface)",
-                  color: "var(--text)",
-                  fontFamily: "inherit",
-                }}
+                onChange={(d) => setDateTo(d)}
+                ariaLabel="Audit to date"
+                size="sm"
               />
             </div>
           </div>

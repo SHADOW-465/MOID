@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MOID (RAIS-Pro) — Soft Instrumentation & Pillbox System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Sans:wght@400;500;600;700&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* ==========================================================================
+       THEME 1: PORCELAIN (Light - Default)
+       ========================================================================== */
+    :root {
+      --font-sans: "Instrument Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: "DM Mono", "IBM Plex Mono", monospace;
+
+      --bg-body: #DEDCD8;
+      --bg-canvas: #F1F3F5;
+      --bg-card: #FFFFFF;
+      --bg-well: #EDEFF1;
+      --bg-well-subtle: #F7F9FA;
+      --bg-pill: #FFFFFF;
+      --bg-pill-hover: #E7EAED;
+      --bg-pill-active: #101519;
+
+      --border-subtle: rgba(18, 22, 26, 0.07);
+      --border-card: rgba(18, 22, 26, 0.08);
+      --border-well: #E4E7EA;
+
+      --text-ink: #101519;
+      --text-secondary: #5C646C;
+      --text-muted: #8C96A0;
+      --text-pill-active: #FFFFFF;
+
+      --cobalt: #2B54D6;
+      --cobalt-subtle: rgba(43, 84, 214, 0.1);
+      --verified: #12795C;
+      --verified-subtle: #E6F5F0;
+      --decide: #B4741A;
+      --decide-subtle: #FBF1E1;
+      --breach: #B4342A;
+      --breach-subtle: #FDF1F0;
+
+      --shadow-card: 0 1px 3px rgba(16, 21, 25, 0.04), 0 1px 1px rgba(16, 21, 25, 0.02);
+      --shadow-float: 0 8px 24px -4px rgba(16, 21, 25, 0.08);
+      
+      --r-outer: 24px;
+      --r-card: 20px;
+      --r-well: 14px;
+      --r-pill: 999px;
+    }
+
+    /* ==========================================================================
+       THEME 2: OBSIDIAN (Enterprise Industrial Dark)
+       ========================================================================== */
+    [data-theme="obsidian"] {
+      --font-sans: "Inter", "Instrument Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: "DM Mono", "IBM Plex Mono", monospace;
+
+      --bg-body: #0A0D12;
+      --bg-canvas: #0E1219;
+      --bg-card: #131924;
+      --bg-well: #0B0F16;
+      --bg-well-subtle: #101622;
+      --bg-pill: #161C28;
+      --bg-pill-hover: #1E2636;
+      --bg-pill-active: #1D63B8;
+
+      --border-subtle: rgba(255, 255, 255, 0.07);
+      --border-card: rgba(255, 255, 255, 0.085);
+      --border-well: rgba(255, 255, 255, 0.06);
+
+      --text-ink: #F0F4F8;
+      --text-secondary: #94A3B8;
+      --text-muted: #64748B;
+      --text-pill-active: #FFFFFF;
+
+      --cobalt: #3B82F6;
+      --cobalt-subtle: rgba(59, 130, 246, 0.12);
+      --verified: #10B981;
+      --verified-subtle: rgba(16, 185, 129, 0.12);
+      --decide: #F59E0B;
+      --decide-subtle: rgba(245, 158, 11, 0.12);
+      --breach: #EF4444;
+      --breach-subtle: rgba(239, 68, 68, 0.12);
+
+      --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.04);
+      --shadow-float: 0 24px 64px -12px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.08);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--bg-body);
+      color: var(--text-ink);
+      font-size: 13px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      font-feature-settings: "cv02", "cv03", "cv04", "cv11", "tnum" 1;
+      padding: 30px 20px;
+      display: flex;
+      justify-content: center;
+      transition: background-color 200ms ease;
+    }
+
+    .mono { font-family: var(--font-mono); font-feature-settings: "tnum" 1; }
+
+    /* --- Root Frame Container --- */
+    .app-frame {
+      width: 100%;
+      max-width: 1080px;
+      background: var(--bg-canvas);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--r-outer);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.06);
+      transition: all 200ms ease;
+    }
+
+    /* --- Top Masthead --- */
+    .masthead {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      padding-bottom: 6px;
+    }
+
+    .brand-title {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      color: var(--text-ink);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-badge {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      font-weight: 600;
+      padding: 3px 9px;
+      border-radius: var(--r-pill);
+      background: var(--text-ink);
+      color: var(--bg-canvas);
+      letter-spacing: 0.04em;
+    }
+
+    .palette-swatches {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .swatch {
+      width: 16px;
+      height: 16px;
+      border-radius: var(--r-pill);
+      border: 1px solid var(--border-subtle);
+    }
+
+    /* --- Navigation Pill Strip --- */
+    .nav-pill-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .nav-pills {
+      display: flex;
+      gap: 6px;
+      background: rgba(18, 22, 26, 0.04);
+      padding: 4px;
+      border-radius: var(--r-pill);
+    }
+
+    [data-theme="obsidian"] .nav-pills {
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .pill-btn {
+      font-family: var(--font-sans);
+      font-size: 12px;
+      font-weight: 500;
+      padding: 7px 15px;
+      border-radius: var(--r-pill);
+      color: var(--text-secondary);
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      transition: all 180ms ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      text-decoration: none;
+    }
+
+    .pill-btn:hover {
+      color: var(--text-ink);
+      background: var(--bg-pill-hover);
+    }
+
+    .pill-btn.active {
+      background: var(--bg-card);
+      color: var(--text-ink);
+      font-weight: 600;
+      box-shadow: 0 1px 2px rgba(16, 21, 25, 0.06);
+    }
+
+    [data-theme="obsidian"] .pill-btn.active {
+      background: var(--bg-pill);
+      color: var(--text-ink);
+    }
+
+    .pill-count {
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      font-weight: 600;
+      background: var(--decide);
+      color: white;
+      border-radius: var(--r-pill);
+      padding: 1px 6px;
+    }
+
+    .grain-selector {
+      display: flex;
+      align-items: center;
+      background: var(--bg-well);
+      border-radius: var(--r-pill);
+      padding: 3px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .grain-btn {
+      padding: 5px 10px;
+      border-radius: var(--r-pill);
+      color: var(--text-secondary);
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      transition: all 150ms ease;
+    }
+
+    .grain-btn.active {
+      background: var(--bg-card);
+      color: var(--text-ink);
+      box-shadow: 0 1px 2px rgba(16, 21, 25, 0.06);
+      font-weight: 600;
+    }
+
+    /* --- Views Container --- */
+    .view-panel {
+      display: none;
+      flex-direction: column;
+      gap: 16px;
+      animation: fadeUp 200ms ease-out;
+    }
+
+    .view-panel.active {
+      display: flex;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* --- Main Verdict Card --- */
+    .verdict-card {
+      background: var(--bg-card);
+      border-radius: var(--r-card);
+      padding: 22px 24px;
+      box-shadow: var(--shadow-card);
+      border: 1px solid var(--border-card);
+    }
+
+    .verdict-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      border-radius: var(--r-pill);
+      padding: 5px 12px;
+    }
+
+    .status-badge.inside {
+      color: var(--decide);
+      background: var(--decide-subtle);
+    }
+
+    .status-badge.verified {
+      color: var(--verified);
+      background: var(--verified-subtle);
+    }
+
+    .pulse-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: var(--r-pill);
+      background: currentColor;
+      animation: pulseBlink 2.4s ease-in-out infinite;
+    }
+
+    @keyframes pulseBlink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    .verdict-headline {
+      font-size: 23px;
+      font-weight: 600;
+      line-height: 1.38;
+      letter-spacing: -0.028em;
+      color: var(--text-ink);
+    }
+
+    .verdict-metrics-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 32px;
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border-well);
+      flex-wrap: wrap;
+    }
+
+    .stat-col {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .stat-label {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      font-weight: 500;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .stat-value {
+      font-family: var(--font-mono);
+      font-size: 22px;
+      font-weight: 500;
+      letter-spacing: -0.03em;
+      color: var(--text-ink);
+    }
+
+    .stat-delta {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+    }
+
+    .sparkline-wrap {
+      margin-left: auto;
+      align-self: flex-end;
+    }
+
+    /* --- Actionable Alert Pill --- */
+    .alert-pill-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 18px;
+      border-radius: var(--r-pill);
+      background: var(--decide-subtle);
+      font-size: 12.5px;
+      color: var(--decide);
+    }
+
+    .btn-pill-action {
+      margin-left: auto;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: white;
+      background: var(--decide);
+      border-radius: var(--r-pill);
+      padding: 6px 14px;
+      border: none;
+      cursor: pointer;
+      flex: none;
+      transition: opacity 180ms ease;
+    }
+
+    .btn-pill-action:hover {
+      opacity: 0.88;
+    }
+
+    /* --- Breakdown Well Block ("Where" & "Why") --- */
+    .breakdown-well {
+      background: var(--bg-card);
+      border-radius: var(--r-card);
+      padding: 10px;
+      box-shadow: var(--shadow-card);
+      border: 1px solid var(--border-card);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .breakdown-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 10px 14px;
+      border-radius: var(--r-well);
+      cursor: pointer;
+      transition: background 160ms ease;
+    }
+
+    .breakdown-row:hover {
+      background: var(--bg-well);
+    }
+
+    .row-tag {
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      width: 44px;
+    }
+
+    .row-name {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-ink);
+      min-width: 140px;
+    }
+
+    .bar-track {
+      flex: 1;
+      height: 6px;
+      border-radius: var(--r-pill);
+      background: var(--border-well);
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: var(--r-pill);
+      background: var(--breach);
+      transform-origin: left;
+      transition: transform 300ms ease-out, opacity 300ms ease-out;
+    }
+
+    .bar-fill.secondary {
+      background: var(--cobalt);
+    }
+
+    .row-metric {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      width: 110px;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    /* --- Action Controls Row --- */
+    .action-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .btn-pill-main {
+      font-size: 12px;
+      font-weight: 600;
+      color: white;
+      background: var(--text-ink);
+      border-radius: var(--r-pill);
+      padding: 9px 18px;
+      cursor: pointer;
+      border: none;
+      transition: all 180ms ease;
+    }
+
+    .btn-pill-main:hover {
+      background: var(--cobalt);
+      color: white;
+    }
+
+    .btn-pill-outline {
+      font-size: 12px;
+      font-weight: 500;
+      background: var(--bg-card);
+      color: var(--text-ink);
+      border-radius: var(--r-pill);
+      padding: 9px 18px;
+      cursor: pointer;
+      border: 1px solid var(--border-well);
+      transition: all 180ms ease;
+    }
+
+    .btn-pill-outline:hover {
+      border-color: var(--text-ink);
+    }
+
+    /* --- Data Entry Soft Matrix Layout --- */
+    .entry-wells-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 16px;
+    }
+
+    .well-card {
+      background: var(--bg-card);
+      border-radius: var(--r-card);
+      padding: 20px;
+      box-shadow: var(--shadow-card);
+      border: 1px solid var(--border-card);
+    }
+
+    .well-title {
+      font-size: 11px;
+      font-weight: 600;
+      font-family: var(--font-mono);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 14px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .input-row-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .input-field {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .input-label {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+
+    .sunken-input, .sunken-select {
+      background: var(--bg-well);
+      border: 1px solid var(--border-well);
+      border-radius: var(--r-well);
+      padding: 8px 12px;
+      font-size: 13px;
+      color: var(--text-ink);
+      font-family: inherit;
+      outline: none;
+      transition: all 160ms ease;
+    }
+
+    .sunken-input:focus, .sunken-select:focus {
+      background: var(--bg-card);
+      border-color: var(--cobalt);
+      box-shadow: 0 0 0 2px var(--cobalt-subtle);
+    }
+
+    .defect-cells-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .defect-well-cell {
+      background: var(--bg-well);
+      border: 1px solid var(--border-well);
+      border-radius: var(--r-well);
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .defect-well-cell input {
+      width: 50px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-well);
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+      text-align: right;
+      outline: none;
+      color: var(--text-ink);
+    }
+
+    .defect-well-cell input:focus {
+      border-color: var(--cobalt);
+    }
+
+    /* --- Provenance Soft Modal --- */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(18, 22, 26, 0.45);
+      backdrop-filter: blur(4px);
+      z-index: 100;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal-card {
+      width: 100%;
+      max-width: 660px;
+      background: var(--bg-card);
+      border-radius: var(--r-outer);
+      padding: 24px;
+      box-shadow: var(--shadow-float);
+      border: 1px solid var(--border-card);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      animation: fadeUp 180ms ease-out;
+    }
+
+    .meta-footer {
+      display: flex;
+      gap: 22px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border-well);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+  </style>
+</head>
+<body data-theme="porcelain">
+
+  <div class="app-frame">
+    
+    <!-- Masthead -->
+    <header class="masthead">
+      <div class="brand-title">
+        <span class="brand-badge">MOID</span>
+        <span>Plant Operational Intelligence</span>
+      </div>
+
+      <div class="palette-swatches">
+        <div style="display:flex; gap:6px; margin-right:12px">
+          <div class="swatch" style="background:#101519" title="Ink"></div>
+          <div class="swatch" style="background:#2B54D6" title="Cobalt"></div>
+          <div class="swatch" style="background:#12795C" title="Verified"></div>
+          <div class="swatch" style="background:#B4741A" title="Decide"></div>
+          <div class="swatch" style="background:#B4342A" title="Breach"></div>
+        </div>
+
+        <button class="pill-btn" style="padding:4px 10px; font-size:11px; background:var(--bg-well)" onclick="toggleThemeMode()">
+          <span id="theme-btn-label">🌓 Obsidian Dark</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Navigation Pill Strip -->
+    <nav class="nav-pill-row">
+      <div class="nav-pills">
+        <button class="pill-btn active" onclick="switchSection('dashboard')">Where we stand</button>
+        <button class="pill-btn" onclick="switchSection('data-entry')">Log production</button>
+        <button class="pill-btn" onclick="switchSection('audit')">
+          Needs a decision
+          <span class="pill-count">2</span>
+        </button>
+      </div>
+
+      <div class="grain-selector">
+        <button class="grain-btn" onclick="setGrain(this)">D</button>
+        <button class="grain-btn" onclick="setGrain(this)">W</button>
+        <button class="grain-btn active" onclick="setGrain(this)">M</button>
+        <button class="grain-btn" onclick="setGrain(this)">FY</button>
+      </div>
+    </nav>
+
+    <!-- ==================== VIEW 1: WHERE WE STAND (DASHBOARD) ==================== -->
+    <div id="view-dashboard" class="view-panel active">
+      
+      <!-- Main Executive Verdict Card -->
+      <div class="verdict-card">
+        <div class="verdict-header">
+          <span class="status-badge inside">
+            <span class="pulse-dot"></span>
+            Inside Target · 2 checks open
+          </span>
+          <span class="mono" style="font-size:11px; color:var(--text-secondary)">vs Jun 2.71% · target 3.00%</span>
+        </div>
+
+        <div class="verdict-headline">
+          Rejection is <span style="color:var(--verified)">2.30%</span> — inside target. Visual carries 62% of the loss.
+        </div>
+
+        <div class="verdict-metrics-row">
+          <div class="stat-col">
+            <span class="stat-label">Rej. Rate</span>
+            <span class="stat-value">2.30%</span>
+            <span class="stat-delta mono" style="color:var(--verified)">▼ 0.41 pt</span>
+          </div>
+
+          <div class="stat-col">
+            <span class="stat-label">Units Lost</span>
+            <span class="stat-value">9,504</span>
+            <span class="stat-delta mono" style="color:var(--text-secondary)">of 412,860</span>
+          </div>
+
+          <div class="stat-col">
+            <span class="stat-label">Scrap COPQ</span>
+            <span class="stat-value">₹18.4L</span>
+            <span class="stat-delta mono" style="color:var(--decide)">₹6.2L addressable</span>
+          </div>
+
+          <!-- Inline Smooth Sparkline Area Wash -->
+          <div class="sparkline-wrap">
+            <svg width="160" height="44" viewBox="0 0 160 44" fill="none">
+              <defs>
+                <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="var(--cobalt)" stop-opacity="0.16"></stop>
+                  <stop offset="100%" stop-color="var(--cobalt)" stop-opacity="0"></stop>
+                </linearGradient>
+              </defs>
+              <path d="M4 10 L30 16 L56 13 L82 22 L108 19 L134 28 L156 33 V44 H4 Z" fill="url(#sparkGrad)"></path>
+              <polyline points="4,10 30,16 56,13 82,22 108,19 134,28 156,33" stroke="var(--cobalt)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></polyline>
+              <line x1="0" y1="7" x2="160" y2="7" stroke="var(--border-well)" stroke-width="1" stroke-dasharray="2 4"></line>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Actionable Decision Alert Pill -->
+      <div class="alert-pill-card">
+        <span style="color:var(--text-ink)">
+          <strong class="mono" style="font-weight:600">FBC-16-0812</strong> logs 214 defects against 209 rejects.
+        </span>
+        <button class="btn-pill-action" onclick="openProofModal('Batch FBC-16-0812 Exception')">Adjudicate</button>
+      </div>
+
+      <!-- Station Loss Breakdown Well ("Where") -->
+      <div class="breakdown-well">
+        <div class="breakdown-row" onclick="openProofModal('Visual Inspection (P17)')">
+          <span class="row-tag">Where</span>
+          <span class="row-name">Visual (P17)</span>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:100%"></div>
+          </div>
+          <span class="row-metric">5,932 · 1.44%</span>
+        </div>
+
+        <div class="breakdown-row" onclick="openProofModal('Balloon Wipe (P18)')">
+          <span class="row-tag"></span>
+          <span class="row-name">Balloon (P18)</span>
+          <div class="bar-track">
+            <div class="bar-fill secondary" style="width:32%"></div>
+          </div>
+          <span class="row-metric">1,884 · 0.46%</span>
+        </div>
+
+        <div class="breakdown-row" onclick="openProofModal('Valve Integrity (P20)')">
+          <span class="row-tag"></span>
+          <span class="row-name">Valve (P20)</span>
+          <div class="bar-track">
+            <div class="bar-fill secondary" style="width:20%"></div>
+          </div>
+          <span class="row-metric">1,206 · 0.30%</span>
+        </div>
+      </div>
+
+      <!-- Quick Action Pill Row -->
+      <div class="action-row">
+        <button class="btn-pill-main" onclick="openProofModal('Executive Proof Pack')">Proof pack</button>
+        <button class="btn-pill-outline" onclick="openProofModal('Ledger Calculation Proof')">View source</button>
+        <button class="pill-btn" style="color:var(--text-secondary)">Dismiss</button>
+      </div>
+
+    </div>
+
+    <!-- ==================== VIEW 2: LOG PRODUCTION (DATA ENTRY) ==================== -->
+    <div id="view-data-entry" class="view-panel">
+      
+      <div class="entry-wells-grid">
+        <!-- Form Inputs -->
+        <div style="display:flex; flex-direction:column; gap:14px">
+          
+          <div class="well-card">
+            <div class="well-title">
+              <span>1. Batch & Station Context</span>
+              <span style="color:var(--cobalt)">LOT-26G28-14</span>
+            </div>
+
+            <div class="input-row-4">
+              <div class="input-field">
+                <label class="input-label">Station Gate</label>
+                <select class="sunken-select">
+                  <option>Visual Inspection (P17)</option>
+                  <option>Eye Punching (P18)</option>
+                  <option>Balloon Wipe (P21)</option>
+                  <option>Valve Test (P24)</option>
+                </select>
+              </div>
+
+              <div class="input-field">
+                <label class="input-label">Gauge / Size</label>
+                <select class="sunken-select">
+                  <option>Fr16 (Yellow)</option>
+                  <option>Fr18 (Red)</option>
+                  <option>Fr14 (Green)</option>
+                </select>
+              </div>
+
+              <div class="input-field">
+                <label class="input-label">Batch ID</label>
+                <input id="f-lot" type="text" class="sunken-input mono" value="26G28-14" />
+              </div>
+
+              <div class="input-field">
+                <label class="input-label">Operator Tag</label>
+                <input type="text" class="sunken-input" value="OP-104 (Day)" />
+              </div>
+            </div>
+          </div>
+
+          <div class="well-card">
+            <div class="well-title">2. Quantity Disposition</div>
+            <div class="input-row-4">
+              <div class="input-field">
+                <label class="input-label">Checked Input</label>
+                <input id="in-chk" type="number" class="sunken-input mono" value="500" oninput="reconcileMath()" />
+              </div>
+              <div class="input-field">
+                <label class="input-label">Accepted</label>
+                <input id="in-acc" type="number" class="sunken-input mono" value="465" oninput="reconcileMath()" />
+              </div>
+              <div class="input-field">
+                <label class="input-label">Hold Qty</label>
+                <input id="in-hld" type="number" class="sunken-input mono" value="0" oninput="reconcileMath()" />
+              </div>
+              <div class="input-field">
+                <label class="input-label">Rejected</label>
+                <input id="in-rej" type="number" class="sunken-input mono" value="35" oninput="reconcileMath()" />
+              </div>
+            </div>
+          </div>
+
+          <div class="well-card">
+            <div class="well-title">
+              <span>3. Defect Breakdown</span>
+              <span id="defect-tally-pill" class="mono" style="color:var(--verified); font-weight:600">35 / 35 Tally</span>
+            </div>
+            <div class="defect-cells-grid">
+              <div class="defect-well-cell"><span style="font-weight:600; font-size:12px">COAG</span><input id="d-1" value="18" oninput="reconcileMath()" /></div>
+              <div class="defect-well-cell"><span style="font-weight:600; font-size:12px">OVERLAP</span><input id="d-2" value="10" oninput="reconcileMath()" /></div>
+              <div class="defect-well-cell"><span style="font-weight:600; font-size:12px">PINHOLE</span><input id="d-3" value="7" oninput="reconcileMath()" /></div>
+              <div class="defect-well-cell"><span style="font-weight:600; font-size:12px">BUBBLE</span><input value="0" oninput="reconcileMath()" /></div>
+              <div class="defect-well-cell"><span style="font-weight:600; font-size:12px">FLASH</span><input value="0" oninput="reconcileMath()" /></div>
+              <div class="defect-well-cell"><span style="font-weight:600; font-size:12px">OTHERS</span><input value="0" oninput="reconcileMath()" /></div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Live Reconciliation Proof -->
+        <div>
+          <div class="well-card" style="position:sticky; top:24px">
+            <div class="well-title">Mass Balance Verification</div>
+            
+            <div id="recon-status-badge" style="display:flex; align-items:center; gap:6px; padding:8px 12px; border-radius:var(--r-pill); background:var(--verified-subtle); color:var(--verified); font-weight:600; font-size:11.5px; margin-bottom:14px">
+              <span class="pulse-dot"></span>
+              <span>Reconciled · Zero Delta</span>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:8px; font-size:12.5px">
+              <div style="display:flex; justify-content:space-between">
+                <span style="color:var(--text-secondary)">Checked</span>
+                <span id="m-chk" class="mono">500</span>
+              </div>
+              <div style="display:flex; justify-content:space-between">
+                <span style="color:var(--text-secondary)">- Accepted</span>
+                <span id="m-acc" class="mono">- 465</span>
+              </div>
+              <div style="display:flex; justify-content:space-between">
+                <span style="color:var(--text-secondary)">- Hold</span>
+                <span id="m-hld" class="mono">- 0</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; font-weight:600; border-top:1px solid var(--border-well); padding-top:8px">
+                <span>Calculated Scrap</span>
+                <span id="m-rej" class="mono">35 (7.00%)</span>
+              </div>
+            </div>
+
+            <div style="margin-top:18px">
+              <button class="btn-pill-main" style="width:100%" onclick="alert('Lot 26G28-14 appended to ledger.')">Save & Commit Lot</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- ==================== VIEW 3: AUDIT & DECISIONS ==================== -->
+    <div id="view-audit" class="view-panel">
+      <div class="verdict-card">
+        <div class="verdict-header">
+          <span class="status-badge inside" style="background:var(--breach-subtle); color:var(--breach)">
+            <span class="pulse-dot"></span>
+            2 Discrepancies Requiring GM Intervention
+          </span>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:10px; margin-top:14px">
+          <div class="alert-pill-card" style="border-radius:var(--r-well)">
+            <span><strong class="mono">FBC-16-0812</strong> (Visual) defect items (214) exceed logged rejections (209).</span>
+            <button class="btn-pill-action" onclick="alert('Exception acknowledged.')">Correct</button>
+          </div>
+          <div class="alert-pill-card" style="border-radius:var(--r-well); background:var(--bg-well); color:var(--text-ink)">
+            <span><strong class="mono">26G27-14</strong> (Eye Punch) out-of-shift edit requested by Operator OP-104.</span>
+            <button class="btn-pill-action" style="background:var(--cobalt)" onclick="alert('2-Hour Edit Grant Issued.')">Grant 2h</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Meta Design Spec Footer -->
+    <footer class="meta-footer">
+      <span>radii: 24/20/14/999</span>
+      <span>elev: surface tint + hairlines</span>
+      <span>typography: Instrument Sans / DM Mono</span>
+      <span>motion: 180ms ease-out</span>
+    </footer>
+
+  </div>
+
+  <!-- ==================== PROVENANCE SOFT MODAL ==================== -->
+  <div id="proof-modal" class="modal-overlay" onclick="closeProofModal(event)">
+    <div class="modal-card" onclick="event.stopPropagation()">
+      <div style="display:flex; justify-content:space-between; align-items:center">
+        <div style="font-size:16px; font-weight:600" id="proof-modal-title">Calculation Proof</div>
+        <button class="pill-btn" style="padding:4px 10px" onclick="closeProofModalDirect()">✕</button>
+      </div>
+
+      <div style="background:var(--bg-well); border-radius:var(--r-well); padding:14px; font-family:var(--font-mono); font-size:12px; color:var(--text-ink)">
+        Rejection Rate = (Total Rejections / Input at Visual Gate) × 100<br/>
+        = (9,504 / 412,860) × 100 = <strong style="color:var(--verified)">2.3020%</strong>
+      </div>
+
+      <div style="font-size:12px; color:var(--text-secondary)">
+        Verified read over append-only ledger events. Hashed with SHA-256 for regulatory compliance.
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:8px">
+        <button class="btn-pill-outline" onclick="closeProofModalDirect()">Close</button>
+        <button class="btn-pill-main" onclick="alert('Audit export ready.')">Download Proof JSON</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function switchSection(viewId) {
+      document.querySelectorAll('.view-panel').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.pill-btn').forEach(el => el.classList.remove('active'));
+
+      const target = document.getElementById('view-' + viewId);
+      if (target) target.classList.add('active');
+
+      if (event && event.currentTarget && event.currentTarget.classList.contains('pill-btn')) {
+        event.currentTarget.classList.add('active');
+      }
+    }
+
+    function setGrain(btn) {
+      document.querySelectorAll('.grain-btn').forEach(el => el.classList.remove('active'));
+      btn.classList.add('active');
+    }
+
+    function toggleThemeMode() {
+      const body = document.body;
+      const current = body.getAttribute('data-theme');
+      const isPorcelain = current === 'porcelain';
+      body.setAttribute('data-theme', isPorcelain ? 'obsidian' : 'porcelain');
+      const lbl = document.getElementById('theme-btn-label');
+      if (lbl) {
+        lbl.innerHTML = isPorcelain
+          ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:4px"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line></svg>Light Mode'
+          : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:4px"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>Dark Mode';
+      }
+    }
+
+    function openProofModal(title) {
+      document.getElementById('proof-modal-title').innerText = title;
+      document.getElementById('proof-modal').classList.add('active');
+    }
+
+    function closeProofModal(e) {
+      document.getElementById('proof-modal').classList.remove('active');
+    }
+
+    function closeProofModalDirect() {
+      document.getElementById('proof-modal').classList.remove('active');
+    }
+
+    function reconcileMath() {
+      const chk = +document.getElementById('in-chk').value || 0;
+      const acc = +document.getElementById('in-acc').value || 0;
+      const hld = +document.getElementById('in-hld').value || 0;
+      const rej = +document.getElementById('in-rej').value || 0;
+
+      const d1 = +document.getElementById('d-1').value || 0;
+      const d2 = +document.getElementById('d-2').value || 0;
+      const d3 = +document.getElementById('d-3').value || 0;
+      const defTally = d1 + d2 + d3;
+
+      const calcRej = chk - acc - hld;
+      document.getElementById('m-chk').innerText = chk;
+      document.getElementById('m-acc').innerText = '- ' + acc;
+      document.getElementById('m-hld').innerText = '- ' + hld;
+      document.getElementById('m-rej').innerText = calcRej + ' (' + ((calcRej/chk)*100).toFixed(2) + '%)';
+
+      const badge = document.getElementById('recon-status-badge');
+      const tallyPill = document.getElementById('defect-tally-pill');
+
+      if (calcRej === rej && defTally === rej) {
+        badge.style.background = 'var(--verified-subtle)';
+        badge.style.color = 'var(--verified)';
+        badge.innerHTML = '<span class="pulse-dot"></span><span>Reconciled · Zero Delta</span>';
+        tallyPill.style.color = 'var(--verified)';
+        tallyPill.innerText = defTally + ' / ' + rej + ' Tally';
+      } else {
+        badge.style.background = 'var(--breach-subtle)';
+        badge.style.color = 'var(--breach)';
+        badge.innerHTML = '<span class="pulse-dot"></span><span>Discrepancy: ' + (rej - defTally) + ' Units</span>';
+        tallyPill.style.color = 'var(--breach)';
+        tallyPill.innerText = 'Mismatch: ' + defTally + ' vs ' + rej;
+      }
+    }
+  </script>
+</body>
+</html>

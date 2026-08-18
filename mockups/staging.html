@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MOID (RAIS-Pro) — Staging & MOD Ontology Resolver</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Sans:wght@400;500;600;700&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-theme="porcelain">
+
+  <div class="app-shell">
+    
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="brand-box">
+        <span class="brand-logo-badge">MOID</span>
+        <div>
+          <div style="font-weight:700; font-size:13px; color:var(--text-ink)">Plant Intelligence</div>
+          <div class="mono" style="font-size:10px; color:var(--verified)">● 98.4% Ledger Trust</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="nav-section-label">Overview</div>
+        <a class="nav-item" href="index.html">
+          <span>Dashboard</span>
+        </a>
+      </div>
+
+      <div>
+        <div class="nav-section-label">Your Data</div>
+        <a class="nav-item" href="data-entry.html">
+          <span>Data Entry</span>
+        </a>
+        <a class="nav-item active" href="staging.html">
+          <span>Staging & Files</span>
+        </a>
+      </div>
+
+      <div>
+        <div class="nav-section-label">Analysis</div>
+        <a class="nav-item" href="stage-analysis.html">
+          <span>Stage Analysis</span>
+        </a>
+        <a class="nav-item" href="size-analysis.html">
+          <span>Size Analysis</span>
+        </a>
+        <a class="nav-item" href="defect-analysis.html">
+          <span>Defect Pareto</span>
+        </a>
+      </div>
+
+      <div>
+        <div class="nav-section-label">Management</div>
+        <a class="nav-item" href="reports.html">
+          <span>Reports</span>
+        </a>
+        <a class="nav-item" href="audit.html">
+          <span>Audit Trail</span>
+        </a>
+        <a class="nav-item" href="schema.html">
+          <span>Plant Schema</span>
+        </a>
+      </div>
+
+      <div class="persona-dock">
+        <div class="mono" style="font-weight:700; font-size:11px; padding:4px 8px; border-radius:var(--r-pill); background:var(--bg-well)">QM</div>
+        <div>
+          <div style="font-size:12px; font-weight:600; color:var(--text-ink)">Quality Manager</div>
+          <div style="font-size:10.5px; color:var(--text-secondary)">Ontology Review</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Workspace -->
+    <main class="workspace">
+      
+      <header class="topbar">
+        <div class="scope-cluster">
+          <span style="font-weight:600; font-size:14px">Staging & MOD Ontology Intake</span>
+          <span class="mono" style="font-size:11px; color:var(--cobalt); background:var(--bg-well); padding:3px 8px; border-radius:var(--r-pill)">MOD-2025-07-VISUAL (Draft)</span>
+        </div>
+
+        <div class="top-actions">
+          <button class="btn-pill" onclick="toggleThemeMode()">
+            <span id="theme-btn-text">Dark Mode</span>
+          </button>
+          <button class="btn-pill btn-pill-primary" onclick="publishMod()">
+            Publish Verified MOD →
+          </button>
+        </div>
+      </header>
+
+      <div class="content-stream">
+        
+        <!-- File Dropzone Strip -->
+        <div class="standard-card" style="border: 2px dashed var(--border-well); text-align:center; padding: 28px; background:var(--bg-well-subtle); cursor:pointer" onclick="showToast('Select an Excel workbook (.xlsx) to profile')">
+          <div style="font-size:24px; margin-bottom:6px">📥</div>
+          <div style="font-size:14px; font-weight:600">Drop Plant Quality Workbook (Excel .xlsx)</div>
+          <div style="font-size:12px; color:var(--text-secondary); margin-top:4px">Auto-profiles headers, generates MOD schema draft, and resolves canonical ontology ladder.</div>
+        </div>
+
+        <!-- MOD Mapping Verification Table -->
+        <div class="standard-card">
+          <div class="card-head">
+            <div>
+              <div class="card-title">MOD Column Mapping & Catalog Alias Ladder</div>
+              <div class="card-sub">Human-in-the-loop verification of column names to canonical ledger roles</div>
+            </div>
+            <span class="mono" style="font-size:11.5px; color:var(--verified); font-weight:600">✓ 8 / 8 COLUMNS RESOLVED</span>
+          </div>
+
+          <table class="soft-table">
+            <thead>
+              <tr>
+                <th>Source Header (Excel)</th>
+                <th>Resolved Canonical Role</th>
+                <th>Resolution Ladder</th>
+                <th>Confidence</th>
+                <th>Verification</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong class="mono">LOT_NUMBER_ID</strong></td>
+                <td><span class="mono" style="color:var(--cobalt)">batch_id</span></td>
+                <td>Exact Index</td>
+                <td><span class="mono" style="color:var(--verified)">100%</span></td>
+                <td><span class="btn-pill" style="font-size:11px; padding:2px 8px; background:var(--verified-subtle); color:var(--verified)">✓ Confirmed</span></td>
+              </tr>
+              <tr>
+                <td><strong class="mono">INSPECTION_DATE</strong></td>
+                <td><span class="mono" style="color:var(--cobalt)">date</span></td>
+                <td>Exact Index</td>
+                <td><span class="mono" style="color:var(--verified)">100%</span></td>
+                <td><span class="btn-pill" style="font-size:11px; padding:2px 8px; background:var(--verified-subtle); color:var(--verified)">✓ Confirmed</span></td>
+              </tr>
+              <tr>
+                <td><strong class="mono">TOTAL_INSPECTED_QTY</strong></td>
+                <td><span class="mono" style="color:var(--cobalt)">checked_units</span></td>
+                <td>Fuzzy Match</td>
+                <td><span class="mono" style="color:var(--verified)">98%</span></td>
+                <td><span class="btn-pill" style="font-size:11px; padding:2px 8px; background:var(--verified-subtle); color:var(--verified)">✓ Confirmed</span></td>
+              </tr>
+              <tr>
+                <td><strong class="mono">PASS_QTY</strong></td>
+                <td><span class="mono" style="color:var(--cobalt)">accepted_units</span></td>
+                <td>Exact Index</td>
+                <td><span class="mono" style="color:var(--verified)">100%</span></td>
+                <td><span class="btn-pill" style="font-size:11px; padding:2px 8px; background:var(--verified-subtle); color:var(--verified)">✓ Confirmed</span></td>
+              </tr>
+              <tr>
+                <td><strong class="mono">DEF_COAGULATION</strong></td>
+                <td><span class="mono" style="color:var(--cobalt)">defect:COAG</span></td>
+                <td>Ontology Ladder</td>
+                <td><span class="mono" style="color:var(--decide)">92%</span></td>
+                <td><button class="btn-pill" style="font-size:11px; padding:2px 8px" onclick="showToast('Confirmed defect mapping for COAG')">Confirm</button></td>
+              </tr>
+              <tr>
+                <td><strong class="mono">DEF_OVERLAPPING</strong></td>
+                <td><span class="mono" style="color:var(--cobalt)">defect:OVERLAPPING</span></td>
+                <td>Ontology Ladder</td>
+                <td><span class="mono" style="color:var(--decide)">90%</span></td>
+                <td><button class="btn-pill" style="font-size:11px; padding:2px 8px" onclick="showToast('Confirmed defect mapping for OVERLAPPING')">Confirm</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+
+    </main>
+
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    function publishMod() {
+      showToast('✓ MOD published! Promoted aliases into company catalog and unlocked day-record extraction.');
+    }
+  </script>
+</body>
+</html>

@@ -2,9 +2,16 @@
 // numbers are computed. Screens import these — never recompute inline.
 
 import type { Event } from "@/lib/store/types";
-import { type Scope, scopeEvents, periodKey, periodLabel, periodsIn, policyOf } from "./scope";
+import {
+  type Scope,
+  scopeEvents,
+  periodBucket,
+  periodLabel,
+  periodsIn,
+  policyOf,
+} from "./scope";
 import { DEFAULT_POLICY, type CalculationPolicyT } from "@/core/policy/policy";
-import { STAGE_CATEGORY } from "@/core/ontology/plant-catalog";
+import { STAGE_CATEGORY, pickEntryGate, stageSortKey } from "@/core/ontology/plant-catalog";
 
 /** Structural catalog type — the caller's MOD catalog (or a test fixture). */
 export type Registry = { stages: any[]; defects: any[]; sizes: any[]; fiscalYearStartMonth: number };
@@ -26,8 +33,20 @@ export const DERIVED_REGISTRY: Registry = { stages: [], defects: [], sizes: [], 
  * ponytail: event-only stages are PREPENDED — anything Excel never described is
  * upstream of the gates at this plant. If a downstream stage ever arrives the
  * same way, give the catalog an explicit order instead of guessing here.
+ *
+ * Derived stages are sorted by AUTHORED PROCESS ORDER, never by the order they
+ * happen to appear in the ledger. With no verified MOD the registry is empty, so
+ * *every* stage is derived and this list becomes the only order downstream code
+ * has — ledger order put Primary Pack Inspection ahead of Visual and every
+ * headline divided by the wrong gate.
  */
+const stagesForCache = new WeakMap<Event[], WeakMap<Registry, { stageId: string; label?: string }[]>>();
+
 export function stagesFor(events: Event[], registry: Registry = DERIVED_REGISTRY): { stageId: string; label?: string }[] {
+  let byRegistry = stagesForCache.get(events);
+  const hit = byRegistry?.get(registry);
+  if (hit) return hit;
+
   const known = new Set(registry.stages.map((s: any) => s.stageId));
   const seen = new Set<string>();
   const derived: { stageId: string; label: string }[] = [];
@@ -38,7 +57,14 @@ export function stagesFor(events: Event[], registry: Registry = DERIVED_REGISTRY
       derived.push({ stageId: id, label: id.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) });
     }
   }
-  return [...derived, ...registry.stages];
+  derived.sort(
+    (a, b) => stageSortKey(a.stageId) - stageSortKey(b.stageId) || a.stageId.localeCompare(b.stageId),
+  );
+
+  const result = [...derived, ...registry.stages];
+  if (!byRegistry) stagesForCache.set(events, (byRegistry = new WeakMap()));
+  byRegistry.set(registry, result);
+  return result;
 }
 
 function qty(e: Event): number {
@@ -93,34 +119,56 @@ const stageOf = (e: Event) => ("stageId" in e ? ((e as any).stageId as string) :
  * but Stage 1 only passed forward 120 units, Stage 2's input denominator is dynamically
  * evaluated as 120 for accurate stage rejection rates.
  */
+/** Memoized: the dashboard reaches this through rejectionRate, totalChecked,
+ *  fpy and byStage on the SAME scoped array, and again per period inside every
+ *  trend. Keyed on event-array AND registry identity (both objects, so entries
+ *  are collectable), then on the only policy field that changes the result. */
+const cascadeCache = new WeakMap<Event[], WeakMap<Registry, Map<string, Map<string, StageAgg>>>>();
+
 function batchCascadedAgg(
   events: Event[],
   registry: Registry = DERIVED_REGISTRY,
   policy: CalculationPolicyT = DEFAULT_POLICY,
 ): Map<string, StageAgg> {
+  let byRegistry = cascadeCache.get(events);
+  if (!byRegistry) cascadeCache.set(events, (byRegistry = new WeakMap()));
+  let byPolicy = byRegistry.get(registry);
+  if (!byPolicy) byRegistry.set(registry, (byPolicy = new Map()));
+  const cacheKey = policy.reworkCountsAs;
+  const hit = byPolicy.get(cacheKey);
+  if (hit) return hit;
+
   const stageList = stagesFor(events, registry).map((s) => s.stageId);
   const byStageResult = new Map<string, StageAgg>();
   for (const s of stageList) {
     byStageResult.set(s, { checked: 0, good: 0, rework: 0, rejected: 0 });
   }
 
-  // Group events by batch
-  const byBatch = new Map<string, Event[]>();
-  const unbatched: Event[] = [];
+  // One pass: batch -> stage -> events (and the unbatched remainder by stage).
+  // This used to filter the whole event list once per stage, per batch.
+  const byBatch = new Map<string, Map<string, Event[]>>();
+  const unbatched = new Map<string, Event[]>();
   for (const e of events) {
+    const sid = stageOf(e);
+    if (!sid) continue;
     const b = "batchNo" in e ? (e as any).batchNo : (e as any).customFields?.batch;
+    let target: Map<string, Event[]>;
     if (typeof b === "string" && b.trim()) {
       const k = b.trim();
-      (byBatch.get(k) ?? byBatch.set(k, []).get(k)!).push(e);
+      target = byBatch.get(k) ?? byBatch.set(k, new Map()).get(k)!;
     } else {
-      unbatched.push(e);
+      target = unbatched;
     }
+    const list = target.get(sid);
+    if (list) list.push(e);
+    else target.set(sid, [e]);
   }
 
   // Handle unbatched events normally
-  for (const s of stageList) {
-    const a = aggregate(unbatched.filter((e) => stageOf(e) === s), policy);
-    const cur = byStageResult.get(s)!;
+  for (const [sid, list] of unbatched) {
+    const cur = byStageResult.get(sid);
+    if (!cur) continue;
+    const a = aggregate(list, policy);
     cur.checked += a.checked;
     cur.good += a.good;
     cur.rework += a.rework;
@@ -128,14 +176,14 @@ function batchCascadedAgg(
   }
 
   // Handle batched events with cascading yield
-  for (const [, bevents] of byBatch) {
-    const presentStages = stageList.filter((sid) => bevents.some((e) => stageOf(e) === sid));
+  for (const [, stageEvents] of byBatch) {
+    const presentStages = stageList.filter((sid) => stageEvents.has(sid));
     let initialBatchChecked = 0;
     let prevAccepted: number | null = null;
 
     for (let i = 0; i < presentStages.length; i++) {
       const sid = presentStages[i];
-      const a = aggregate(bevents.filter((e) => stageOf(e) === sid), policy);
+      const a = aggregate(stageEvents.get(sid)!, policy);
       if (i === 0) {
         initialBatchChecked = a.checked;
       }
@@ -162,6 +210,7 @@ function batchCascadedAgg(
     }
   }
 
+  byPolicy.set(cacheKey, byStageResult);
   return byStageResult;
 }
 
@@ -191,7 +240,7 @@ function perStageAgg(
  * made. Each section therefore carries its own denominator.
  *
  * Within a section:
- *   checked  = the section's ENTRY gate (first in catalog order with data).
+ *   checked  = the section's ENTRY gate, chosen by the shared `pickEntryGate`.
  *              Assembly's gates ARE sequential — Visual's accepted units are
  *              what Balloon checks — so the section is measured once, at Visual.
  *   rejected = every gate in the section, summed. A unit scrapped at Visual and
@@ -218,6 +267,13 @@ export function bySection(
 
   const order: string[] = [];
   const acc = new Map<string, SectionAgg>();
+  // stageId -> checked, per section, so the entry gate is chosen from the whole
+  // section rather than from whichever gate the iteration reached first. That
+  // "first with checked > 0" rule silently trusted array order; when the catalog
+  // was empty the order came from the ledger and Assembly's denominator became a
+  // 2,550-unit gate instead of Visual's 681,945.
+  const checkedByStage = new Map<string, [string, number][]>();
+
   for (const s of stages) {
     // A stage the catalog doesn't classify is its own section — never silently
     // folded into someone else's denominator.
@@ -227,19 +283,23 @@ export function bySection(
       cur = { section, entryStageId: null, checked: 0, rejected: 0, rate: 0 };
       acc.set(section, cur);
       order.push(section);
+      checkedByStage.set(section, []);
     }
-    // perStageAgg is already in catalog order, so the first gate with a checked
-    // qty is the section's entry.
-    if (cur.entryStageId === null && s.checked > 0) {
-      cur.entryStageId = s.stageId;
-      cur.checked = s.checked;
-    }
+    checkedByStage.get(section)!.push([s.stageId, s.checked]);
     cur.rejected += s.rejected;
   }
 
   return order.map((k) => {
     const a = acc.get(k)!;
-    return { ...a, rate: a.checked > 0 ? a.rejected / a.checked : 0 };
+    const gates = checkedByStage.get(k)!;
+    const entry = pickEntryGate(gates);
+    const checked = entry ? (gates.find(([id]) => id === entry)?.[1] ?? 0) : 0;
+    return {
+      ...a,
+      entryStageId: entry,
+      checked,
+      rate: checked > 0 ? a.rejected / checked : 0,
+    };
   });
 }
 
@@ -359,12 +419,12 @@ export function trend(events: Event[], scope: Scope, metric: keyof typeof METRIC
   const ev = scopeEvents(events, scope);
   const fn = METRICS[metric];
   const periods = periodsIn(ev, scope.grain, { from: scope.dateFrom, to: scope.dateTo });
+  // run the metric on the bucket with an unfiltered scope (already scoped).
+  // Policy must survive — without it every trend point silently reverts to
+  // the shipped defaults while the KPI above it uses the plant's policy.
+  const sub = { grain: scope.grain, policy: scope.policy };
   return periods.map((p) => {
-    const bucket = ev.filter((e) => periodKey(e.occurredOn.start, scope.grain) === p);
-    // run the metric on the bucket with an unfiltered scope (already scoped).
-    // Policy must survive — without it every trend point silently reverts to
-    // the shipped defaults while the KPI above it uses the plant's policy.
-    const sub = { grain: scope.grain, policy: scope.policy };
+    const bucket = periodBucket(ev, scope.grain, p);
     return {
       period: p,
       label: periodLabel(p),
@@ -377,21 +437,47 @@ export function trend(events: Event[], scope: Scope, metric: keyof typeof METRIC
 
 export interface StageTrendPoint { period: string; label: string; perStage: Record<string, number>; counts?: Record<string, { rejected: number; checked: number }> }
 
-/** Per-stage rejection-rate series over time. */
+/** Per-stage rejection-rate series over time.
+ *
+ *  Memoized: `cumulativeStageTrend` wraps this, and the dashboard renders both,
+ *  so the same series was built twice per render. */
+const stageTrendCache = new WeakMap<Event[], WeakMap<Registry, Map<string, StageTrendPoint[]>>>();
+
 export function stageTrend(events: Event[], scope: Scope, registry: Registry = DERIVED_REGISTRY): StageTrendPoint[] {
   const ev = scopeEvents(events, scope);
+  const policy = policyOf(scope);
+  const cacheKey = `${scope.grain}|${scope.dateFrom ?? ""}|${scope.dateTo ?? ""}|${policy.reworkCountsAs}`;
+  let byRegistry = stageTrendCache.get(ev);
+  if (!byRegistry) stageTrendCache.set(ev, (byRegistry = new WeakMap()));
+  let byKey = byRegistry.get(registry);
+  if (!byKey) byRegistry.set(registry, (byKey = new Map()));
+  const hit = byKey.get(cacheKey);
+  if (hit) return hit;
+
   const periods = periodsIn(ev, scope.grain, { from: scope.dateFrom, to: scope.dateTo });
-  return periods.map((p) => {
-    const bucket = ev.filter((e) => periodKey(e.occurredOn.start, scope.grain) === p);
+  const result = periods.map((p) => {
+    const bucket = periodBucket(ev, scope.grain, p);
+    // Group the bucket by stage once instead of re-filtering it per stage.
+    const byStageEvents = new Map<string, Event[]>();
+    for (const e of bucket) {
+      const sid = stageOf(e);
+      if (!sid) continue;
+      const list = byStageEvents.get(sid);
+      if (list) list.push(e);
+      else byStageEvents.set(sid, [e]);
+    }
     const perStage: Record<string, number> = {};
     const counts: Record<string, { rejected: number; checked: number }> = {};
     for (const s of registry.stages) {
-      const a = aggregate(bucket.filter((e) => "stageId" in e && (e as any).stageId === s.stageId), policyOf(scope));
+      const a = aggregate(byStageEvents.get(s.stageId) ?? [], policy);
       perStage[s.stageId] = a.checked > 0 ? a.rejected / a.checked : 0;
       counts[s.stageId] = { rejected: a.rejected, checked: a.checked };
     }
     return { period: p, label: periodLabel(p), perStage, counts };
   });
+
+  byKey.set(cacheKey, result);
+  return result;
 }
 
 /** Weekly rejection-rate trend within the scoped window (week-of-month). */

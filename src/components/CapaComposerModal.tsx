@@ -7,6 +7,8 @@
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import Select from "@/components/ui/Select";
+import DatePicker from "@/components/ui/DatePicker";
+import { useConfirm } from "@/components/ui/ConfirmContext";
 import Icon from "@/components/editorial/Icon";
 import { BRAND_NAME } from "@/lib/brand";
 import {
@@ -96,17 +98,24 @@ export default function CapaComposerModal({
     }
   }, [isOpen, draft, recommendationText]);
 
+  const { confirm: confirmModal } = useConfirm();
+
   const isDirty = Boolean(
     form && !created && initialSnapshot.current && JSON.stringify(form) !== initialSnapshot.current,
   );
 
-  const requestClose = useCallback(() => {
+  const requestClose = useCallback(async () => {
     if (isDirty) {
-      const ok = window.confirm("Discard unsaved CAPA draft?");
+      const ok = await confirmModal({
+        title: "Discard unsaved draft?",
+        description: "You have unsaved changes in this CAPA draft. Are you sure you want to discard them?",
+        confirmText: "Discard Draft",
+        variant: "warning",
+      });
       if (!ok) return;
     }
     onClose();
-  }, [isDirty, onClose]);
+  }, [isDirty, onClose, confirmModal]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -249,7 +258,7 @@ export default function CapaComposerModal({
                     <input style={inp} value={form.owner} onChange={(e) => set("owner", e.target.value)} placeholder="Assignee" />
                   </Field>
                   <Field label="Due date">
-                    <input style={inp} type="date" value={form.dueDate} onChange={(e) => set("dueDate", e.target.value)} />
+                    <DatePicker value={form.dueDate} onChange={(d) => set("dueDate", d)} ariaLabel="Due date" />
                   </Field>
                   <Field label="Priority">
                     <Select

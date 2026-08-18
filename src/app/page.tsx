@@ -443,10 +443,13 @@ export default function Dashboard() {
       }
     }
     if (checkedSum <= 0) {
-      const firstStage = m.stages[0];
-      checkedSum = firstStage ? firstStage.checked : 1;
+      // No catalog mapping for this defect → fall back to the plant's own
+      // denominator, the one the headline uses. This used to take
+      // `m.stages[0].checked`, i.e. whichever stage happened to sort first, and
+      // printed defect rates over 100% whenever that was a low-volume gate.
+      checkedSum = m.checked;
     }
-    return defect.rejected / checkedSum;
+    return checkedSum > 0 ? defect.rejected / checkedSum : 0;
   };
 
   /** C3: reshape `exec`'s bullet lines into "Executive Brief" form — a bolded
@@ -733,7 +736,7 @@ export default function Dashboard() {
                         <Donut data={m.stages.map((s) => ({ label: s.label.split(" ")[0], value: s.rejected }))} size={130} fontSize={10} hideLegend={true} />
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)", marginTop: "var(--space-3)", borderTop: "1px solid var(--border)", paddingTop: "var(--space-3)" }}>
-                        {m.stages.slice(0, 4).map((s, idx) => {
+                        {[...m.stages].sort((a, b) => b.rejected - a.rejected).slice(0, 4).map((s, idx) => {
                           const colors = ["#2563EB", "#0D9488", "#D97706", "#DC2626", "#EC4899", "#65A30D"];
                           const share = ((s.rejected / (m.rejected || 1)) * 100).toFixed(1);
                           return (

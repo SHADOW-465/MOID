@@ -102,16 +102,19 @@ export async function GET() {
     const catalog = await loadCatalog(company);
     const template = templateFrom(catalog, "Data Schema");
 
-    return NextResponse.json({
-      template,
-      meta: {
-        stages: template.stages.map((s) => ({
-          stageId: s.stageId,
-          defectCount: s.defects.length,
-          captureCount: s.columns.length,
-        })),
+    return NextResponse.json(
+      {
+        template,
+        meta: {
+          stages: template.stages.map((s) => ({
+            stageId: s.stageId,
+            defectCount: s.defects.length,
+            captureCount: s.columns.length,
+          })),
+        },
       },
-    });
+      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } },
+    );
   } catch (err: unknown) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Failed to build entry template" },

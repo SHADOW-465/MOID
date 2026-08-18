@@ -2,7 +2,7 @@
 // Returns [] (→ empty-state) when no per-defect data is present.
 
 import type { Event } from "@/lib/store/types";
-import { type Scope, scopeEvents, periodKey, periodLabel, periodsIn } from "./scope";
+import { type Scope, scopeEvents, periodBucket, periodLabel, periodsIn } from "./scope";
 import type { SeriesPoint } from "./rejection";
 
 import { DERIVED_REGISTRY, type Registry } from "./rejection";
@@ -53,7 +53,7 @@ export function defectTrend(events: Event[], scope: Scope, topN = 5, registry: R
   const top = byDefect(events, scope, registry).slice(0, topN).map((d) => d.label);
   const periods = periodsIn(ev, scope.grain, { from: scope.dateFrom, to: scope.dateTo });
   return periods.map((p) => {
-    const bucket = ev.filter((e) => periodKey(e.occurredOn.start, scope.grain) === p);
+    const bucket = periodBucket(ev, scope.grain, p);
     const perDefect: Record<string, number> = {};
     for (const lbl of top) perDefect[lbl] = 0;
     for (const e of bucket) {

@@ -104,11 +104,14 @@ function fmtStamp(iso: string): string {
 
 export default function EntryHistory({
   events,
+  onEdit,
   onReuse,
   initialStatus = "all",
 }: {
   events: AuditEventLike[];
-  /** Copy a saved row's identity back onto the entry form. */
+  /** Open this station's recorded row on the entry form for correction. */
+  onEdit?: (row: AuditEntryRow) => void;
+  /** Copy only the lot code onto the form (next station, new quantities). */
   onReuse?: (row: AuditEntryRow) => void;
   /** Status to land on, e.g. arriving from the dashboard's WIP strip. */
   initialStatus?: StatusScope;
@@ -319,6 +322,7 @@ export default function EntryHistory({
               open={openBatch === g.batch}
               onToggle={() => setOpenBatch((b) => (b === g.batch ? null : g.batch))}
               progress={progressFor(progressMap, g.batch)}
+              onEdit={onEdit}
               onReuse={onReuse}
               onHistory={setHistoryRow}
               canErase={canEraseLedger}
@@ -341,6 +345,7 @@ function HistoryBatch({
   open,
   onToggle,
   progress,
+  onEdit,
   onReuse,
   onHistory,
   canErase,
@@ -349,6 +354,7 @@ function HistoryBatch({
   open: boolean;
   onToggle: () => void;
   progress: ReturnType<typeof progressFor>;
+  onEdit?: (row: AuditEntryRow) => void;
   onReuse?: (row: AuditEntryRow) => void;
   onHistory?: (row: AuditEntryRow) => void;
   canErase: boolean;
@@ -572,7 +578,7 @@ function HistoryBatch({
                         </div>
                       </div>
                       {r.defects.length > 0 && (
-                        <div style={{ display: "inline-flex", flexWrap: "wrap", gap: 4, marginBottom: onReuse ? 8 : 0 }}>
+                        <div style={{ display: "inline-flex", flexWrap: "wrap", gap: 4, marginBottom: onEdit || onReuse ? 8 : 0 }}>
                           {r.defects.map((d) => (
                             <span key={d.code} style={defectChip}>
                               {d.code} <b style={{ fontFamily: "var(--font-mono)" }}>{d.qty}</b>
@@ -580,11 +586,18 @@ function HistoryBatch({
                           ))}
                         </div>
                       )}
-                      {onReuse && (
-                        <div style={{ marginTop: 4 }}>
-                          <button type="button" onClick={() => onReuse(r)} style={linkBtn}>
-                            Reuse
-                          </button>
+                      {(onEdit || onReuse) && (
+                        <div style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: 10 }}>
+                          {onEdit && (
+                            <button type="button" onClick={() => onEdit(r)} style={linkBtn}>
+                              Edit
+                            </button>
+                          )}
+                          {onReuse && (
+                            <button type="button" onClick={() => onReuse(r)} style={linkBtn}>
+                              Reuse lot
+                            </button>
+                          )}
                         </div>
                       )}
                     </article>

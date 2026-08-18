@@ -4,7 +4,7 @@
 // because `window` was undefined. It is plant policy now: one value, versioned,
 // shared, auditable. See core/policy/policy.ts.
 
-import { type Scope, scopeEvents, periodsIn, periodKey, periodLabel, policyOf } from "./scope";
+import { type Scope, scopeEvents, periodsIn, periodBucket, periodLabel, policyOf } from "./scope";
 import { byStage } from "./rejection";
 import type { Event } from "@/lib/store/types";
 import { DEFAULT_POLICY } from "@/core/policy/policy";
@@ -92,7 +92,7 @@ export function copqTrend(events: Event[], scope: Scope): { period: string; labe
   const ev = scopeEvents(events, scope);
   const periods = periodsIn(ev, scope.grain, { from: scope.dateFrom, to: scope.dateTo });
   return periods.map((p) => {
-    const bucket = ev.filter((e) => periodKey(e.occurredOn.start, scope.grain) === p);
+    const bucket = periodBucket(ev, scope.grain, p);
     const costResult = copq(bucket, { grain: scope.grain, policy: scope.policy });
     return {
       period: p,

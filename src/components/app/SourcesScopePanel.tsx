@@ -13,6 +13,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTweaks } from "@/components/editorial/TweaksContext";
+import DatePicker from "@/components/ui/DatePicker";
 import {
   countBySourceChannel,
   describeActiveScope,
@@ -1269,45 +1270,27 @@ function CustomRangePill() {
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", width: 34 }}>From</span>
-              <input
-                type="date"
+              <DatePicker
                 value={t.dateFrom || ""}
-                onChange={(e) => {
-                  setTweak("dateFrom", e.target.value);
+                onChange={(d) => {
+                  setTweak("dateFrom", d);
                   setTweak("datePreset", "custom");
                 }}
-                style={{
-                  flex: 1,
-                  padding: "4px 6px",
-                  fontSize: 11.5,
-                  borderRadius: 6,
-                  border: "1px solid var(--border-strong)",
-                  background: "var(--surface)",
-                  color: "var(--text)",
-                  fontFamily: "inherit",
-                }}
+                ariaLabel="Scope from date"
+                size="sm"
               />
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", width: 34 }}>To</span>
-              <input
-                type="date"
+              <DatePicker
                 value={t.dateTo || ""}
-                onChange={(e) => {
-                  setTweak("dateTo", e.target.value);
+                onChange={(d) => {
+                  setTweak("dateTo", d);
                   setTweak("datePreset", "custom");
                 }}
-                style={{
-                  flex: 1,
-                  padding: "4px 6px",
-                  fontSize: 11.5,
-                  borderRadius: 6,
-                  border: "1px solid var(--border-strong)",
-                  background: "var(--surface)",
-                  color: "var(--text)",
-                  fontFamily: "inherit",
-                }}
+                ariaLabel="Scope to date"
+                size="sm"
               />
             </div>
           </div>

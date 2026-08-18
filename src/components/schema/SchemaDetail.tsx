@@ -5,6 +5,7 @@
 // through the page mutate helper and /api/schema — no new endpoints.
 
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
+import Select from "@/components/ui/Select";
 import { mergeDefectForAdd } from "@/lib/schema/defect-payload";
 import { resolveSections } from "@/lib/schema/sections";
 import type { SchemaPendingCreate } from "@/lib/schema/toolbar";
@@ -403,16 +404,13 @@ const SchemaDetail = forwardRef<SchemaDetailHandle, SchemaDetailProps>(function 
           />
         </Row>
         <Row label="Section">
-          <select
-            style={input}
+          <Select
             disabled={!editable}
             value={(draft.category as string) ?? ""}
-            onChange={(e) => setDraft({ ...draft, category: e.target.value })}
-          >
-            {sections.map((c) => (
-              <option key={c.id} value={c.id}>{c.label}</option>
-            ))}
-          </select>
+            onChange={(val) => setDraft({ ...draft, category: val })}
+            options={sections.map((c) => ({ value: c.id, label: c.label }))}
+            variant="quiet"
+          />
         </Row>
         <Row label="Captures">
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -785,15 +783,12 @@ function NewStageForm({
         />
       </Row>
       <Row label="Section">
-        <select
-          style={input}
+        <Select
           value={draft.category}
-          onChange={(e) => onChange({ ...draft, category: e.target.value })}
-        >
-          {sections.map((c) => (
-            <option key={c.id} value={c.id}>{c.label}</option>
-          ))}
-        </select>
+          onChange={(val) => onChange({ ...draft, category: val })}
+          options={sections.map((c) => ({ value: c.id, label: c.label }))}
+          variant="quiet"
+        />
       </Row>
       <Row label="Captures">
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>

@@ -5,6 +5,8 @@
 
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import Select from "@/components/ui/Select";
+import DatePicker from "@/components/ui/DatePicker";
+import { useConfirm } from "@/components/ui/ConfirmContext";
 import AppShell from "@/components/app/AppShell";
 import Icon from "@/components/editorial/Icon";
 import CapaComposerModal from "@/components/CapaComposerModal";
@@ -192,18 +194,31 @@ export default function CapaPage() {
   const setBuf = <K extends keyof CapaRecord>(k: K, v: CapaRecord[K]) =>
     setBuffer((b) => (b ? { ...b, [k]: v } : b));
 
-  const cycleStatus = (c: CapaRecord) => {
+  const { confirm: confirmModal } = useConfirm();
+
+  const cycleStatus = async (c: CapaRecord) => {
     const next = STATUS_NEXT[c.status];
     // Guard completion — accidental close-out is costly in CAPA workflows.
     if (next === "Completed") {
-      const ok = window.confirm(`Mark “${c.title || c.problem || "this CAPA"}” as Completed?`);
+      const ok = await confirmModal({
+        title: "Mark CAPA as Completed?",
+        description: `Mark “${c.title || c.problem || "this CAPA"}” as Completed?`,
+        confirmText: "Complete CAPA",
+        variant: "default",
+      });
       if (!ok) return;
     }
     updateCapa(c.id, { status: next });
   };
 
-  const confirmDelete = (id: string, label: string) => {
-    if (!window.confirm(`Delete “${label}”? This cannot be undone.`)) return;
+  const confirmDelete = async (id: string, label: string) => {
+    const ok = await confirmModal({
+      title: `Delete CAPA “${label}”?`,
+      description: `Delete “${label}”? This cannot be undone.`,
+      confirmText: "Delete CAPA",
+      variant: "danger",
+    });
+    if (!ok) return;
     removeCapa(id);
     cancelEdit();
   };
@@ -350,11 +365,11 @@ export default function CapaPage() {
                           <input style={inp} value={buffer.owner} onChange={(e) => setBuf("owner", e.target.value)} />
                         </Field>
                         <Field label="Due">
-                          <input
-                            type="date"
-                            style={inp}
+                          <DatePicker
                             value={buffer.dueDate}
-                            onChange={(e) => setBuf("dueDate", e.target.value)}
+                            onChange={(d) => setBuf("dueDate", d)}
+                            ariaLabel="Due date"
+                            size="sm"
                           />
                         </Field>
                         <Field label="Priority">

@@ -17,7 +17,7 @@ import { getCatalogStore, type CompanyCatalog } from "@/core/ontology/store/cata
 import { getPolicyStore } from "@/core/policy/policy-store";
 import { DEFAULT_POLICY } from "@/core/policy/policy";
 import { mergePlantCatalog } from "@/core/ontology/plant-catalog";
-import { loadCatalog } from "@/core/ontology/load-catalog";
+import { loadCatalog, SEED_TAG } from "@/core/ontology/load-catalog";
 import { aliasesForDefect } from "@/lib/schema/defect-payload";
 import { resolveSections, sectionMarkerStage, slugSectionId } from "@/lib/schema/sections";
 import { getModStore } from "@/core/ontology/store/mod-store";
@@ -157,22 +157,25 @@ export async function GET() {
       catalog.sizes.length > 0 ||
       mappings.length > 0;
 
-    return NextResponse.json({
-      registry: configured ? toRegistry(catalog, company) : EMPTY_REGISTRY,
-      catalog,
-      mappings,
-      configured,
-      policy: policyVersion.policy,
-      policyVersion: policyVersion.version,
-      brain: {
-        stageCount: catalog.stages.length,
-        defectCount: catalog.defects.length,
-        sizeCount: catalog.sizes.length,
-        mappingCount: mappings.length,
-        knowledgeCount: mappings.filter((m) => m.source === "knowledge").length,
-        modDerivedCount: mappings.filter((m) => m.source === "mod").length,
+    return NextResponse.json(
+      {
+        registry: configured ? toRegistry(catalog, company) : EMPTY_REGISTRY,
+        catalog,
+        mappings,
+        configured,
+        policy: policyVersion.policy,
+        policyVersion: policyVersion.version,
+        brain: {
+          stageCount: catalog.stages.length,
+          defectCount: catalog.defects.length,
+          sizeCount: catalog.sizes.length,
+          mappingCount: mappings.length,
+          knowledgeCount: mappings.filter((m) => m.source === "knowledge").length,
+          modDerivedCount: mappings.filter((m) => m.source === "mod").length,
+        },
       },
-    });
+      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } },
+    );
   } catch (err: unknown) {
     console.error("[api/schema] GET failed:", err);
     return NextResponse.json({
@@ -365,19 +368,29 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Human edits via Data Schema are the authored floor. Stamp SEED_TAG so
+    // the next GET cannot re-insert a stage the operator just deleted
+    // (backfill only inserts when lastMergedFrom is an older/unknown tag).
+    if (catalog.lastMergedFrom !== SEED_TAG) {
+      catalog = await store.put(company, { ...catalog, lastMergedFrom: SEED_TAG });
+    }
+
     const mappings = await loadMappings(company);
 
-    return NextResponse.json({
-      ok: true,
-      registry: toRegistry(catalog, company),
-      catalog,
-      mappings,
-      configured:
-        catalog.stages.length > 0 ||
-        catalog.defects.length > 0 ||
-        catalog.sizes.length > 0 ||
-        mappings.length > 0,
-    });
+    return NextResponse.json(
+      {
+        ok: true,
+        registry: toRegistry(catalog, company),
+        catalog,
+        mappings,
+        configured:
+          catalog.stages.length > 0 ||
+          catalog.defects.length > 0 ||
+          catalog.sizes.length > 0 ||
+          mappings.length > 0,
+      },
+      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } },
+    );
   } catch (err: unknown) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Failed to update catalog" },
@@ -426,18 +439,25 @@ export async function DELETE(req: NextRequest) {
       );
     }
 
+    if (catalog.lastMergedFrom !== SEED_TAG) {
+      catalog = await store.put(company, { ...catalog, lastMergedFrom: SEED_TAG });
+    }
+
     const mappings = await loadMappings(company);
-    return NextResponse.json({
-      ok: true,
-      registry: toRegistry(catalog, company),
-      catalog,
-      mappings,
-      configured:
-        catalog.stages.length > 0 ||
-        catalog.defects.length > 0 ||
-        catalog.sizes.length > 0 ||
-        mappings.length > 0,
-    });
+    return NextResponse.json(
+      {
+        ok: true,
+        registry: toRegistry(catalog, company),
+        catalog,
+        mappings,
+        configured:
+          catalog.stages.length > 0 ||
+          catalog.defects.length > 0 ||
+          catalog.sizes.length > 0 ||
+          mappings.length > 0,
+      },
+      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } },
+    );
   } catch (err: unknown) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Failed to delete catalog entity" },

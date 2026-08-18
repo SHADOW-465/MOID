@@ -77,6 +77,19 @@ test("the backfill runs once — a stage deleted on Data Schema afterwards stays
   expect(loaded.stages.map((s) => s.stageId)).not.toContain("secondary");
 });
 
+test("a catalog tagged by mergePlantCatalog does not resurrect a deleted authored stage", async () => {
+  const store = getCatalogStore();
+  const authored = plantCatalog();
+  await store.put("acme", {
+    ...authored,
+    stages: authored.stages.filter((s) => s.stageId !== "visual"),
+    lastMergedFrom: "plant-catalog",
+  });
+
+  const loaded = await loadCatalog("acme");
+  expect(loaded.stages.map((s) => s.stageId)).not.toContain("visual");
+});
+
 test("the duplicate Production (Dipping) stage label is rewritten to Dipping once", async () => {
   const store = getCatalogStore();
   const authored = plantCatalog();

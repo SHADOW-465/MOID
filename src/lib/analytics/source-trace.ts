@@ -12,7 +12,14 @@
  * 4.82% every other screen showed. lib/analytics/rejection.ts has always kept
  * rework in its own StageAgg bucket; this mirrors that.
  */
-import { STAGES, STAGE_CATEGORY, STAGE_CATEGORIES } from "@/core/ontology/plant-catalog";
+import {
+  STAGE_CATEGORY,
+  STAGE_CATEGORIES,
+  STAGE_LABELS,
+  pickEntryGate,
+  resolveStageId,
+  stageSortKey,
+} from "@/core/ontology/plant-catalog";
 
 export type SourceKind = "checked" | "accepted" | "rejected" | "rework" | "defect" | "other";
 
@@ -142,22 +149,12 @@ export interface SourceGroup {
   fileCount: number;
 }
 
-// Process order and labels come from the authored catalog — the same list
-// rejection.ts measures against. This file used to keep its own five-stage
-// table that omitted production/secondary/valve-fixing and sorted eye-punching
-// between visual and balloon, so View Source ordered and grouped stages
-// differently from every other screen.
-const STAGE_ORDER: string[] = STAGES.map((s) => s.stageId);
-
-/** Display name: the catalog label minus its SOP suffix ("Visual Inspection
- *  (P17)" → "Visual Inspection"). */
-export const STAGE_LABELS: Record<string, string> = Object.fromEntries(
-  STAGES.map((s) => [s.stageId, s.label.replace(/\s*\(.*\)$/, "")]),
-);
-
-const STAGE_ID_BY_LABEL = new Map(
-  Object.entries(STAGE_LABELS).map(([id, label]) => [label.toLowerCase(), id]),
-);
+// Process order, labels and entry-gate selection come from the authored catalog
+// — the same helpers rejection.ts measures against. This file used to keep its
+// own five-stage table that omitted production/secondary/valve-fixing and
+// sorted eye-punching between visual and balloon, so View Source ordered and
+// grouped stages differently from every other screen.
+export { STAGE_LABELS, stageSortKey } from "@/core/ontology/plant-catalog";
 
 const KIND_ORDER: SourceKind[] = ["checked", "accepted", "rejected", "rework", "defect", "other"];
 
@@ -173,15 +170,6 @@ export function qtyNumber(qty: number | string | undefined | null): number {
     return Number.isFinite(n) ? n : 0;
   }
   return 0;
-}
-
-export function stageSortKey(stageId: string | undefined, stageLabel: string): number {
-  const id = (stageId || stageLabel || "").toLowerCase();
-  const idx = STAGE_ORDER.indexOf(id);
-  if (idx >= 0) return idx;
-  // label may be pretty ("Visual Inspection") rather than an id
-  const byLabel = STAGE_ID_BY_LABEL.get((stageLabel || "").toLowerCase());
-  return byLabel ? STAGE_ORDER.indexOf(byLabel) : 99;
 }
 
 /** One consolidated ledger entry — the checked / accepted / rejected / rework /
@@ -311,10 +299,7 @@ export function kindLabel(kind: SourceKind, defectCode?: string | null): string 
 /** Ensure rows have kind/stageId; parse legacy type soup when needed. */
 export function normalizeSourceRows(rows: SourceRow[]): SourceRow[] {
   return rows.map((r) => {
-    const stageId =
-      r.stageId ||
-      STAGE_ID_BY_LABEL.get((r.stage || "").toLowerCase()) ||
-      (STAGE_ORDER.includes((r.stage || "").toLowerCase()) ? r.stage.toLowerCase() : undefined);
+    const stageId = r.stageId || resolveStageId(r.stage);
     const defectFromType =
       r.defectCode ||
       (() => {
@@ -542,17 +527,18 @@ function groupKeyFor(row: SourceRow, mode: SourceGroupMode, grain: SourcePeriodG
  *
  * Primary / Secondary / Assembly are separate populations, so each is measured
  * once at its OWN entry gate and the results add. Inside a section the gates are
- * sequential, so only the first one counts. Mirrors rejection.ts `bySection` —
- * this is a presentation rollup of the same rule, not a second rule.
+ * sequential, so only the entry gate counts. The gate itself is chosen by the
+ * shared `pickEntryGate` — the same call rejection.ts `bySection` makes, so this
+ * is a presentation rollup of one rule rather than a second copy of it.
  */
 function entryStageChecked(rows: SourceRow[]): {
   qty: number;
   label: string | null;
   sections: { section: string; entryStageId: string; entryLabel: string; checked: number }[];
 } {
-  // section -> best (most upstream) gate seen so far
-  const best = new Map<string, { key: number; stage: string; label: string }>();
   const byStage = new Map<string, number>();
+  const stageLabel = new Map<string, string>();
+  const sectionStages = new Map<string, Set<string>>();
 
   for (const r of rows) {
     if (r.kind !== "checked") continue;
@@ -560,25 +546,29 @@ function entryStageChecked(rows: SourceRow[]): {
     if (q <= 0) continue;
     const stage = r.stageId || r.stage || "(unknown stage)";
     byStage.set(stage, (byStage.get(stage) ?? 0) + q);
+    stageLabel.set(stage, STAGE_LABELS[stage] ?? r.stage ?? stage);
 
     // Unclassified stages become their own section rather than borrowing one.
     const section = STAGE_CATEGORY[stage] ?? stage;
-    const key = stageSortKey(r.stageId, r.stage);
-    const cur = best.get(section);
-    // Ties break on id so the answer never depends on row order.
-    if (!cur || key < cur.key || (key === cur.key && stage < cur.stage)) {
-      best.set(section, { key, stage, label: STAGE_LABELS[stage] ?? r.stage ?? stage });
-    }
+    let set = sectionStages.get(section);
+    if (!set) sectionStages.set(section, (set = new Set()));
+    set.add(stage);
   }
 
-  const sections = [...best.entries()]
-    .map(([section, b]) => ({
-      section,
-      entryStageId: b.stage,
-      entryLabel: b.label,
-      checked: byStage.get(b.stage) ?? 0,
-      _k: b.key,
-    }))
+  const sections = [...sectionStages.entries()]
+    .map(([section, stages]) => {
+      const entry = pickEntryGate([...stages].map((s) => [s, byStage.get(s) ?? 0] as const));
+      return entry
+        ? {
+            section,
+            entryStageId: entry,
+            entryLabel: stageLabel.get(entry) ?? entry,
+            checked: byStage.get(entry) ?? 0,
+            _k: stageSortKey(entry),
+          }
+        : null;
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null)
     .sort((a, b) => a._k - b._k)
     .map(({ _k, ...rest }) => rest);
 

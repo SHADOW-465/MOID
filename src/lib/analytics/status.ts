@@ -5,7 +5,7 @@
 // 2. Primary threshold — rejection rate vs client target / watch
 // 3. Secondary frame — prior period of the same grain (reason text only)
 
-import { type Scope, scopeEvents, periodKey, periodsIn, policyOf } from "./scope";
+import { type Scope, scopeEvents, periodBucket, periodKey, periodsIn, policyOf } from "./scope";
 import { rejectionRate } from "./rejection";
 import {
   scopeIntegrityIssues,
@@ -70,7 +70,7 @@ export function priorPeriodScope(events: Event[], scope: Scope): Scope | null {
   if (!priorKey) return null;
 
   // Bound prior period using events that fall in that bucket.
-  const inPrior = ev.filter((e) => periodKey(e.occurredOn.start, scope.grain) === priorKey);
+  const inPrior = periodBucket(ev, scope.grain, priorKey);
   if (inPrior.length === 0) return null;
   const starts = inPrior.map((e) => e.occurredOn.start).sort();
   const ends = inPrior.map((e) => e.occurredOn.end).sort();

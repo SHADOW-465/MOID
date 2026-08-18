@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MOID (RAIS-Pro) — Shop-Floor Batch Entry</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Sans:wght@400;500;600;700&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-theme="porcelain">
+
+  <div class="app-shell">
+    
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="brand-box">
+        <span class="brand-logo-badge">MOID</span>
+        <div>
+          <div style="font-weight:700; font-size:13px; color:var(--text-ink)">Plant Intelligence</div>
+          <div class="mono" style="font-size:10px; color:var(--verified)">● 98.4% Ledger Trust</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="nav-section-label">Overview</div>
+        <a class="nav-item" href="index.html">
+          <span>Dashboard</span>
+        </a>
+      </div>
+
+      <div>
+        <div class="nav-section-label">Your Data</div>
+        <a class="nav-item active" href="data-entry.html">
+          <span>Data Entry</span>
+        </a>
+        <a class="nav-item" href="staging.html">
+          <span>Staging & Files</span>
+        </a>
+      </div>
+
+      <div>
+        <div class="nav-section-label">Analysis</div>
+        <a class="nav-item" href="stage-analysis.html">
+          <span>Stage Analysis</span>
+        </a>
+        <a class="nav-item" href="size-analysis.html">
+          <span>Size Analysis</span>
+        </a>
+        <a class="nav-item" href="defect-analysis.html">
+          <span>Defect Pareto</span>
+        </a>
+      </div>
+
+      <div>
+        <div class="nav-section-label">Management</div>
+        <a class="nav-item" href="reports.html">
+          <span>Reports</span>
+        </a>
+        <a class="nav-item" href="audit.html">
+          <span>Audit Trail</span>
+        </a>
+        <a class="nav-item" href="schema.html">
+          <span>Plant Schema</span>
+        </a>
+      </div>
+
+      <div class="persona-dock">
+        <div class="mono" style="font-weight:700; font-size:11px; padding:4px 8px; border-radius:var(--r-pill); background:var(--bg-well)">OP</div>
+        <div>
+          <div style="font-size:12px; font-weight:600; color:var(--text-ink)">Line Operator</div>
+          <div style="font-size:10.5px; color:var(--text-secondary)">Visual Gate (P17)</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Workspace -->
+    <main class="workspace">
+      
+      <header class="topbar">
+        <div class="scope-cluster">
+          <span style="font-weight:600; font-size:14px">Batch Production Logging</span>
+          <span class="mono" style="font-size:11px; color:var(--text-secondary); background:var(--bg-well); padding:3px 8px; border-radius:var(--r-pill)">Shift A · Line 01</span>
+        </div>
+
+        <div class="top-actions">
+          <button class="btn-pill" onclick="toggleThemeMode()">
+            <span id="theme-btn-text">Dark Mode</span>
+          </button>
+          <button class="btn-pill" onclick="prefillSampleData()">
+            Autofill Sample Lot
+          </button>
+        </div>
+      </header>
+
+      <div class="content-stream">
+        
+        <div class="grid-2-col" style="grid-template-columns: 1.8fr 1fr">
+          
+          <!-- Form Section -->
+          <div style="display:flex; flex-direction:column; gap:14px">
+            
+            <div class="standard-card">
+              <div class="card-head">
+                <span class="card-title">1. Batch & Station Header</span>
+                <span class="mono" style="font-size:11px; color:var(--cobalt)">GATE: VISUAL (P17)</span>
+              </div>
+
+              <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:10px">
+                <div style="display:flex; flex-direction:column; gap:4px">
+                  <label class="mono" style="font-size:10.5px; color:var(--text-secondary)">INSPECTION GATE</label>
+                  <select class="pill-select" style="width:100%">
+                    <option>Visual Inspection (P17)</option>
+                    <option>Eye Punching (P18)</option>
+                    <option>Balloon Wipe (P21)</option>
+                    <option>Valve Integrity (P24)</option>
+                    <option>Final Packaging (P27)</option>
+                  </select>
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:4px">
+                  <label class="mono" style="font-size:10.5px; color:var(--text-secondary)">CATHETER GAUGE</label>
+                  <select class="pill-select" style="width:100%">
+                    <option>Fr16 (Yellow)</option>
+                    <option>Fr18 (Red)</option>
+                    <option>Fr14 (Green)</option>
+                    <option>Fr20 (Black)</option>
+                  </select>
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:4px">
+                  <label class="mono" style="font-size:10.5px; color:var(--text-secondary)">LOT / BATCH ID</label>
+                  <input id="lot-id" class="pill-select mono" value="26G28-14" style="width:100%" />
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:4px">
+                  <label class="mono" style="font-size:10.5px; color:var(--text-secondary)">OPERATOR TAG</label>
+                  <input class="pill-select" value="OP-104" style="width:100%" />
+                </div>
+              </div>
+            </div>
+
+            <div class="standard-card">
+              <div class="card-head">
+                <span class="card-title">2. Physical Quantity Disposition</span>
+              </div>
+
+              <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:10px">
+                <div style="display:flex; flex-direction:column; gap:4px">
+                  <label class="mono" style="font-size:10.5px; color:var(--text-secondary)">CHECKED INPUT</label>
+                  <input id="in-chk" type="number" class="pill-select mono" value="500" oninput="runMathRecon()" style="width:100%; font-size:14px; font-weight:600" />
+                </div>
+                <div style="display:flex; flex-direction:column; gap:4px">
+                  <label class="mono" style="font-size:10.5px; color:var(--text-secondary)">ACCEPTED PASS</label>
+                  <input id="in-acc" type="number" class="pill-select mono" value="465" oninput="runMathRecon()" style="width:100%; font-size:14px; font-weight:600" />
+                </div>
+                <div style="display:flex; flex-direction:column; gap:4px">
+                  <label class="mono" style="font-size:10.5px; color:var(--text-secondary)">HOLD QUARANTINE</label>
+                  <input id="in-hld" type="number" class="pill-select mono" value="0" oninput="runMathRecon()" style="width:100%; font-size:14px; font-weight:600" />
+                </div>
+                <div style="display:flex; flex-direction:column; gap:4px">
+                  <label class="mono" style="font-size:10.5px; color:var(--text-secondary)">REJECTED SCRAP</label>
+                  <input id="in-rej" type="number" class="pill-select mono" value="35" oninput="runMathRecon()" style="width:100%; font-size:14px; font-weight:600" />
+                </div>
+              </div>
+            </div>
+
+            <div class="standard-card">
+              <div class="card-head">
+                <span class="card-title">3. Defect Code Breakdown</span>
+                <span id="defect-badge-sum" class="mono" style="font-size:11.5px; font-weight:600; color:var(--verified)">Tally: 35 / 35</span>
+              </div>
+
+              <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:8px">
+                <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-well); padding:8px 12px; border-radius:var(--r-well)">
+                  <strong class="mono" style="font-size:12px">COAG</strong>
+                  <input id="d-c" class="pill-select mono" value="18" oninput="runMathRecon()" style="width:55px; text-align:right; font-weight:600" />
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-well); padding:8px 12px; border-radius:var(--r-well)">
+                  <strong class="mono" style="font-size:12px">OVERLAP</strong>
+                  <input id="d-o" class="pill-select mono" value="10" oninput="runMathRecon()" style="width:55px; text-align:right; font-weight:600" />
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-well); padding:8px 12px; border-radius:var(--r-well)">
+                  <strong class="mono" style="font-size:12px">PINHOLE</strong>
+                  <input id="d-p" class="pill-select mono" value="7" oninput="runMathRecon()" style="width:55px; text-align:right; font-weight:600" />
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-well); padding:8px 12px; border-radius:var(--r-well)">
+                  <strong class="mono" style="font-size:12px">BUBBLE</strong>
+                  <input id="d-b" class="pill-select mono" value="0" oninput="runMathRecon()" style="width:55px; text-align:right; font-weight:600" />
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-well); padding:8px 12px; border-radius:var(--r-well)">
+                  <strong class="mono" style="font-size:12px">FLASH</strong>
+                  <input id="d-f" class="pill-select mono" value="0" oninput="runMathRecon()" style="width:55px; text-align:right; font-weight:600" />
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-well); padding:8px 12px; border-radius:var(--r-well)">
+                  <strong class="mono" style="font-size:12px">OTHER</strong>
+                  <input id="d-x" class="pill-select mono" value="0" oninput="runMathRecon()" style="width:55px; text-align:right; font-weight:600" />
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Live Balance Meter -->
+          <div>
+            <div class="standard-card" style="position:sticky; top:80px">
+              <div class="card-head">
+                <span class="card-title">Live Mass Balance Meter</span>
+              </div>
+
+              <div id="recon-banner" style="display:flex; align-items:center; gap:6px; padding:10px 14px; border-radius:var(--r-pill); background:var(--verified-subtle); color:var(--verified); font-weight:600; font-size:12px; margin-bottom:14px">
+                <span style="width:6px; height:6px; border-radius:50%; background:currentColor"></span>
+                <span>Reconciled · Zero Delta</span>
+              </div>
+
+              <div style="display:flex; flex-direction:column; gap:8px; font-size:13px">
+                <div style="display:flex; justify-content:space-between">
+                  <span style="color:var(--text-secondary)">Checked Input</span>
+                  <span id="m-chk" class="mono font-weight:600">500</span>
+                </div>
+                <div style="display:flex; justify-content:space-between">
+                  <span style="color:var(--text-secondary)">- Passed Accepted</span>
+                  <span id="m-acc" class="mono" style="color:var(--verified)">- 465</span>
+                </div>
+                <div style="display:flex; justify-content:space-between">
+                  <span style="color:var(--text-secondary)">- Hold</span>
+                  <span id="m-hld" class="mono">- 0</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; font-weight:600; border-top:1px solid var(--border-well); padding-top:8px">
+                  <span>Calculated Scrap</span>
+                  <span id="m-rej" class="mono">35 (7.00%)</span>
+                </div>
+              </div>
+
+              <div style="margin-top:20px">
+                <button class="btn-pill btn-pill-primary" style="width:100%; justify-content:center; padding:10px" onclick="commitLotToLedger()">
+                  Sign & Append to Ledger
+                </button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </main>
+
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    function runMathRecon() {
+      const chk = +document.getElementById('in-chk').value || 0;
+      const acc = +document.getElementById('in-acc').value || 0;
+      const hld = +document.getElementById('in-hld').value || 0;
+      const rej = +document.getElementById('in-rej').value || 0;
+
+      const dc = +document.getElementById('d-c').value || 0;
+      const do_ = +document.getElementById('d-o').value || 0;
+      const dp = +document.getElementById('d-p').value || 0;
+      const db = +document.getElementById('d-b').value || 0;
+      const df = +document.getElementById('d-f').value || 0;
+      const dx = +document.getElementById('d-x').value || 0;
+      const defSum = dc + do_ + dp + db + df + dx;
+
+      const calcRej = chk - acc - hld;
+      document.getElementById('m-chk').innerText = chk;
+      document.getElementById('m-acc').innerText = '- ' + acc;
+      document.getElementById('m-hld').innerText = '- ' + hld;
+      document.getElementById('m-rej').innerText = calcRej + ' (' + ((calcRej/chk)*100).toFixed(2) + '%)';
+
+      const banner = document.getElementById('recon-banner');
+      const tally = document.getElementById('defect-badge-sum');
+
+      if (calcRej === rej && defSum === rej) {
+        banner.style.background = 'var(--verified-subtle)';
+        banner.style.color = 'var(--verified)';
+        banner.innerHTML = '<span style="width:6px; height:6px; border-radius:50%; background:currentColor"></span><span>Reconciled · Zero Delta</span>';
+        tally.style.color = 'var(--verified)';
+        tally.innerText = 'Tally: ' + defSum + ' / ' + rej;
+      } else {
+        banner.style.background = 'var(--breach-subtle)';
+        banner.style.color = 'var(--breach)';
+        banner.innerHTML = '<span style="width:6px; height:6px; border-radius:50%; background:currentColor"></span><span>Discrepancy: ' + (rej - defSum) + ' Unit Delta</span>';
+        tally.style.color = 'var(--breach)';
+        tally.innerText = 'Mismatch: ' + defSum + ' vs ' + rej;
+      }
+    }
+
+    function prefillSampleData() {
+      document.getElementById('lot-id').value = '26G28-16';
+      document.getElementById('in-chk').value = 600;
+      document.getElementById('in-acc').value = 558;
+      document.getElementById('in-hld').value = 0;
+      document.getElementById('in-rej').value = 42;
+      document.getElementById('d-c').value = 22;
+      document.getElementById('d-o').value = 12;
+      document.getElementById('d-p').value = 8;
+      runMathRecon();
+      showToast('Sample lot data prefilled into form.');
+    }
+
+    function commitLotToLedger() {
+      showToast('✓ Lot ' + document.getElementById('lot-id').value + ' committed and cryptographically hashed to ledger.');
+    }
+  </script>
+</body>
+</html>

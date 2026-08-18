@@ -5,8 +5,10 @@ import dynamic from "next/dynamic";
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import Icon, { type IconName } from "@/components/editorial/Icon";
 import { useTweaks } from "@/components/editorial/TweaksContext";
-import { usePolicy } from "@/components/app/RegistryContext";
+import { useRegistry } from "@/components/app/RegistryContext";
 import { useEvents } from "@/components/app/EventsContext";
+import { useConfirm } from "@/components/ui/ConfirmContext";
+import DatePicker from "@/components/ui/DatePicker";
 import {
   rejectionRate,
   stagesFor,
@@ -190,7 +192,7 @@ const SCOPE_CONTROLS: Partial<Record<NavKey, ("view" | "interval" | "range" | "s
 };
 
 export default function AppShell({
-  active, trustScore: trustScoreProp, statusCounts, dateRange, children, presetId,
+  active, trustScore: trustScoreProp, statusCounts, dateRange, children, presetId: _presetId,
 }: {
   active: NavKey;
   trustScore?: number | null;
@@ -203,7 +205,7 @@ export default function AppShell({
   const router = useRouter();
   const { events, refreshEvents } = useEvents();
   const { t, setTweak } = useTweaks();
-  const policy = usePolicy();
+  const { registry, policy, configured: registryConfigured } = useRegistry();
   const {
     persona,
     setPersona,
@@ -214,6 +216,7 @@ export default function AppShell({
     personaLocked,
     signOut,
   } = usePersona();
+  const { notify } = useConfirm();
   const [mounted, setMounted] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [showPersonaMenu, setShowPersonaMenu] = useState(false);
@@ -870,17 +873,14 @@ export default function AppShell({
 
   useEffect(() => {
     setMounted(true);
-    fetch("/api/schema")
-      .then((res) => res.json())
-      .then((data) => {
-        setIsConfigured(data.configured !== false);
-        const gates = (data.registry?.stages || []).filter((s: any) => s.isQualityGate ?? true);
-        setViewStages(gates.map((s: any) => ({ id: s.stageId, label: s.label })));
-      })
-      .catch(() => {
-        setIsConfigured(true);
-      });
-  }, [presetId]);
+  }, []);
+
+  useEffect(() => {
+    if (!registry) return;
+    setIsConfigured(registryConfigured);
+    const gates = (registry.stages || []).filter((s: any) => s.isQualityGate ?? true);
+    setViewStages(gates.map((s: any) => ({ id: s.stageId, label: s.label })));
+  }, [registry, registryConfigured]);
 
 
   useEffect(() => {
@@ -982,8 +982,9 @@ export default function AppShell({
       URL.revokeObjectURL(url);
     } catch (e) {
       console.error("Export failed:", e);
-      window.alert(
+      notify(
         e instanceof Error ? e.message : "Export failed. Try again.",
+        "error",
       );
     } finally {
       setExporting(false);
@@ -1704,38 +1705,20 @@ export default function AppShell({
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4, borderTop: "1px solid var(--border)", paddingTop: 8 }}>
                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                       <span style={{ fontSize: 10, color: "var(--text-3)", width: 30 }}>From</span>
-                      <input
-                        type="date"
+                      <DatePicker
                         value={t.dateFrom}
-                        onChange={(e) => setTweak("dateFrom", e.target.value)}
-                        style={{
-                          flex: 1,
-                          fontSize: 11,
-                          padding: "2px 4px",
-                          border: "1px solid var(--border-strong)",
-                          borderRadius: "var(--radius-sm)",
-                          background: "var(--surface)",
-                          color: "var(--text)",
-                          fontFamily: "inherit",
-                        }}
+                        onChange={(d) => setTweak("dateFrom", d)}
+                        ariaLabel="Topbar from date"
+                        size="sm"
                       />
                     </div>
                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                       <span style={{ fontSize: 10, color: "var(--text-3)", width: 30 }}>To</span>
-                      <input
-                        type="date"
+                      <DatePicker
                         value={t.dateTo}
-                        onChange={(e) => setTweak("dateTo", e.target.value)}
-                        style={{
-                          flex: 1,
-                          fontSize: 11,
-                          padding: "2px 4px",
-                          border: "1px solid var(--border-strong)",
-                          borderRadius: "var(--radius-sm)",
-                          background: "var(--surface)",
-                          color: "var(--text)",
-                          fontFamily: "inherit",
-                        }}
+                        onChange={(d) => setTweak("dateTo", d)}
+                        ariaLabel="Topbar to date"
+                        size="sm"
                       />
                     </div>
                     <button

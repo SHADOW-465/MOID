@@ -26,7 +26,18 @@ import { resolveSections } from "@/lib/schema/sections";
  * plants must pick up. The backfill runs ONCE per tag, so a stage deleted on
  * Data Schema after that stays deleted — the catalog still outlives the code.
  */
-const SEED_TAG = "plant-catalog@dipping-label-and-sections";
+export const SEED_TAG = "plant-catalog@dipping-label-and-sections";
+
+/**
+ * `mergePlantCatalog` writes this instead of SEED_TAG. It is a full authored
+ * merge — missing stages after that are user deletions, not "never seeded".
+ */
+const MERGE_TAG = "plant-catalog";
+
+/** True once the authored floor has been applied; do not re-insert missing stages. */
+export function authoredFloorApplied(tag: string | null | undefined): boolean {
+  return tag === SEED_TAG || tag === MERGE_TAG;
+}
 
 /** Authored label the tree used to show under a folder of the same name. */
 const OLD_PRODUCTION_LABELS = new Set(["Production (Dipping)", "Production Dipping"]);
@@ -78,6 +89,11 @@ async function backfillAuthoredStages(
     });
   }
 
+  // mergePlantCatalog stamps MERGE_TAG. That catalog already has the authored
+  // floor — skip the insert loop so a Data Schema delete is not undone on the
+  // next GET. Still run the one-time repairs below, then stamp SEED_TAG.
+  const skipInsert = authoredFloorApplied(catalog.lastMergedFrom);
+
   const authored = plantCatalog().stages;
   const authoredById = new Map(authored.map((s) => [s.stageId, s]));
   const stored = new Map(catalog.stages.map((s) => [s.stageId, s]));
@@ -113,11 +129,15 @@ async function backfillAuthoredStages(
 
   // Insert missing authored stages at their authored position, so Data Entry
   // tabs still read down the process line instead of appending to the end.
+  // Never do this after a full authored merge or the current seed — that is
+  // how a deleted stage used to reappear on the next /api/schema GET.
   const out: CompanyCatalog["stages"] = [];
-  for (const a of authored) {
-    if (stored.has(a.stageId)) continue;
-    out.push(a);
-    changed = true;
+  if (!skipInsert) {
+    for (const a of authored) {
+      if (stored.has(a.stageId)) continue;
+      out.push(a);
+      changed = true;
+    }
   }
   const merged = changed
     ? [...repaired, ...out].sort((x, y) => {

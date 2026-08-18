@@ -8,6 +8,8 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Select from "@/components/ui/Select";
+import DatePicker from "@/components/ui/DatePicker";
+import { useConfirm } from "@/components/ui/ConfirmContext";
 import {
   MATRIX_STAGES,
   ENTRY_ROLES,
@@ -17,7 +19,7 @@ import {
   PRODUCT_TYPES,
   PRODUCT_TYPE_STORAGE_KEY,
   CATHETER_CATEGORIES,
-  defectDisplayLabel,
+  defectEntryTitle,
   sizesFor,
   typeIsSelectable,
   productTypeFor,
@@ -27,6 +29,7 @@ import {
   type CatheterCategory,
   type CatheterType,
   type ShiftBatchRecord,
+  type DefectDef,
 } from "@/lib/entry/disposafe-matrix";
 import {
   migrateToStageId,
@@ -36,6 +39,7 @@ import {
   stationById,
   stationsIn,
   type ResolvedEntrySchema,
+  type QtyKey,
 } from "@/lib/entry/entry-schema";
 import {
   buildBatchId,
@@ -57,8 +61,11 @@ import { entryKey, hasValidGrant } from "@/lib/entry/edit-grants";
 import { toStageDayRecord, qtyHeaderFor } from "@/lib/entry/to-stage-day-record";
 import { collectEntryReasons, remarksFromReasons, warningNeedsReason } from "@/lib/entry/exception-reasons";
 import { readPrefill, clearPrefill } from "@/lib/agent/prefill";
+import type { EntryHydrate } from "@/lib/entry/hydrate-entry";
+import { STAGE_CATEGORY } from "@/core/ontology/plant-catalog";
 import { useEvents } from "@/components/app/EventsContext";
 import { usePersona } from "@/components/app/PersonaContext";
+import { useRegistry } from "@/components/app/RegistryContext";
 import QtyInput from "@/components/entry/QtyInput";
 import { loadDraft, saveDraft } from "@/lib/entry/draft";
 import BatchIdField from "@/components/entry/BatchIdField";
@@ -78,6 +85,8 @@ function shortEntryDate(iso: string | null): string {
 
 /** In-progress (unsubmitted) batch form — restored on return to Data Entry. */
 const DRAFT_KEY = "moid_entry_draft_batch";
+const EMPTY_COLUMNS: QtyKey[] = [];
+const EMPTY_DEFECTS: DefectDef[] = [];
 
 interface BatchDraft {
   macro: string;
@@ -123,14 +132,23 @@ export default function BatchMatrixEntry({
   onSynced,
   prefillBatchId,
   onPrefillConsumed,
+  hydrate,
+  onHydrateConsumed,
 }: {
   onSynced?: () => void;
-  /** Lot id handed over from History → Reuse. Fills the batch field once. */
+  /** @deprecated Use `hydrate` with mode "reuse-lot". Lot id from History → Reuse. */
   prefillBatchId?: string | null;
   onPrefillConsumed?: () => void;
+  /** History → Edit (full record) or Reuse lot (code only). */
+  hydrate?: EntryHydrate | null;
+  onHydrateConsumed?: () => void;
 }) {
   const { events, refreshEvents } = useEvents();
   const { canWrite, canConfigure, canEraseLedger, persona } = usePersona();
+  const { schemaRev } = useRegistry();
+  /** Stamped before pass-reset effect so loading a record does not look like a station change. */
+  const passCtxRef = useRef<string | null>(null);
+  const { confirm: confirmModal, notify } = useConfirm();
 
   const [macro, setMacro] = useState<string>("assembly");
   const [stageId, setStageId] = useState("visual");
@@ -233,7 +251,11 @@ export default function BatchMatrixEntry({
     if (pt) applyProductType(pt);
 
     const d = loadDraft<BatchDraft>(DRAFT_KEY);
-    if (d) {
+    // History → Edit remounts this form with the row already in `hydrate`.
+    // A leftover empty draft (left after the last save) must not win.
+    if (hydrate?.mode === "edit") {
+      /* applied in the hydrate effect */
+    } else if (d) {
       setMacro(d.macro);
       setStageId(migrateToStageId(d));
       setDate(d.date); setSize(d.size);
@@ -313,7 +335,8 @@ export default function BatchMatrixEntry({
 
   // Schema from the company catalog (Data Schema), projected by /api/entry-template.
   // Total replacement: a live template drives every station / defect / column,
-  // or the seed does. Never mix per-field.
+  // or the seed does. Never mix per-field. Refetch when Data Schema writes
+  // (schemaRev is catalog.updatedAt from RegistryContext).
   useEffect(() => {
     let cancelled = false;
     fetch("/api/entry-template", { cache: "no-store" })
@@ -329,7 +352,7 @@ export default function BatchMatrixEntry({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [schemaRev]);
 
   // The lot code is composed from the lot's own date plus size. `date`
   // ("Recorded on") is not in this chain and must never be added to it — that
@@ -344,16 +367,19 @@ export default function BatchMatrixEntry({
   const isSecondary = macro === "secondary";
   const isAssembly = macro === "assembly";
   const schemaSource = schema?.source ?? "loading";
-  const station = schema ? stationById(schema, stageId) : undefined;
+  const station = useMemo(
+    () => (schema ? stationById(schema, stageId) : undefined),
+    [schema, stageId],
+  );
   const processName = station?.label ?? stageId;
-  const columns = station?.columns ?? [];
+  const columns = station?.columns ?? EMPTY_COLUMNS;
   const capturesHold = columns.includes("hold");
   const showChecked = !station || columns.includes("checked");
   const showAccept = columns.includes("accepted");
   const showReject = columns.includes("rejected");
   const showTrolleys = station?.extras.includes("trolleys") ?? false;
   const showBin = station?.extras.includes("bin") ?? false;
-  const resolvedDefects = station?.defects ?? [];
+  const resolvedDefects = station?.defects ?? EMPTY_DEFECTS;
   // Freeze the defect column set once the operator starts typing so a late
   // /api/entry-template response can't swap keys mid-entry — but only while
   // staying on the SAME stage. A restored draft or an Ask MOID prefill sets
@@ -365,7 +391,19 @@ export default function BatchMatrixEntry({
     const stageChanged = activeDefectsStageRef.current !== stageId;
     if (!stageChanged && userTouchedQty.current) return;
     activeDefectsStageRef.current = stageId;
-    setActiveDefects(resolvedDefects);
+    setActiveDefects((prev) => {
+      if (
+        prev.length === resolvedDefects.length &&
+        prev.every(
+          (d, i) =>
+            d.key === resolvedDefects[i]?.key &&
+            d.name === resolvedDefects[i]?.name,
+        )
+      ) {
+        return prev;
+      }
+      return resolvedDefects;
+    });
   }, [resolvedDefects, stageId]);
 
   const hideDefects = resolvedDefects.length === 0 && activeDefects.length === 0;
@@ -567,7 +605,6 @@ export default function BatchMatrixEntry({
   // when the operator has moved on to Balloon. Sign-out appeared to "fix" it
   // because pass is not in the draft and reset to 1 on a fresh mount.
   const passCtx = `${stageId}|${canonicalBatchId(batchId) ?? batchId.trim().toUpperCase()}`;
-  const passCtxRef = useRef<string | null>(null);
   useEffect(() => {
     if (passCtxRef.current === null) {
       passCtxRef.current = passCtx;
@@ -644,12 +681,9 @@ export default function BatchMatrixEntry({
   }, []);
 
   /**
-   * True when the operator has typed something they would lose.
-   *
-   * Switching station used to call resetQtys() unconditionally, so noticing
-   * "wrong station" after filling the form silently threw the counts away and
-   * the operator re-typed them from the paper — which is exactly where
-   * transcription errors come from.
+   * True when the operator has typed something they would lose on a
+   * station switch. A new station is a new entry — Visual's counts must
+   * not appear on Balloon as if they were already recorded there.
    */
   const hasUnsavedQty = () =>
     checked > 0 ||
@@ -660,32 +694,43 @@ export default function BatchMatrixEntry({
     remarks.trim() !== "" ||
     Object.values(defects).some((v) => v > 0);
 
-  const confirmDiscard = (what: string) =>
-    !hasUnsavedQty() ||
-    confirm(
-      `Switch to ${what}?\n\nThe quantities you have typed stay in the form — only the defect reasons that do not exist at the new station are dropped.`,
-    );
+  const confirmDiscard = async (what: string) => {
+    if (!hasUnsavedQty() && !editingId) return true;
+    return await confirmModal({
+      title: `Switch to ${what}?`,
+      description: editingId
+        ? "This leaves the entry you were editing. The new station starts blank — lot, size and date stay."
+        : "Quantities and defect counts on this form are for the current station only. The new station starts blank — lot, size and date stay.",
+      confirmText: "Switch Station",
+      variant: "warning",
+    });
+  };
 
-  const selectMacro = (id: string) => {
+  const beginFreshStation = (nextStageId: string, nextMacro?: string) => {
+    setStageId(nextStageId);
+    if (nextMacro) setMacro(nextMacro);
+    setEditing(null);
+    setPass(1);
+    setPassReason("");
+    passCtxRef.current = `${nextStageId}|${canonicalBatchId(batchId) ?? batchId.trim().toUpperCase()}`;
+    resetQtys();
+  };
+
+  const selectMacro = async (id: string) => {
     if (id === macro) return;
     const first = schema ? stationsIn(schema, id)[0] : undefined;
     const label = first?.label ?? id;
-    if (!confirmDiscard(label)) return;
-    setMacro(id);
-    setStageId(first?.stageId ?? migrateToStageId({ macro: id }));
-    // Quantities survive the move; only defect reasons are station-specific.
-    setDefects({});
+    const ok = await confirmDiscard(label);
+    if (!ok) return;
+    beginFreshStation(first?.stageId ?? migrateToStageId({ macro: id }), id);
   };
 
-  const selectStation = (id: string) => {
+  const selectStation = async (id: string) => {
     if (id === stageId) return;
     const st = schema ? stationById(schema, id) : undefined;
-    if (!confirmDiscard(st?.label ?? id)) return;
-    setStageId(id);
-    if (st) setMacro(st.category);
-    // Same rule as selectMacro: the counts are the operator's transcription of
-    // the paper and survive; the defect vocabulary belongs to the station.
-    setDefects({});
+    const ok = await confirmDiscard(st?.label ?? id);
+    if (!ok) return;
+    beginFreshStation(id, st?.category);
   };
 
   /**
@@ -712,6 +757,108 @@ export default function BatchMatrixEntry({
     onPrefillConsumed?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefillBatchId]);
+
+  const loadRecordIntoForm = useCallback(
+    (rec: {
+      batchId: string;
+      date: string;
+      stageId: string;
+      macro?: string;
+      size?: string | null;
+      productType?: string | null;
+      shift?: string | null;
+      operator?: string;
+      checked: number;
+      accept: number;
+      hold: number;
+      reject: number;
+      trolleys?: number;
+      bin?: string;
+      defects: Record<string, number>;
+      remarks?: string;
+      pass?: number;
+      passReason?: string | null;
+      editingId: string;
+    }) => {
+      const sid = migrateToStageId({ stageId: rec.stageId });
+      const macro =
+        rec.macro ||
+        STAGE_CATEGORY[sid] ||
+        "assembly";
+      setMacro(macro);
+      setStageId(sid);
+      setDate(rec.date);
+      if (rec.size) {
+        const display = toDisplaySize(rec.size) ?? rec.size;
+        setSize(display);
+      }
+      if (rec.productType) applyProductType(rec.productType);
+      if (rec.shift) setShift(rec.shift);
+      if (rec.operator) setOperator(toEntryRole(rec.operator));
+      const lot = rec.batchId.trim().toUpperCase();
+      setBatchId(lot);
+      const parsedLot = parseBatchId(lot);
+      if (parsedLot?.date) setBatchDate(parsedLot.date);
+      setChecked(rec.checked);
+      setTrolleys(rec.trolleys ?? 0);
+      setBin(rec.bin ?? "");
+      setAccept(rec.accept);
+      setHold(rec.hold);
+      setReject(rec.reject);
+      setDefects({ ...rec.defects });
+      setRemarks(rec.remarks ?? "");
+      setPass(rec.pass ?? 1);
+      setPassReason(rec.passReason ?? "");
+      passCtxRef.current = `${sid}|${canonicalBatchId(lot) ?? lot}`;
+      userTouchedQty.current = true;
+      prefillAppliedKey.current = null;
+      setPrefillNote(null);
+      setEditing(rec.editingId);
+      setPreviewId(null);
+      setMsg(null);
+      setErr(null);
+    },
+    [applyProductType, setEditing],
+  );
+
+  // History → Edit: put the recorded row on the form. Must run after the
+  // mount draft restore so a leftover empty draft cannot blank the numbers.
+  useEffect(() => {
+    if (!hydrate) return;
+    if (hydrate.mode === "reuse-lot") {
+      onBatchInput(hydrate.batchId);
+      onHydrateConsumed?.();
+      return;
+    }
+    const local = loadShift().find(
+      (b) =>
+        b.batchId.trim().toUpperCase() === hydrate.batchId.trim().toUpperCase() &&
+        migrateToStageId(b) === hydrate.stageId &&
+        b.date === hydrate.date,
+    );
+    loadRecordIntoForm({
+      batchId: hydrate.batchId,
+      date: hydrate.date,
+      stageId: hydrate.stageId,
+      size: hydrate.size,
+      productType: hydrate.productType,
+      shift: hydrate.shift,
+      checked: hydrate.checked,
+      accept: hydrate.accepted,
+      hold: hydrate.hold,
+      reject: hydrate.rejected,
+      trolleys: local?.trolleys,
+      bin: local?.bin,
+      defects: Object.keys(hydrate.defects).length ? hydrate.defects : (local?.defects ?? {}),
+      remarks: local?.remarks,
+      pass: local?.pass,
+      passReason: local?.passReason,
+      editingId: local?.id ?? hydrate.editingId,
+    });
+    setMsg(`Editing ${hydrate.batchId} · ${hydrate.stageId}. Save replaces this entry.`);
+    onHydrateConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrate]);
 
   // Defect qty changes update local state; Reject is re-derived from defect
   // sum (when any defect > 0) or from the Checked − Accept (− Hold) remainder.
@@ -1098,35 +1245,27 @@ export default function BatchMatrixEntry({
       setErr("View-only role — editing is disabled.");
       return;
     }
-    setMacro(rec.macro);
-    setStageId(migrateToStageId(rec));
-    setDate(rec.date);
-    setSize(rec.size);
-    if (rec.productType) applyProductType(rec.productType);
-    setOperator(toEntryRole(rec.operator));
-    setShift(rec.shift);
-    setBatchId(rec.batchId);
-    {
-      const p = parseBatchId(rec.batchId);
-      if (p?.date) setBatchDate(p.date);
-    }
-    setChecked(rec.checked);
-    setTrolleys(rec.trolleys ?? 0);
-    setBin(rec.bin ?? "");
-    setAccept(rec.accept);
-    setHold(rec.hold);
-    setReject(rec.reject);
-    setDefects({ ...(rec.defects ?? {}) });
-    setRemarks(rec.remarks ?? "");
-    // Loaded values are the operator's own numbers — upstream prefill must not
-    // overwrite them, same rule as a restored draft.
-    userTouchedQty.current = true;
-    prefillAppliedKey.current = null;
-    setPrefillNote(null);
-    setEditing(rec.id);
-    setPreviewId(null);
-    setMsg(null);
-    setErr(null);
+    loadRecordIntoForm({
+      batchId: rec.batchId,
+      date: rec.date,
+      stageId: migrateToStageId(rec),
+      macro: rec.macro,
+      size: rec.size,
+      productType: rec.productType,
+      shift: rec.shift,
+      operator: rec.operator,
+      checked: rec.checked,
+      accept: rec.accept,
+      hold: rec.hold,
+      reject: rec.reject,
+      trolleys: rec.trolleys,
+      bin: rec.bin,
+      defects: rec.defects ?? {},
+      remarks: rec.remarks,
+      pass: rec.pass,
+      passReason: rec.passReason,
+      editingId: rec.id,
+    });
     document.getElementById("batch-entry-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
@@ -1161,17 +1300,17 @@ export default function BatchMatrixEntry({
       return;
     }
 
-    if (
-      !confirm(
-        synced
-          ? `Permanently delete batch ${rec.batchId}?\n\n` +
-              `${rec.date} · ${rec.processName} · ${rec.size}\n\n` +
-              "It is already synced, so this erases it from the ledger too — the numbers leave " +
-              "the dashboard and the audit trail. This cannot be undone."
-          : `Remove batch ${rec.batchId} from the current shift list?`,
-      )
-    )
-      return;
+    const ok = await confirmModal({
+      title: synced ? `Permanently delete batch ${rec.batchId}?` : `Remove batch ${rec.batchId}?`,
+      description: synced
+        ? `${rec.date} · ${rec.processName} · ${rec.size}\n\n` +
+          "It is already synced, so this erases it from the ledger too — the numbers leave " +
+          "the dashboard and the audit trail. This cannot be undone."
+        : `Remove batch ${rec.batchId} from the current shift list?`,
+      confirmText: synced ? "Erase from Ledger" : "Remove Batch",
+      variant: synced ? "danger" : "default",
+    });
+    if (!ok) return;
 
     if (id === editingId) setEditing(null);
     if (id === previewId) setPreviewId(null);
@@ -1216,7 +1355,7 @@ export default function BatchMatrixEntry({
 
   function exportCSV() {
     if (saved.length === 0) {
-      alert("No logged batches to export.");
+      notify("No logged batches to export.", "warning");
       return;
     }
     const uniqueDefects = new Set<string>();
@@ -1493,21 +1632,14 @@ export default function BatchMatrixEntry({
                       {dateIsToday ? `Today · ${shortEntryDate(date)}` : shortEntryDate(date)}
                     </span>
                     {persona === "gm" && (
-                      <input
-                        type="date"
-                        value={date}
-                        onChange={(e) => setDate(e.target.value)}
-                        aria-label="Change recorded-on date (GM)"
-                        title="GM only — backfill a past day. Operators always record on today."
-                        style={{
-                          border: "none",
-                          background: "transparent",
-                          color: "var(--text-3)",
-                          fontSize: 11,
-                          width: 26,
-                          cursor: "pointer",
-                        }}
-                      />
+                      <div style={{ width: 140 }}>
+                        <DatePicker
+                          value={date}
+                          onChange={(d) => d && setDate(d)}
+                          ariaLabel="Change recorded-on date (GM)"
+                          size="sm"
+                        />
+                      </div>
                     )}
                   </div>
                 ) : (
@@ -1884,11 +2016,9 @@ export default function BatchMatrixEntry({
             {visibleDefects.map(({ d, i }) => {
               const val = defects[d.key] || 0;
               const active = val > 0;
-              // Schema-sourced names are shown verbatim. defectDisplayLabel
-              // collapses "Coagulant" back to "COAG" (it treats the code as the
-              // canonical card title), which silently undoes a Data Schema
-              // rename — right for the built-in list, wrong for a schema label.
-              const title = schemaSource === "catalog" ? d.name || d.key : defectDisplayLabel(d);
+              // Operators know the short form (COAG), not the catalog label
+              // (Coagulum). Long name stays on the hover title only.
+              const title = defectEntryTitle(d);
               return (
                 <div
                   key={d.key}
@@ -1922,7 +2052,7 @@ export default function BatchMatrixEntry({
                     {i + 1}
                   </span>
                   <div
-                    title={`${i + 1}. ${title}${d.name && d.name !== title ? ` (${d.key})` : ""}`}
+                    title={`${i + 1}. ${title}${d.name && d.name !== title ? ` — ${d.name}` : ""}`}
                     style={{
                       fontFamily: "var(--font-mono)",
                       fontSize: 12,

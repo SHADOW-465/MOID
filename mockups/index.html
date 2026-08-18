@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MOID (RAIS-Pro) — Executive Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-theme="light">
+
+  <div class="app-shell">
+    
+    <!-- Sidebar Navigation (Exact AppShell.tsx mapping) -->
+    <aside class="sidebar">
+      <div class="brand-box">
+        <span class="brand-logo-badge">MOID</span>
+        <div>
+          <div style="font-weight:700; font-size:13px; color:var(--text-ink)">Plant Intelligence</div>
+          <div class="mono" style="font-size:10px; color:var(--verified)">● 98.4% Ledger Trust</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="nav-section-label">Overview</div>
+        <a class="nav-item active" href="index.html">
+          <span>Dashboard</span>
+        </a>
+      </div>
+
+      <div>
+        <div class="nav-section-label">Your Data</div>
+        <a class="nav-item" href="data-entry.html">
+          <span>Data Entry</span>
+        </a>
+        <a class="nav-item" href="staging.html">
+          <span>Staging & Files</span>
+        </a>
+      </div>
+
+      <div>
+        <div class="nav-section-label">Analysis</div>
+        <a class="nav-item" href="stage-analysis.html">
+          <span>Stage Analysis</span>
+        </a>
+        <a class="nav-item" href="size-analysis.html">
+          <span>Size Analysis</span>
+        </a>
+        <a class="nav-item" href="defect-analysis.html">
+          <span>Defect Pareto</span>
+        </a>
+      </div>
+
+      <div>
+        <div class="nav-section-label">Management</div>
+        <a class="nav-item" href="reports.html">
+          <span>Reports</span>
+        </a>
+        <a class="nav-item" href="audit.html">
+          <span>Audit Trail</span>
+        </a>
+        <a class="nav-item" href="schema.html">
+          <span>Plant Schema</span>
+        </a>
+      </div>
+
+      <!-- Persona Dock -->
+      <div class="persona-dock">
+        <div class="mono" style="font-weight:700; font-size:11px; padding:4px 8px; border-radius:var(--r-pill); background:var(--bg-well)">GM</div>
+        <div>
+          <div style="font-size:12px; font-weight:600; color:var(--text-ink)">General Manager</div>
+          <div style="font-size:10.5px; color:var(--text-secondary)">Plant Authority</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Workspace -->
+    <main class="workspace">
+      
+      <!-- Topbar Header -->
+      <header class="topbar">
+        <div class="scope-cluster">
+          <select class="pill-select" onchange="showToast('Scope updated: ' + this.value)">
+            <option>Cumulative (All Stages)</option>
+            <option>Visual Inspection</option>
+            <option>Eye Punching</option>
+            <option>Balloon Wipe</option>
+            <option>Valve Integrity</option>
+            <option>Final Packaging</option>
+          </select>
+
+          <select class="pill-select" onchange="showToast('Period scope: ' + this.value)">
+            <option>July 2025 (Active FY 25-26)</option>
+            <option>June 2025</option>
+            <option>May 2025</option>
+          </select>
+
+          <div class="grain-toggle">
+            <button class="grain-btn" onclick="setGrain(this)">D</button>
+            <button class="grain-btn" onclick="setGrain(this)">W</button>
+            <button class="grain-btn active" onclick="setGrain(this)">M</button>
+            <button class="grain-btn" onclick="setGrain(this)">FY</button>
+          </div>
+        </div>
+
+        <div class="top-actions">
+          <button class="btn-pill" onclick="toggleCommandPalette()">
+            <span class="mono" style="font-size:11px">⌘K Jump</span>
+          </button>
+          <button class="btn-pill" onclick="toggleThemeMode()">
+            <span id="theme-btn-text">Dark Mode</span>
+          </button>
+          <a href="data-entry.html" class="btn-pill btn-pill-primary">
+            + Log Batch
+          </a>
+        </div>
+      </header>
+
+      <!-- Content Stream -->
+      <div class="content-stream">
+        
+        <!-- Open WIP Strip (Exact from OpenWipStrip.tsx) -->
+        <div class="wip-strip">
+          <span class="wip-tag">Open WIP In-Flight</span>
+          <div class="wip-nodes-row">
+            <div class="wip-pill-chip">
+              <strong class="mono">26G28-14</strong>
+              <span style="color:var(--text-secondary)">Eye Punch · 465 in</span>
+              <span class="mono" style="color:var(--verified)">0 hold</span>
+            </div>
+            <div class="wip-pill-chip">
+              <strong class="mono">26G28-15</strong>
+              <span style="color:var(--text-secondary)">Balloon · 620 in</span>
+              <span class="mono" style="color:var(--decide)">3 hold</span>
+            </div>
+            <div class="wip-pill-chip">
+              <strong class="mono">26G27-11</strong>
+              <span style="color:var(--text-secondary)">Visual · 480 in</span>
+              <span class="mono" style="color:var(--verified)">0 hold</span>
+            </div>
+          </div>
+          <a href="data-entry.html" class="btn-pill" style="font-size:11px; padding:3px 10px">Active Lots →</a>
+        </div>
+
+        <!-- ==================== SECTION 1: 5 EXECUTIVE KPIS ==================== -->
+        <div class="kpi-grid-5">
+          
+          <div class="kpi-card" onclick="openFloatingDetail({ title: 'Monthly Rejection Rate — Drill-down', value: '8.07%', detail: '1,095 rejected of 13,562 checked', insight: 'The overall rejection rate stands at 8.07% (1,095 of 13,562 checked), compared to the target limit of 7.50% (+0.57% pt increase vs Jun). Visual Inspection accounts for 61.9% of all rejections.', formula: 'Rejection Rate = (Total Rejections / Total Inflow Checked) × 100<br/>= (1,095 / 13,562) × 100 = <strong>8.0740%</strong>' })">
+            <div class="kpi-label">
+              <span>Overall Rejection</span>
+              <span class="badge-pill badge-pill-breach">▲ +0.57%</span>
+            </div>
+            <div>
+              <div class="kpi-value">8.07%</div>
+              <div class="kpi-detail">1,095 rejected · 13,562 checked</div>
+            </div>
+            <div class="kpi-sub">
+              <span>vs Jun 7.50%</span>
+              <span style="color:var(--text-muted)">·</span>
+              <span>Target 7.50%</span>
+            </div>
+          </div>
+
+          <div class="kpi-card" onclick="openFloatingDetail({ title: 'First Pass Yield — Drill-down', value: '91.93%', detail: '12,467 entered of 13,562 total', insight: 'First Pass Yield (FPY) across cascaded assembly gates stands at 91.93% for the current monthly period.', formula: 'FPY = (Good Units Output / Initial Line Inflow) × 100<br/>= (12,467 / 13,562) × 100 = <strong>91.9259%</strong>' })">
+            <div class="kpi-label">
+              <span>First Pass Yield</span>
+              <span class="badge-pill badge-pill-verified">● Stable</span>
+            </div>
+            <div>
+              <div class="kpi-value">91.93%</div>
+              <div class="kpi-detail">12,467 entered · 1,095 rejected</div>
+            </div>
+            <div class="kpi-sub">
+              <span>Cascaded line yield</span>
+            </div>
+          </div>
+
+          <div class="kpi-card" onclick="openFloatingDetail({ title: 'Visual Inspection — Bottleneck Drill-down', value: '4.99%', detail: '678 rejected of 13,562 checked', insight: 'Visual Inspection is the primary bottleneck stage, responsible for 678 rejections (4.99% gate rejection rate, 61.9% share of total line scrap).', formula: 'Gate Scrap Rate = (Gate Rejections / Gate Inflow) × 100<br/>= (678 / 13,562) × 100 = <strong>4.9992%</strong>' })">
+            <div class="kpi-label">
+              <span>Top Rejecting Stage</span>
+              <span class="badge-pill badge-pill-decide">61.9% Share</span>
+            </div>
+            <div>
+              <div class="kpi-value" style="font-size:18px; font-weight:600">Visual Insp.</div>
+              <div class="kpi-detail">678 rejected · 13,562 checked</div>
+            </div>
+            <div class="kpi-sub">
+              <span class="badge-pill badge-pill-breach" style="padding:0 5px; font-size:9.5px">4.99% gate rate</span>
+            </div>
+          </div>
+
+          <div class="kpi-card" onclick="openFloatingDetail({ title: 'Top Defect Driver — COAG (Coagulation)', value: '450 u', detail: '41.1% of all rejections', insight: 'The top defect mode is COAG (Coagulation Lumps), accounting for 450 scrapped units (41.1% of all rejections). Concentrated on Fr16 catheter dipping.', formula: 'Defect Share = (COAG Count / Total Scrap) × 100<br/>= (450 / 1,095) × 100 = <strong>41.0958%</strong>' })">
+            <div class="kpi-label">
+              <span>Top Defect</span>
+              <span class="badge-pill badge-pill-breach">41.1% Vital</span>
+            </div>
+            <div>
+              <div class="kpi-value" style="font-size:18px; font-weight:600">COAG (Coag.)</div>
+              <div class="kpi-detail">450 units scrapped</div>
+            </div>
+            <div class="kpi-sub">
+              <span>41.1% of total plant scrap</span>
+            </div>
+          </div>
+
+          <div class="kpi-card" onclick="openFloatingDetail({ title: 'Cost of Poor Quality (COPQ) — Drill-down', value: '₹ 43,450', detail: '1,095 rejected units', insight: 'Cost of Poor Quality (COPQ) is ₹43,450 for the monthly period. Eliminating Visual COAG defects offers up to ₹10,860 in recoverable savings opportunity.', formula: 'COPQ = Total Scrap Units × Standard Unit Cost<br/>= 1,095 × ₹39.68 = <strong>₹43,450</strong>' })">
+            <div class="kpi-label">
+              <span>COPQ (₹)</span>
+              <span class="badge-pill badge-pill-neutral">₹ 43.4k</span>
+            </div>
+            <div>
+              <div class="kpi-value">₹ 43,450</div>
+              <div class="kpi-detail">1,095 rejected units</div>
+            </div>
+            <div class="kpi-sub">
+              <span style="color:var(--cobalt)">₹ 10,860 addressable</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- ==================== ROW 1: PRIMARY REJECTION ANALYTICS ==================== -->
+        <div class="grid-3-col">
+          
+          <!-- Card 1: Rejection Trend -->
+          <div class="standard-card" onclick="openFloatingDetail({ title: 'Monthly Rejection Trend', value: '8.07%', detail: 'Historical trend vs Target 7.5%', insight: 'Rejection trend lines compared to the 7.50% specification limit and historical period means.' })">
+            <div>
+              <div class="card-head">
+                <div class="card-title">Rejection Trend</div>
+                <div class="card-sub">Target (7.5%) & Mean</div>
+              </div>
+              <svg width="100%" height="160" viewBox="0 0 320 160">
+                <defs>
+                  <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="var(--cobalt)" stop-opacity="0.2"></stop>
+                    <stop offset="100%" stop-color="var(--cobalt)" stop-opacity="0"></stop>
+                  </linearGradient>
+                </defs>
+                <line x1="0" y1="70" x2="320" y2="70" stroke="var(--border-well)" stroke-dasharray="3 3" stroke-width="1.5"></line>
+                <path d="M 10 90 L 60 75 L 120 85 L 180 55 L 240 70 L 300 45 L 300 160 L 10 160 Z" fill="url(#g1)"></path>
+                <polyline points="10,90 60,75 120,85 180,55 240,70 300,45" fill="none" stroke="var(--cobalt)" stroke-width="2" stroke-linecap="round"></polyline>
+              </svg>
+            </div>
+            <span class="card-link">View full trend →</span>
+          </div>
+
+          <!-- Card 2: Rejection By Stage -->
+          <div class="standard-card" onclick="openFloatingDetail({ title: 'Rejection By Stage Breakdown', value: '61.9% Visual', detail: 'Total rejections share across gates', insight: 'Visual Inspection carries 61.9% of the loss, followed by Eye Punching (14.6%) and Balloon Wipe (10.0%).' })">
+            <div>
+              <div class="card-head">
+                <div class="card-title">Rejection By Stage</div>
+                <div class="card-sub">YTD Rejection Shares</div>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:8px; margin-top:6px">
+                <div style="display:flex; justify-content:space-between; font-size:12px">
+                  <span style="font-weight:500; color:var(--text-ink)">Visual Inspection</span>
+                  <span class="mono">4.99% <span style="color:var(--text-muted)">(61.9%)</span></span>
+                </div>
+                <div style="display:flex; justify-content:space-between; font-size:12px">
+                  <span style="font-weight:500; color:var(--text-ink)">Eye Punching</span>
+                  <span class="mono">1.24% <span style="color:var(--text-muted)">(14.6%)</span></span>
+                </div>
+                <div style="display:flex; justify-content:space-between; font-size:12px">
+                  <span style="font-weight:500; color:var(--text-ink)">Balloon Wipe</span>
+                  <span class="mono">0.86% <span style="color:var(--text-muted)">(10.0%)</span></span>
+                </div>
+                <div style="display:flex; justify-content:space-between; font-size:12px">
+                  <span style="font-weight:500; color:var(--text-ink)">Valve Integrity</span>
+                  <span class="mono">0.68% <span style="color:var(--text-muted)">(7.9%)</span></span>
+                </div>
+              </div>
+            </div>
+            <span class="card-link">View stage analysis →</span>
+          </div>
+
+          <!-- Card 3: Top Defects (Pareto) -->
+          <div class="standard-card" onclick="openFloatingDetail({ title: 'Top Defects (Pareto Six-Sigma)', value: '41.1% COAG', detail: '3 Vital Few Defect Modes', insight: 'Six Sigma Pareto analysis highlighting the vital few defect categories responsible for over 78% of rejects.' })">
+            <div>
+              <div class="card-head">
+                <div class="card-title">Top Defects (Pareto)</div>
+                <div class="card-sub">YTD Rejections</div>
+              </div>
+              <div class="pareto-table-row" style="display:grid; grid-template-columns: 20px minmax(0, 1.4fr) 52px 64px 44px; gap:8px; align-items:center; font-size:12px; padding:5px 0; border-bottom:1px solid var(--border-well)">
+                <span class="mono" style="color:var(--text-muted)">1</span>
+                <span class="mono" style="font-weight:600; color:var(--text-ink)">COAG</span>
+                <span class="mono" style="text-align:right">3.3%</span>
+                <div style="width:100%; height:5px; background:var(--bg-well); border-radius:var(--r-pill); overflow:hidden"><div style="height:100%; width:41.1%; background:var(--cobalt); border-radius:var(--r-pill)"></div></div>
+                <span class="mono" style="text-align:right; color:var(--text-muted)">41%</span>
+              </div>
+              <div class="pareto-table-row" style="display:grid; grid-template-columns: 20px minmax(0, 1.4fr) 52px 64px 44px; gap:8px; align-items:center; font-size:12px; padding:5px 0; border-bottom:1px solid var(--border-well)">
+                <span class="mono" style="color:var(--text-muted)">2</span>
+                <span class="mono" style="font-weight:600; color:var(--text-ink)">OVERLAP</span>
+                <span class="mono" style="text-align:right">1.9%</span>
+                <div style="width:100%; height:5px; background:var(--bg-well); border-radius:var(--r-pill); overflow:hidden"><div style="height:100%; width:23%; background:var(--cobalt); border-radius:var(--r-pill)"></div></div>
+                <span class="mono" style="text-align:right; color:var(--text-muted)">23%</span>
+              </div>
+              <div class="pareto-table-row" style="display:grid; grid-template-columns: 20px minmax(0, 1.4fr) 52px 64px 44px; gap:8px; align-items:center; font-size:12px; padding:5px 0; border-bottom:1px solid var(--border-well)">
+                <span class="mono" style="color:var(--text-muted)">3</span>
+                <span class="mono" style="font-weight:600; color:var(--text-ink)">PINHOLE</span>
+                <span class="mono" style="text-align:right">1.1%</span>
+                <div style="width:100%; height:5px; background:var(--bg-well); border-radius:var(--r-pill); overflow:hidden"><div style="height:100%; width:14%; background:var(--cobalt); border-radius:var(--r-pill)"></div></div>
+                <span class="mono" style="text-align:right; color:var(--text-muted)">14%</span>
+              </div>
+            </div>
+            <span class="card-link">View defect Pareto →</span>
+          </div>
+
+        </div>
+
+        <!-- ==================== ROW 2: STAGE-WISE MULTI-LINE ==================== -->
+        <div class="standard-card" onclick="openFloatingDetail({ title: 'Stage-wise Rejection Multi-Line', value: '4.99% Max', detail: 'Recomputed from raw ledger counts', insight: 'Each line is a station rejection rate over its own checked quantity; the Total line is the plant cumulative rule.' })">
+          <div class="card-head">
+            <div class="card-title">Stage-wise Rejection Trend (Monthly)</div>
+            <div class="card-sub">per-stage + Total line</div>
+          </div>
+          <svg width="100%" height="160" viewBox="0 0 900 160">
+            <line x1="0" y1="120" x2="900" y2="120" stroke="var(--border-well)" stroke-width="1"></line>
+            <polyline points="20,100 180,85 360,95 540,60 720,75 880,50" fill="none" stroke="var(--breach)" stroke-width="2.5"></polyline>
+            <polyline points="20,110 180,98 360,105 540,78 720,90 880,68" fill="none" stroke="var(--cobalt)" stroke-width="2" stroke-dasharray="4 3"></polyline>
+          </svg>
+        </div>
+
+        <!-- ==================== ROW 3: STAGE X SIZE HEATMAP ==================== -->
+        <div class="standard-card" onclick="openFloatingDetail({ title: 'Stage x Size Concentration Heatmap', value: '5.9% Hotspot', detail: 'Visual x Fr16 concentration', insight: 'Cross-concentration of scrap by station and French catheter gauge. Darker cells indicate quality hotspots.' })">
+          <div class="card-head">
+            <div class="card-title">Stage x Size Concentration Heatmap</div>
+            <div class="card-sub">Rejection rate % by stage and catheter gauge size</div>
+          </div>
+          <div class="heatmap-grid" style="display:grid; grid-template-columns: 120px repeat(4, 1fr); gap:6px; font-family:var(--font-mono); font-size:11.5px">
+            <div style="font-weight:500; color:var(--text-muted)">STATION</div>
+            <div style="text-align:right; font-weight:500; color:var(--text-muted)">Fr14</div>
+            <div style="text-align:right; font-weight:500; color:var(--text-muted)">Fr16</div>
+            <div style="text-align:right; font-weight:500; color:var(--text-muted)">Fr18</div>
+            <div style="text-align:right; font-weight:500; color:var(--text-muted)">Fr20</div>
+
+            <div style="font-weight:500; color:var(--text-ink)">Visual Insp.</div>
+            <div style="padding:6px 8px; border-radius:var(--r-well); text-align:right; background:var(--verified-subtle); color:var(--verified); font-weight:500">3.2%</div>
+            <div style="padding:6px 8px; border-radius:var(--r-well); text-align:right; background:var(--breach-subtle); color:var(--breach); font-weight:550">5.8%</div>
+            <div style="padding:6px 8px; border-radius:var(--r-well); text-align:right; background:var(--decide-subtle); color:var(--decide); font-weight:500">4.4%</div>
+            <div style="padding:6px 8px; border-radius:var(--r-well); text-align:right; background:var(--verified-subtle); color:var(--verified); font-weight:500">3.6%</div>
+
+            <div style="font-weight:500; color:var(--text-ink)">Eye Punching</div>
+            <div style="padding:6px 8px; border-radius:var(--r-well); text-align:right; background:var(--verified-subtle); color:var(--verified); font-weight:500">0.9%</div>
+            <div style="padding:6px 8px; border-radius:var(--r-well); text-align:right; background:var(--decide-subtle); color:var(--decide); font-weight:500">1.8%</div>
+            <div style="padding:6px 8px; border-radius:var(--r-well); text-align:right; background:var(--verified-subtle); color:var(--verified); font-weight:500">1.1%</div>
+            <div style="padding:6px 8px; border-radius:var(--r-well); text-align:right; background:var(--verified-subtle); color:var(--verified); font-weight:500">0.8%</div>
+          </div>
+        </div>
+
+        <!-- ==================== ROW 4: PRODUCTION FUNNEL ==================== -->
+        <div class="standard-card">
+          <div class="card-head">
+            <div class="card-title">Production Funnel Flow</div>
+            <div class="card-sub">13,562 units entered · First Pass Yield 91.93% · click a gate to investigate</div>
+          </div>
+          <div class="funnel-strip" style="display:grid; grid-template-columns: repeat(5, 1fr) 1.2fr; gap:8px">
+            <div class="funnel-gate" style="background:var(--bg-well); border-radius:var(--r-well); padding:10px 12px; cursor:pointer" onclick="openFloatingDetail({ title: 'Gate 1: Visual Inspection', value: '4.99%', detail: '678 units scrapped of 13,562 in', insight: 'Gate 1 carries the highest loss on the line.' })">
+              <div style="font-size:10px; font-family:var(--font-mono); text-transform:uppercase; color:var(--text-muted); display:flex; justify-content:space-between; align-items:center">
+                <span>1. Visual</span>
+                <span class="badge-pill badge-pill-breach" style="padding:0 4px; font-size:9px">High</span>
+              </div>
+              <div style="font-size:16px; font-weight:550; font-family:var(--font-sans); color:var(--text-ink); margin:2px 0">4.99%</div>
+              <div class="mono" style="font-size:10.5px; color:var(--text-secondary)">-678 units</div>
+            </div>
+
+            <div class="funnel-gate" style="background:var(--bg-well); border-radius:var(--r-well); padding:10px 12px; cursor:pointer" onclick="openFloatingDetail({ title: 'Gate 2: Eye Punching', value: '1.24%', detail: '160 units scrapped of 12,884 in', insight: 'Gate 2 performs within mechanical control limits.' })">
+              <div style="font-size:10px; font-family:var(--font-mono); text-transform:uppercase; color:var(--text-muted); display:flex; justify-content:space-between; align-items:center">
+                <span>2. Eye Punch</span>
+                <span class="badge-pill badge-pill-decide" style="padding:0 4px; font-size:9px">Watch</span>
+              </div>
+              <div style="font-size:16px; font-weight:550; font-family:var(--font-sans); color:var(--text-ink); margin:2px 0">1.24%</div>
+              <div class="mono" style="font-size:10.5px; color:var(--text-secondary)">-160 units</div>
+            </div>
+
+            <div class="funnel-gate" style="background:var(--bg-well); border-radius:var(--r-well); padding:10px 12px; cursor:pointer" onclick="openFloatingDetail({ title: 'Gate 3: Balloon Wipe', value: '0.86%', detail: '110 units scrapped', insight: 'Gate 3 assembly loss rate.' })">
+              <div style="font-size:10px; font-family:var(--font-mono); text-transform:uppercase; color:var(--text-muted)">3. Balloon</div>
+              <div style="font-size:16px; font-weight:550; font-family:var(--font-sans); color:var(--text-ink); margin:2px 0">0.86%</div>
+              <div class="mono" style="font-size:10.5px; color:var(--text-secondary)">-110 units</div>
+            </div>
+
+            <div class="funnel-gate" style="background:var(--bg-well); border-radius:var(--r-well); padding:10px 12px; cursor:pointer" onclick="openFloatingDetail({ title: 'Gate 4: Valve Integrity', value: '0.68%', detail: '86 units scrapped', insight: 'Gate 4 leak testing verification.' })">
+              <div style="font-size:10px; font-family:var(--font-mono); text-transform:uppercase; color:var(--text-muted)">4. Valve Test</div>
+              <div style="font-size:16px; font-weight:550; font-family:var(--font-sans); color:var(--text-ink); margin:2px 0">0.68%</div>
+              <div class="mono" style="font-size:10.5px; color:var(--text-secondary)">-86 units</div>
+            </div>
+
+            <div class="funnel-gate" style="background:var(--bg-well); border-radius:var(--r-well); padding:10px 12px; cursor:pointer" onclick="openFloatingDetail({ title: 'Gate 5: Final Packaging', value: '0.48%', detail: '61 units scrapped', insight: 'Gate 5 final packaging release QC.' })">
+              <div style="font-size:10px; font-family:var(--font-mono); text-transform:uppercase; color:var(--text-muted)">5. Final Pack</div>
+              <div style="font-size:16px; font-weight:550; font-family:var(--font-sans); color:var(--text-ink); margin:2px 0">0.48%</div>
+              <div class="mono" style="font-size:10.5px; color:var(--text-secondary)">-61 units</div>
+            </div>
+
+            <div class="funnel-gate" style="background:var(--verified-subtle); color:var(--verified); border-radius:var(--r-well); padding:10px 12px; border:1px solid rgba(16, 185, 129, 0.2)">
+              <div style="font-size:10px; font-family:var(--font-mono); text-transform:uppercase">Certified Output</div>
+              <div style="font-size:16px; font-weight:600; font-family:var(--font-sans); color:var(--text-ink); margin:2px 0">12,467</div>
+              <div class="mono" style="font-size:10.5px; color:var(--verified)">91.93% FPY</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==================== ROW 5: ACTIONABLE DECISION BANNER ==================== -->
+        <div style="display:flex; align-items:center; gap:12px; padding:12px 18px; border-radius:var(--r-pill); background:var(--decide-subtle); font-size:12.5px; color:var(--decide)">
+          <span><strong class="mono">Attention:</strong> Visual Inspection COAG defect rate exceeds plant threshold by +1.4% pt. 2 verification checks pending.</span>
+          <button class="btn-pill btn-pill-primary" style="margin-left:auto; font-size:11.5px; padding:5px 12px" onclick="openFloatingDetail({ title: 'CAPA Action Advisor — COAG Root Cause', value: 'CAPA-2025-0812', detail: 'Tank Temperature Deviation', insight: 'Recommended Action: Audit dipping tank temperature on Visual line and re-inspect lot 26G28-14.' })">Create CAPA →</button>
+        </div>
+
+      </div>
+
+    </main>
+
+  </div>
+
+  <!-- ==========================================================================
+       EXACT 1:1 FLOATING DETAIL MODAL (FloatingDetailModal.tsx with Bezier Beam)
+       ========================================================================== -->
+  <div id="floating-detail-modal" class="floating-modal-backdrop" onclick="closeFloatingModal()">
+    <div id="floating-modal-panel" class="floating-modal-panel" onclick="event.stopPropagation()">
+      
+      <!-- Modal Titlebar -->
+      <div class="modal-titlebar">
+        <div style="display:flex; align-items:center; gap:12px">
+          <span style="font-family:var(--font-mono); font-size:10px; font-weight:700; background:var(--text-ink); color:var(--bg-canvas); padding:3px 8px; border-radius:var(--r-pill)">MOID</span>
+          <span id="floating-title" style="font-size:18px; font-weight:700; color:var(--text-ink)">Metric Drill-down</span>
+          <span id="floating-value-badge" class="mono" style="font-size:13px; font-weight:700; color:var(--breach); background:var(--breach-subtle); padding:2px 8px; border-radius:var(--r-pill)">8.07%</span>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:10px">
+          <button id="toggle-source-btn" class="btn-pill" onclick="toggleSourceView()">
+            🔍 View Source
+          </button>
+          <button class="btn-pill" style="padding:6px 10px" onclick="closeFloatingModal()">✕</button>
+        </div>
+      </div>
+
+      <!-- Modal Body (Scrollable) -->
+      <div class="modal-body-scroll">
+        
+        <!-- Insight Accordion Callout -->
+        <div class="insight-callout">
+          <div class="insight-headline">Executive Diagnostic Insight</div>
+          <div id="floating-insight-text" class="insight-body">
+            Overall rejection rate is 8.07%, a 0.57% pt deviation above plant limit. Visual Inspection carries 61.9% of total rejections.
+          </div>
+        </div>
+
+        <!-- 1. Default Drill-down Chart Pane -->
+        <div id="drilldown-chart-pane" class="drilldown-chart-pane">
+          <div class="standard-card">
+            <div class="card-head">
+              <span class="card-title">Interactive Trend & Limit Analysis</span>
+              <span class="mono" style="font-size:11px; color:var(--text-secondary)">SPECIFICATION LIMIT: 7.50%</span>
+            </div>
+            <svg width="100%" height="240" viewBox="0 0 900 240">
+              <defs>
+                <linearGradient id="modalGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="var(--cobalt)" stop-opacity="0.25"></stop>
+                  <stop offset="100%" stop-color="var(--cobalt)" stop-opacity="0"></stop>
+                </linearGradient>
+              </defs>
+              <line x1="0" y1="100" x2="900" y2="100" stroke="var(--breach)" stroke-dasharray="4 4" stroke-width="1.5"></line>
+              <text x="820" y="92" fill="var(--breach)" font-family="var(--font-mono)" font-size="10" font-weight="700">LIMIT 7.5%</text>
+              <path d="M 20 140 L 160 115 L 320 135 L 480 85 L 640 110 L 800 65 L 880 75 L 880 240 L 20 240 Z" fill="url(#modalGrad)"></path>
+              <polyline points="20,140 160,115 320,135 480,85 640,110 800,65 880,75" fill="none" stroke="var(--cobalt)" stroke-width="3" stroke-linecap="round"></polyline>
+              <circle cx="800" cy="65" r="5" fill="var(--breach)" stroke="white" stroke-width="2"></circle>
+            </svg>
+          </div>
+        </div>
+
+        <!-- 2. Dual-Pane Source Ledger Explorer (With SVG Bezier Beam) -->
+        <div id="source-split-pane" class="source-split-pane">
+          
+          <!-- SVG Overlay for Bezier Beam -->
+          <svg id="bezier-beam-svg" class="bezier-overlay-svg"></svg>
+
+          <!-- Left Column: HOW IT ADDS UP & Computed Value Anchor -->
+          <div style="display:flex; flex-direction:column; gap:14px; position:relative; z-index:20">
+            
+            <div id="floating-computed-anchor" class="computed-value-box">
+              <div class="card-sub">COMPUTED METRIC VALUE</div>
+              <div id="floating-computed-val" class="mono" style="font-size:28px; font-weight:700; color:var(--text-ink)">8.07%</div>
+              <div id="floating-computed-detail" style="font-size:12px; color:var(--text-secondary)">1,095 rejected of 13,562 checked</div>
+            </div>
+
+            <div class="standard-card">
+              <div class="card-title" style="margin-bottom:8px">HOW IT ADDS UP</div>
+              <div id="floating-formula-hud" class="formula-hud-box">
+                Rejection Rate = (Total Rejections / Total Inflow Checked) × 100<br/>
+                = (1,095 / 13,562) × 100 = <strong style="color:var(--breach)">8.0740%</strong>
+              </div>
+              <div style="font-size:11.5px; color:var(--text-muted); margin-top:10px">
+                Deterministic calculation recomputed directly from append-only immutable ledger events.
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Right Column: Audited Ledger Table / Spreadsheet Cells -->
+          <div class="standard-card" style="position:relative; z-index:20">
+            
+            <!-- Table Header Toolbar -->
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px">
+              <div style="display:flex; gap:6px">
+                <button class="btn-pill surface-tab-btn active" onclick="switchSourceSurface('classified')">Classified Events (1,482)</button>
+                <button class="btn-pill surface-tab-btn" onclick="switchSourceSurface('spreadsheet')">Spreadsheet Cells (A1 Refs)</button>
+              </div>
+
+              <div style="display:flex; gap:6px">
+                <select class="pill-select" style="font-size:11px; padding:4px 10px">
+                  <option>All Stages</option>
+                  <option>Visual (P17)</option>
+                  <option>Eye Punch (P18)</option>
+                </select>
+                <select class="pill-select" style="font-size:11px; padding:4px 10px">
+                  <option>All Gauges</option>
+                  <option>Fr16</option>
+                  <option>Fr18</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Classified Events Table -->
+            <table id="classified-source-table" class="soft-table">
+              <thead>
+                <tr>
+                  <th>Event HASH</th>
+                  <th>Date & Shift</th>
+                  <th>Lot / Batch ID</th>
+                  <th>Station Gate</th>
+                  <th>Checked</th>
+                  <th>Rejected</th>
+                  <th>Gate Scrap %</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="ledger-source-row" onmouseenter="drawBezierBeam(this)">
+                  <td><strong class="mono" style="color:var(--cobalt)">#e3a9812f</strong></td>
+                  <td class="mono">2025-07-28 A</td>
+                  <td><strong class="mono">26G28-14</strong></td>
+                  <td>Visual (P17)</td>
+                  <td class="mono">500</td>
+                  <td class="mono" style="color:var(--breach); font-weight:600">35</td>
+                  <td class="mono" style="color:var(--breach); font-weight:700">7.00%</td>
+                </tr>
+                <tr onmouseenter="drawBezierBeam(this)">
+                  <td><strong class="mono" style="color:var(--cobalt)">#b7201c4a</strong></td>
+                  <td class="mono">2025-07-28 B</td>
+                  <td><strong class="mono">26G28-15</strong></td>
+                  <td>Visual (P17)</td>
+                  <td class="mono">620</td>
+                  <td class="mono" style="color:var(--breach); font-weight:600">58</td>
+                  <td class="mono" style="color:var(--breach); font-weight:700">9.35%</td>
+                </tr>
+                <tr onmouseenter="drawBezierBeam(this)">
+                  <td><strong class="mono" style="color:var(--cobalt)">#4f89be9d</strong></td>
+                  <td class="mono">2025-07-27 A</td>
+                  <td><strong class="mono">26G27-11</strong></td>
+                  <td>Visual (P17)</td>
+                  <td class="mono">480</td>
+                  <td class="mono" style="color:var(--verified); font-weight:600">32</td>
+                  <td class="mono" style="color:var(--verified); font-weight:700">6.67%</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <!-- Raw Spreadsheet Cells Table (A1 Coordinate Refs) -->
+            <table id="spreadsheet-source-table" class="soft-table" style="display:none">
+              <thead>
+                <tr>
+                  <th>Workbook File</th>
+                  <th>Sheet Tab</th>
+                  <th>Cell Ref (A1)</th>
+                  <th>Canonical Role</th>
+                  <th>Raw Cell Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr onmouseenter="drawBezierBeam(this)">
+                  <td><strong class="mono">Visual_July2025.xlsx</strong></td>
+                  <td>Visual_Size_Wise</td>
+                  <td><span class="mono" style="color:var(--cobalt); font-weight:700">Visual!G14</span></td>
+                  <td class="mono">checked_units</td>
+                  <td class="mono">500</td>
+                </tr>
+                <tr onmouseenter="drawBezierBeam(this)">
+                  <td><strong class="mono">Visual_July2025.xlsx</strong></td>
+                  <td>Visual_Size_Wise</td>
+                  <td><span class="mono" style="color:var(--cobalt); font-weight:700">Visual!H14</span></td>
+                  <td class="mono">accepted_units</td>
+                  <td class="mono">465</td>
+                </tr>
+                <tr onmouseenter="drawBezierBeam(this)">
+                  <td><strong class="mono">Visual_July2025.xlsx</strong></td>
+                  <td>Visual_Size_Wise</td>
+                  <td><span class="mono" style="color:var(--cobalt); font-weight:700">Visual!J14</span></td>
+                  <td class="mono">defect:COAG</td>
+                  <td class="mono" style="color:var(--breach); font-weight:700">18</td>
+                </tr>
+              </tbody>
+            </table>
+
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- Modal Footer -->
+      <div style="padding:14px 28px; border-top:1px solid var(--border-subtle); display:flex; justify-content:space-between; align-items:center; background:var(--bg-card); flex-shrink:0">
+        <div class="mono" style="font-size:11px; color:var(--text-muted)">
+          PROOF-HASH: sha256:7f92a10b4c89... · IMMUTABLE LEDGER TRACE
+        </div>
+        <div style="display:flex; gap:8px">
+          <button class="btn-pill" onclick="closeFloatingModal()">Close</button>
+          <button class="btn-pill btn-pill-primary" onclick="showToast('Exported verified proof JSON.'); closeFloatingModal()">Export Proof Pack</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Command Palette (⌘K) -->
+  <div id="command-palette-modal" class="floating-modal-backdrop" onclick="this.classList.remove('active')">
+    <div class="modal-box" style="max-width:540px; padding:16px" onclick="event.stopPropagation()">
+      <input type="text" placeholder="Type a command or jump to page... (e.g. 'Data Entry', 'Visual', 'Fr16')" style="width:100%; padding:10px 14px; font-size:14px; border-radius:var(--r-pill); border:1px solid var(--border-well); background:var(--bg-well); color:var(--text-ink); outline:none" />
+      <div style="display:flex; flex-direction:column; gap:4px; margin-top:10px">
+        <a href="index.html" class="nav-item"><span class="mono" style="font-size:10px; color:var(--cobalt); width:48px">DASH</span><span>Executive Dashboard</span></a>
+        <a href="data-entry.html" class="nav-item"><span class="mono" style="font-size:10px; color:var(--cobalt); width:48px">ENTRY</span><span>Shop-Floor Batch Data Entry</span></a>
+        <a href="staging.html" class="nav-item"><span class="mono" style="font-size:10px; color:var(--cobalt); width:48px">STAGE</span><span>Staging & File Ingestion</span></a>
+        <a href="stage-analysis.html" class="nav-item"><span class="mono" style="font-size:10px; color:var(--cobalt); width:48px">GATE</span><span>Stage Gate Diagnostics</span></a>
+        <a href="defect-analysis.html" class="nav-item"><span class="mono" style="font-size:10px; color:var(--cobalt); width:48px">PARETO</span><span>Defect Pareto Analysis</span></a>
+        <a href="audit.html" class="nav-item"><span class="mono" style="font-size:10px; color:var(--cobalt); width:48px">AUDIT</span><span>Cryptographic Ledger Audit</span></a>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
