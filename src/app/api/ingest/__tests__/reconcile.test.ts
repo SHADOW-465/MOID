@@ -6,6 +6,7 @@ import { POST } from "../route";
 import { NextRequest } from "next/server";
 import { getStores } from "@/lib/store";
 import type { StageDayRecord } from "@/lib/ingest/emit";
+import { authedHeaders, authedJsonHeaders } from "@/__tests__/fixtures/auth";
 
 function rec(overrides: Partial<StageDayRecord> = {}): StageDayRecord {
   return {
@@ -25,11 +26,13 @@ function rec(overrides: Partial<StageDayRecord> = {}): StageDayRecord {
   };
 }
 
-function post(records: StageDayRecord[], ingestionId: string) {
+async function post(records: StageDayRecord[], ingestionId: string) {
   return POST(
     new NextRequest("http://localhost/api/ingest", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      // Operator: the weakest role that may write. Passing as GM everywhere
+      // would prove the handler runs, not that it is correctly gated.
+      headers: await authedJsonHeaders("operator"),
       body: JSON.stringify({ ingestionId, fileName: "test", records }),
     }),
   );
@@ -127,7 +130,7 @@ describe("/api/manual-entries DELETE — beta erase", () => {
     const res = await DELETE(
       new NextRequest(
         "http://localhost/api/manual-entries?date=2026-08-01&shift=Data%20Entry&source=Direct%20Entry",
-        { method: "DELETE" },
+        { method: "DELETE", headers: await authedHeaders("gm") },
       ),
     );
     expect(res.status).toBe(200);
@@ -144,7 +147,7 @@ describe("/api/manual-entries DELETE — beta erase", () => {
     await DELETE(
       new NextRequest(
         "http://localhost/api/manual-entries?date=2026-08-05&shift=Data%20Entry&source=Direct%20Entry",
-        { method: "DELETE" },
+        { method: "DELETE", headers: await authedHeaders("gm") },
       ),
     );
 
@@ -170,7 +173,7 @@ describe("/api/manual-entries DELETE — beta erase", () => {
     const res = await DELETE(
       new NextRequest(
         "http://localhost/api/manual-entries?date=2026-08-10&shift=Day%20Shift&source=Direct%20Entry&batch=26G27-14",
-        { method: "DELETE" },
+        { method: "DELETE", headers: await authedHeaders("gm") },
       ),
     );
     expect(res.status).toBe(200);
@@ -198,7 +201,7 @@ describe("/api/manual-entries DELETE — beta erase", () => {
     const res = await DELETE(
       new NextRequest(
         "http://localhost/api/manual-entries?batch=26G27-14&source=Direct%20Entry",
-        { method: "DELETE" },
+        { method: "DELETE", headers: await authedHeaders("gm") },
       ),
     );
     expect(res.status).toBe(200);
@@ -239,7 +242,7 @@ describe("/api/manual-entries DELETE — beta erase", () => {
     await DELETE(
       new NextRequest(
         "http://localhost/api/manual-entries?date=2026-08-12&shift=Day%20Shift&source=Direct%20Entry&batch=26G27-14",
-        { method: "DELETE" },
+        { method: "DELETE", headers: await authedHeaders("gm") },
       ),
     );
 

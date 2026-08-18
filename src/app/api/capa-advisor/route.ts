@@ -6,6 +6,7 @@
 // verified figures passed in and proposes actions.
 
 import { NextRequest, NextResponse } from "next/server";
+import { requireSession } from "@/lib/auth/guard";
 import { generateText } from "ai";
 import { tryModels } from "@/lib/ai";
 
@@ -25,6 +26,9 @@ interface Msg {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireSession(req);
+  if (!auth.ok) return auth.response;
+
   try {
     const { recommendation, context, messages } = await req.json();
     const history: Msg[] = Array.isArray(messages) ? messages : [];

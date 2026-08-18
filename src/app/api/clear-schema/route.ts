@@ -3,11 +3,15 @@
 // Does not touch the event ledger or workbook snapshots.
 // Settings / Data Schema "Advanced · reset" posts here (typed confirmation).
 
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { requireCapability } from "@/lib/auth/guard";
 import { getCatalogStore } from "@/core/ontology/store/catalog-store";
 import { getKnowledgeStore } from "@/core/ontology/store/knowledge-store";
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+  const auth = await requireCapability(req, "configure");
+  if (!auth.ok) return auth.response;
+
   try {
     const company = process.env.MOID_COMPANY_ID || "default";
     await getCatalogStore().clear(company);

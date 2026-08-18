@@ -7,6 +7,7 @@ process.env.MOID_COMPANY_ID = "test-co";
 import * as fs from "fs";
 import * as path from "path";
 import { NextRequest } from "next/server";
+import { authedHeaders, authedJsonHeaders } from "@/__tests__/fixtures/auth";
 import { POST as uploadPOST } from "../route";
 import { POST as verifyPOST } from "../../mods/verify/route";
 import { POST as publishPOST, GET as modsGET } from "../../mods/route";
@@ -14,8 +15,8 @@ import { POST as publishPOST, GET as modsGET } from "../../mods/route";
 const CORPUS = path.join(process.cwd(), "DATA", "VISUAL INSPECTION REPORT 2025.xlsx");
 const maybe = fs.existsSync(CORPUS) ? describe : describe.skip;
 
-function jsonReq(url: string, body: unknown) {
-  return new NextRequest(url, { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" } });
+async function jsonReq(url: string, body: unknown) {
+  return new NextRequest(url, { method: "POST", body: JSON.stringify(body), headers: await authedJsonHeaders("gm") });
 }
 
 async function upload(): Promise<any> {
@@ -23,7 +24,7 @@ async function upload(): Promise<any> {
   const bytes = fs.readFileSync(CORPUS);
   form.append("file", new File([new Uint8Array(bytes)], "VISUAL INSPECTION REPORT 2025.xlsx"));
   form.append("llm", "off");
-  const res = await uploadPOST(new NextRequest("http://localhost/api/workbooks", { method: "POST", body: form }));
+  const res = await uploadPOST(new NextRequest("http://localhost/api/workbooks", { method: "POST", body: form, headers: await authedHeaders("operator") }));
   const data = await res.json();
   expect(res.status).toBe(200);
   return data;
@@ -51,21 +52,21 @@ maybe("MOD pipeline end-to-end (upload → verify → publish → learn → re-u
         ? { entityId: p.entityId, action: "override", canonical: "STAGE:visual", kind: "stage", comment: "it is the visual gate" }
         : { entityId: p.entityId, action: "accept", canonical: null, kind: null, comment: null },
     );
-    const vRes = await verifyPOST(jsonReq("http://localhost/api/mods/verify", { modId: mod.modId, version: 1, decisions }));
+    const vRes = await verifyPOST(await jsonReq("http://localhost/api/mods/verify", { modId: mod.modId, version: 1, decisions }));
     const vData = await vRes.json();
     expect(vRes.status).toBe(200);
     expect(vData.verifiedCount).toBe(mod.proposals.length);
     expect(vData.stages.map((s: any) => s.stageId)).toContain("visual");
 
     // 3. Publish: validator-gated, supersedes nothing (first version), learns.
-    const pRes = await publishPOST(jsonReq("http://localhost/api/mods", { modId: mod.modId, version: 1, verifiedBy: "qm" }));
+    const pRes = await publishPOST(await jsonReq("http://localhost/api/mods", { modId: mod.modId, version: 1, verifiedBy: "qm" }));
     const pData = await pRes.json();
     expect(pRes.status).toBe(200);
     expect(pData.status).toBe("verified");
     expect(pData.learnedMappings).toBeGreaterThan(0);
 
     // Draft can't be published twice.
-    const again = await publishPOST(jsonReq("http://localhost/api/mods", { modId: mod.modId, version: 1 }));
+    const again = await publishPOST(await jsonReq("http://localhost/api/mods", { modId: mod.modId, version: 1 }));
     expect(again.status).toBe(409);
 
     // 4. Re-upload the same file: new draft version of the SAME lineage, and

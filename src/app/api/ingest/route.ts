@@ -4,6 +4,7 @@
 // emit + append + check stage (MOID-SPEC §8/§9/§13).
 
 import { NextRequest, NextResponse } from "next/server";
+import { requireCapability } from "@/lib/auth/guard";
 import { emitMany, type StageDayRecord } from "@/lib/ingest/emit";
 import { checkRecord } from "@/lib/entry/validate-entry";
 import { massBalanceIssues } from "@/lib/ingest/mass-balance";
@@ -23,6 +24,9 @@ interface IngestBody {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireCapability(req, "write");
+  if (!auth.ok) return auth.response;
+
   try {
     const body = (await req.json()) as IngestBody;
     const records = body.records ?? [];
@@ -41,13 +45,29 @@ export async function POST(req: NextRequest) {
       };
     });
 
-    // Query existing events in the date range of the incoming records to check for conflicts
+    // Two different questions, two different candidate sets.
+    //
+    //   `existingEvents` — what else was recorded on THESE DAYS. Mass balance
+    //     and value-conflict reconciliation are both day-scoped, so they get
+    //     the window.
+    //   `allEffective`   — every effective event, whatever day it carries.
+    //     Supersede runs off IDENTITY (lot · station · pass), which is
+    //     deliberately date-free, so bounding it by the incoming dates meant a
+    //     revision filed on another day never found the row it was revising.
+    //     It was appended alongside instead, and the lot's counts doubled.
+    //
+    // One fetch, windowed in memory: both store adapters already load the full
+    // table and apply from/to in JS, so the window never saved a round trip.
     const dates = recordsWithComments.map(r => r.occurredOn.start);
     const from = dates.reduce((min, d) => d < min ? d : min, dates[0]);
     const to = dates.reduce((max, d) => d > max ? d : max, dates[0]);
 
     const { events: store, findings: findingsStore } = getStores();
-    const existingEvents = await store.effective({ from, to });
+    const allEffective = await store.effective({});
+    // Same predicate `effective({ from, to })` applies — fully inside the window.
+    const existingEvents = allEffective.filter(
+      (e) => e.occurredOn.start >= from && e.occurredOn.end <= to,
+    );
 
     // What each gate already passed forward, per lot. Direct entry submits ONE
     // station at a time, so without this the cross-stage check has nothing to
@@ -276,7 +296,10 @@ export async function POST(req: NextRequest) {
       const eventId = hashEvent({ eventType: "correction", occurredOn: e.occurredOn, provenance: e.provenance, payload });
       corrections.push(CorrectionEvent.parse({ eventId, schemaVersion: "1.0.0", ingestionId: body.ingestionId, occurredOn: e.occurredOn, provenance: e.provenance, confidence: { score: 1, basis: "exact" }, extractedBy: "ingest:auto-reconcile", recordedAt: new Date().toISOString(), supersededBy: null, eventType: "correction", ...payload }));
     };
-    for (const e of existingEvents as any[]) {
+    // Unbounded on purpose — see `allEffective` above. Rows with no lot code
+    // are unaffected: their key falls back to `nolot|date|…`, which still
+    // carries the date, so a payload for another day cannot match them.
+    for (const e of allEffective as any[]) {
       if (!PRIMARY.has(e.eventType)) continue;
       const ids = incomingByKey.get(sk(e));
       if (ids) {

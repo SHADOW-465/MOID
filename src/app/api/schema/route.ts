@@ -10,6 +10,7 @@
 // Workbook delete never touches this. Only Data Schema mutations do.
 
 import { NextRequest, NextResponse } from "next/server";
+import { requireCapability } from "@/lib/auth/guard";
 import { z } from "zod";
 import { StageDef, DefectDef, SizeDef } from "@/lib/contract/d1";
 import { EMPTY_REGISTRY } from "@/core/ontology/empty-registry";
@@ -269,6 +270,9 @@ const BodySchema = z.discriminatedUnion("action", [
 ]);
 
 export async function POST(req: NextRequest) {
+  const auth = await requireCapability(req, "configure");
+  if (!auth.ok) return auth.response;
+
   try {
     const company = companyId();
     const raw = await req.json();
@@ -401,6 +405,9 @@ export async function POST(req: NextRequest) {
 
 /** DELETE /api/schema?kind=stage|defect|size|mapping&id=… [&mappingKind=…] */
 export async function DELETE(req: NextRequest) {
+  const auth = await requireCapability(req, "configure");
+  if (!auth.ok) return auth.response;
+
   try {
     const kind = req.nextUrl.searchParams.get("kind");
     const id = req.nextUrl.searchParams.get("id");

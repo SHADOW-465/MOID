@@ -4,6 +4,7 @@
 // the publish that follows) makes a mapping real.
 
 import { NextRequest, NextResponse } from "next/server";
+import { requireCapability } from "@/lib/auth/guard";
 import { z } from "zod";
 import { VerificationDecision } from "@/shared/models/entities";
 import { getModStore } from "@/core/ontology/store/mod-store";
@@ -16,6 +17,9 @@ const Body = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const auth = await requireCapability(req, "write");
+  if (!auth.ok) return auth.response;
+
   try {
     const parsed = Body.safeParse(await req.json());
     if (!parsed.success) {

@@ -2,9 +2,16 @@
 // (GM, Owner, Operator). User picks a role on /login and enters that role's
 // password. Auth is always on — no env flag required.
 //
-// Session HMAC secret defaults in-code; override with MOID_AUTH_SECRET if
-// you need plant-specific token invalidation. Passwords default to the
-// pilot strings below; override with MOID_AUTH_PASSWORD_* if needed.
+// The built-in secret and passwords below are PUBLIC — they are in the repo.
+// Anyone with a checkout can mint a signed session for any role against a
+// deployment still using them, which makes every capability check downstream
+// decorative. They exist so a fresh clone runs; they are not credentials.
+//
+// So in production these are refused rather than silently used
+// (`assertProductionSecrets`). Failing closed is deliberate: a plant that
+// forgets MOID_AUTH_SECRET gets a loud, named error instead of a quality
+// system anyone can sign into as GM. Set MOID_ALLOW_DEFAULT_SECRETS=1 to
+// override — greppable, and an explicit choice rather than an accident.
 
 import {
   PERSONAS,
@@ -55,14 +62,66 @@ export type LoginOption = {
   homeHref: string;
 };
 
-/** Always returns a signing secret (env override or built-in default). */
+/** True when this process is a real deployment and has not opted out. */
+function productionSecretsRequired(): boolean {
+  return (
+    process.env.NODE_ENV === "production" &&
+    process.env.MOID_ALLOW_DEFAULT_SECRETS !== "1"
+  );
+}
+
+/** Names of the env vars a production deployment must set. */
+export function missingProductionSecrets(): string[] {
+  const missing: string[] = [];
+  if ((process.env.MOID_AUTH_SECRET ?? "").trim().length < 16) {
+    missing.push("MOID_AUTH_SECRET");
+  }
+  const shared = (process.env.MOID_AUTH_PASSWORD ?? "").trim();
+  for (const role of PRESET_LOGIN_IDS) {
+    const own = (process.env[`MOID_AUTH_PASSWORD_${role.toUpperCase()}`] ?? "").trim();
+    if (!own && !shared) missing.push(`MOID_AUTH_PASSWORD_${role.toUpperCase()}`);
+  }
+  return missing;
+}
+
+/**
+ * Fail closed in production rather than fall back to the repo's public
+ * constants. Called from the auth paths, never at module scope, so a build
+ * that only imports this file still succeeds.
+ */
+export function assertProductionSecrets(): void {
+  if (!productionSecretsRequired()) return;
+  const missing = missingProductionSecrets();
+  if (missing.length === 0) return;
+  throw new Error(
+    `Refusing to authenticate with built-in credentials. Set ${missing.join(", ")} ` +
+      `(these defaults are public in src/lib/auth/config.ts, so any checkout could ` +
+      `forge a GM session). Set MOID_ALLOW_DEFAULT_SECRETS=1 only for a throwaway demo.`,
+  );
+}
+
+/** Signing secret: env override, else the built-in default (dev only). */
 export function getAuthSecret(): string {
+  assertProductionSecrets();
   const s = (process.env.MOID_AUTH_SECRET ?? "").trim();
   return s.length >= 16 ? s : DEFAULT_AUTH_SECRET;
 }
 
+/** Length-independent, constant-time string compare. `!==` on a password
+ *  short-circuits at the first differing byte and leaks its position. */
+function secretEquals(a: string, b: string): boolean {
+  const ab = new TextEncoder().encode(a);
+  const bb = new TextEncoder().encode(b);
+  // Compare a fixed number of bytes so the loop count reveals no length.
+  let diff = ab.length ^ bb.length;
+  const n = Math.max(ab.length, bb.length, 1);
+  for (let i = 0; i < n; i++) diff |= (ab[i] ?? 0) ^ (bb[i] ?? 0);
+  return diff === 0;
+}
+
 /** Password for a preset role: env override, else default pilot password. */
 export function passwordForRole(role: PersonaId): string {
+  assertProductionSecrets();
   const envKeys: Record<PersonaId, string[]> = {
     gm: ["MOID_AUTH_PASSWORD_GM", "MOID_AUTH_PASSWORD"],
     owner: ["MOID_AUTH_PASSWORD_OWNER", "MOID_AUTH_PASSWORD"],
@@ -127,7 +186,7 @@ export function findUser(
     : aliases[u] ?? null;
   if (!role) return null;
   const user = getAuthUsers().find((x) => x.role === role);
-  if (!user || user.password !== password) return null;
+  if (!user || !secretEquals(user.password, password)) return null;
   return user;
 }
 

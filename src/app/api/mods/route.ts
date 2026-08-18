@@ -5,6 +5,7 @@
 //        gated), supersede the prior verified version, learn into knowledge.
 
 import { NextRequest, NextResponse } from "next/server";
+import { requireCapability } from "@/lib/auth/guard";
 import { getModStore } from "@/core/ontology/store/mod-store";
 import { getCatalogStore } from "@/core/ontology/store/catalog-store";
 import { validateModDocument } from "@/core/ontology/validate/mod-validator";
@@ -27,6 +28,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireCapability(req, "write");
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await req.json();
     const { modId, version, verifiedBy, acceptNovel } = body ?? {};

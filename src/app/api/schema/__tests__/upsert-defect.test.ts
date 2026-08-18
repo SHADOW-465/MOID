@@ -1,14 +1,15 @@
 process.env.MOID_STORE = "memory";
 
 import { NextRequest } from "next/server";
+import { authedJsonHeaders } from "@/__tests__/fixtures/auth";
 import { POST } from "../route";
 import { getCatalogStore } from "@/core/ontology/store/catalog-store";
 
-function post(body: unknown) {
+async function post(body: unknown) {
   return POST(
     new NextRequest("http://localhost/api/schema", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: await authedJsonHeaders("gm"),
       body: JSON.stringify(body),
     }),
   );

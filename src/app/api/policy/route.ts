@@ -10,6 +10,7 @@
 // in one round trip; this route owns writes, history, and plant baseline.
 
 import { NextRequest, NextResponse } from "next/server";
+import { requireCapability } from "@/lib/auth/guard";
 import { CalculationPolicy } from "@/core/policy/policy";
 import { getPolicyStore } from "@/core/policy/policy-store";
 
@@ -29,6 +30,9 @@ export async function GET() {
 }
 
 export async function PUT(req: NextRequest) {
+  const auth = await requireCapability(req, "configure");
+  if (!auth.ok) return auth.response;
+
   let body: unknown;
   try {
     body = await req.json();

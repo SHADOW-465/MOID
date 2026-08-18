@@ -3,6 +3,7 @@
 // Decision engine entry point (ADD §9, Phase 6).
 
 import { NextRequest, NextResponse } from "next/server";
+import { requireSession } from "@/lib/auth/guard";
 import { DecideRequest } from "@/shared/models/decision";
 import { getStores } from "@/lib/store";
 import { canonicalizeEvents } from "@/lib/analytics/canonical";
@@ -12,6 +13,9 @@ import { getModStore } from "@/core/ontology/store/mod-store";
 import type { Scope } from "@/lib/analytics/scope";
 
 export async function POST(req: NextRequest) {
+  const auth = await requireSession(req);
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await req.json();
     const parsed = DecideRequest.safeParse({

@@ -1,6 +1,7 @@
 // Operational notifications: entry exceptions + edit requests for the GM.
 
 import { NextRequest, NextResponse } from "next/server";
+import { requireSession } from "@/lib/auth/guard";
 import {
   createNotification,
   listNotifications,
@@ -10,7 +11,7 @@ import {
 import type { NotificationType } from "@/lib/notifications/types";
 import { issueGrant } from "@/lib/entry/edit-grants";
 import type { EditRequestPayload } from "@/lib/notifications/types";
-import { canApprove, isPersonaId } from "@/lib/persona";
+// Authority now comes from the session actor's capabilities (see guard.ts).
 
 export const runtime = "nodejs";
 
@@ -30,6 +31,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireSession(req);
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await req.json();
     if (!body?.type || !body?.title || !body?.body) {
@@ -39,7 +43,9 @@ export async function POST(req: NextRequest) {
       type: body.type,
       title: body.title,
       body: body.body,
-      createdBy: body.createdBy ?? "unknown",
+      // From the session, never the body: a client that names its own
+      // author can forge one.
+      createdBy: auth.actor.username,
       targetPersona: body.targetPersona ?? "gm",
       payload: body.payload ?? {},
     });
@@ -53,12 +59,18 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const auth = await requireSession(req);
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await req.json();
     const id = body?.id as string | undefined;
     const action = body?.action as "ack" | "approve" | "deny" | undefined;
-    const actorPersona = body?.actorPersona as string | undefined;
     const note = typeof body?.note === "string" ? body.note : undefined;
+    // The resolver is whoever holds the session. This used to be read off the
+    // request body, so an operator could approve their own edit request just by
+    // naming themselves GM in the payload — the check below was self-asserted.
+    const actorPersona = auth.actor.role;
 
     if (!id || !action) {
       return NextResponse.json({ error: "id and action required" }, { status: 400 });
@@ -67,8 +79,8 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "invalid action" }, { status: 400 });
     }
 
-    // Any resolution action requires GM approve capability (interim persona honesty).
-    if (!isPersonaId(actorPersona) || !canApprove(actorPersona)) {
+    // Any resolution action requires the approve capability (GM).
+    if (!auth.actor.capabilities.approve) {
       return NextResponse.json(
         { error: "Only GM may acknowledge, approve, or deny alerts" },
         { status: 403 },
@@ -101,7 +113,7 @@ export async function PATCH(req: NextRequest) {
       if (p?.entryKey) {
         grant = issueGrant({
           entryKey: p.entryKey,
-          approvedBy: actorPersona ?? "gm",
+          approvedBy: actorPersona,
           notificationId: id,
         });
       }

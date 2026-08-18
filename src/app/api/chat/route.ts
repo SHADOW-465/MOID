@@ -1,5 +1,6 @@
 // src/app/api/chat/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { requireSession } from "@/lib/auth/guard";
 import { generateObject, generateText } from "ai";
 import { tryModels } from "@/lib/ai";
 import { InsightSlideAnswerSchema } from "@/lib/schemas";
@@ -84,6 +85,9 @@ function buildPrompt(question: string, currentConfig: DashboardConfig): string {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireSession(req);
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await req.json();
     const { question, currentConfig, mode } = body as {

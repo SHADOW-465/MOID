@@ -4,6 +4,7 @@
 // waits for human verification (/api/mods/verify) and publication (/api/mods).
 
 import { NextRequest, NextResponse } from "next/server";
+import { requireCapability } from "@/lib/auth/guard";
 import { readWorkbookSnapshot } from "@/core/workbook/reader";
 import { getSnapshotStore } from "@/core/workbook/snapshot-store";
 import { buildProfilingTablesAssisted } from "@/core/profiler/assisted-profile";
@@ -58,6 +59,9 @@ export async function GET() {
  *
  *  Order: MOD lineage first (FK → snapshot), then snapshot. */
 export async function DELETE(req: NextRequest) {
+  const auth = await requireCapability(req, "configure");
+  if (!auth.ok) return auth.response;
+
   const snapshotId = req.nextUrl.searchParams.get("snapshotId");
   if (!snapshotId) {
     return NextResponse.json({ error: "snapshotId is required" }, { status: 400 });
@@ -78,6 +82,9 @@ export async function DELETE(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireCapability(req, "write");
+  if (!auth.ok) return auth.response;
+
   try {
     const form = await req.formData();
     const files = form.getAll("file").filter((f): f is File => f instanceof File);

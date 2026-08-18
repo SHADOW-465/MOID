@@ -1,8 +1,12 @@
 // src/app/api/clear-data/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { requireCapability } from "@/lib/auth/guard";
 import { createServerClient } from "@/lib/supabase";
 
 export async function POST(req: NextRequest) {
+  const auth = await requireCapability(req, "eraseLedger");
+  if (!auth.ok) return auth.response;
+
   try {
     const db = createServerClient();
 

@@ -7,14 +7,15 @@
 import * as fs from "fs";
 import * as path from "path";
 import { NextRequest } from "next/server";
+import { authedHeaders, authedJsonHeaders } from "@/__tests__/fixtures/auth";
 
 const CORPUS = path.join(process.cwd(), "DATA", "VISUAL INSPECTION REPORT 2025.xlsx");
 const maybe = fs.existsSync(CORPUS) ? describe : describe.skip;
 
-function jsonReq(url: string, body: unknown): NextRequest {
+async function jsonReq(url: string, body: unknown): Promise<NextRequest> {
   return new NextRequest(`http://localhost${url}`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: await authedJsonHeaders("gm"),
     body: JSON.stringify(body),
   });
 }
@@ -29,7 +30,7 @@ maybe("Phase 5a: MOD-only upload → verify → publish → extract → ingest",
     fd.append("file", new File([buf], "VISUAL INSPECTION REPORT 2025.xlsx"));
     fd.append("llm", "off");
     const workbooks = await import("@/app/api/workbooks/route");
-    const upRes = await workbooks.POST(new NextRequest("http://localhost/api/workbooks", { method: "POST", body: fd }));
+    const upRes = await workbooks.POST(new NextRequest("http://localhost/api/workbooks", { method: "POST", body: fd, headers: await authedHeaders("operator") }));
     expect(upRes.status).toBe(200);
     const { mods } = await upRes.json();
     expect(mods).toHaveLength(1);
@@ -42,18 +43,18 @@ maybe("Phase 5a: MOD-only upload → verify → publish → extract → ingest",
         : { entityId: p.entityId, action: "accept", canonical: null, kind: null, comment: null },
     );
     const verify = await import("@/app/api/mods/verify/route");
-    const vRes = await verify.POST(jsonReq("/api/mods/verify", { modId, version, decisions }));
+    const vRes = await verify.POST(await jsonReq("/api/mods/verify", { modId, version, decisions }));
     expect(vRes.status).toBe(200);
 
     // 3. Publish (validator-gated) — the company learns the mappings.
     const modsRoute = await import("@/app/api/mods/route");
-    const pRes = await modsRoute.POST(jsonReq("/api/mods", { modId, version }));
+    const pRes = await modsRoute.POST(await jsonReq("/api/mods", { modId, version }));
     expect(pRes.status).toBe(200);
     expect((await pRes.json()).learnedMappings).toBeGreaterThan(0);
 
     // 4. Extract records from the verified MOD + snapshot.
     const recordsRoute = await import("@/app/api/mods/records/route");
-    const rRes = await recordsRoute.POST(jsonReq("/api/mods/records", { modId, ingestionId: "phase5-test" }));
+    const rRes = await recordsRoute.POST(await jsonReq("/api/mods/records", { modId, ingestionId: "phase5-test" }));
     expect(rRes.status).toBe(200);
     const { records } = await rRes.json();
     expect(records.length).toBeGreaterThan(100);
@@ -63,7 +64,7 @@ maybe("Phase 5a: MOD-only upload → verify → publish → extract → ingest",
 
     // 5. Ingest into the ledger with the MOD catalog (no registry preset).
     const ingest = await import("@/app/api/ingest/route");
-    const iRes = await ingest.POST(jsonReq("/api/ingest", {
+    const iRes = await ingest.POST(await jsonReq("/api/ingest", {
       ingestionId: "phase5-test", fileName: "VISUAL INSPECTION REPORT 2025.xlsx",
       records, modId, modVersion: version,
     }));

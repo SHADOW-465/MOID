@@ -1,5 +1,6 @@
 // src/app/api/manual-entries/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { requireCapability } from "@/lib/auth/guard";
 import { getStores } from "@/lib/store";
 import { aggregate } from "@/lib/analytics/rejection";
 import {
@@ -144,6 +145,9 @@ export async function GET(req: NextRequest) {
  *     batch ID (used when the shift list no longer has the row but audit does).
  */
 export async function DELETE(req: NextRequest) {
+  const auth = await requireCapability(req, "eraseLedger");
+  if (!auth.ok) return auth.response;
+
   try {
     const { searchParams } = new URL(req.url);
     const ingestionId = searchParams.get("ingestionId");

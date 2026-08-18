@@ -7,6 +7,7 @@ import {
   passwordForRole,
   DEFAULT_AUTH_SECRET,
   DEFAULT_PRESET_PASSWORDS,
+  missingProductionSecrets,
 } from "../config";
 
 describe("preset role logins", () => {
@@ -51,5 +52,84 @@ describe("preset role logins", () => {
     process.env.MOID_AUTH_PASSWORD = "shared-plant";
     delete process.env.MOID_AUTH_PASSWORD_GM;
     expect(findUser("owner", "shared-plant")?.role).toBe("owner");
+  });
+});
+
+// The built-in secret and passwords are in the repo, so a deployment still
+// using them is forgeable by anyone with a checkout — every capability check
+// in guard.ts rests on the session being unforgeable. Production must refuse
+// them rather than quietly carry on.
+describe("production refuses the repo's public credentials", () => {
+  const prev = { ...process.env };
+  afterEach(() => {
+    process.env = { ...prev };
+  });
+
+  // NODE_ENV is typed readonly; tests legitimately need to simulate a build.
+  const setNodeEnv = (v: string) => {
+    (process.env as Record<string, string | undefined>).NODE_ENV = v;
+  };
+
+  const clearAuthEnv = () => {
+    delete process.env.MOID_AUTH_SECRET;
+    delete process.env.MOID_AUTH_PASSWORD;
+    for (const r of ["GM", "OWNER", "OPERATOR"]) delete process.env[`MOID_AUTH_PASSWORD_${r}`];
+  };
+
+  it("names every unset variable", () => {
+    clearAuthEnv();
+    expect(missingProductionSecrets()).toEqual([
+      "MOID_AUTH_SECRET",
+      "MOID_AUTH_PASSWORD_GM",
+      "MOID_AUTH_PASSWORD_OWNER",
+      "MOID_AUTH_PASSWORD_OPERATOR",
+    ]);
+  });
+
+  it("a shared MOID_AUTH_PASSWORD satisfies all three roles", () => {
+    clearAuthEnv();
+    process.env.MOID_AUTH_PASSWORD = "one-for-all";
+    expect(missingProductionSecrets()).toEqual(["MOID_AUTH_SECRET"]);
+  });
+
+  it("throws in production, naming the variable to set", () => {
+    clearAuthEnv();
+    setNodeEnv("production");
+    expect(() => getAuthSecret()).toThrow(/MOID_AUTH_SECRET/);
+    expect(() => passwordForRole("gm")).toThrow(/Refusing to authenticate/);
+  });
+
+  it("stays permissive in development so a fresh clone still runs", () => {
+    clearAuthEnv();
+    setNodeEnv("development");
+    expect(getAuthSecret()).toBe(DEFAULT_AUTH_SECRET);
+    expect(passwordForRole("gm")).toBe(DEFAULT_PRESET_PASSWORDS.gm);
+  });
+
+  it("MOID_ALLOW_DEFAULT_SECRETS=1 is an explicit, greppable opt-out", () => {
+    clearAuthEnv();
+    setNodeEnv("production");
+    process.env.MOID_ALLOW_DEFAULT_SECRETS = "1";
+    expect(getAuthSecret()).toBe(DEFAULT_AUTH_SECRET);
+  });
+
+  it("a fully configured production deployment does not throw", () => {
+    clearAuthEnv();
+    setNodeEnv("production");
+    process.env.MOID_AUTH_SECRET = "a-real-secret-well-over-16-chars";
+    process.env.MOID_AUTH_PASSWORD = "a-real-password";
+    expect(() => getAuthSecret()).not.toThrow();
+    expect(findUser("gm", "a-real-password")?.role).toBe("gm");
+    expect(findUser("gm", DEFAULT_PRESET_PASSWORDS.gm)).toBeNull();
+  });
+});
+
+describe("password comparison", () => {
+  it("rejects a prefix of the real password", () => {
+    process.env.MOID_AUTH_PASSWORD_GM = "correct-horse-battery";
+    expect(findUser("gm", "correct-horse-batter")).toBeNull();
+    expect(findUser("gm", "correct-horse-batteryX")).toBeNull();
+    expect(findUser("gm", "")).toBeNull();
+    expect(findUser("gm", "correct-horse-battery")?.role).toBe("gm");
   });
 });

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireCapability } from "@/lib/auth/guard";
 import { getStores } from "@/lib/store";
 import { parseEntryPackage } from "@/lib/transfer/entry-package";
 
@@ -8,6 +9,9 @@ import { parseEntryPackage } from "@/lib/transfer/entry-package";
  * Appends events idempotently (same eventId → dedupe).
  */
 export async function POST(req: NextRequest) {
+  const auth = await requireCapability(req, "write");
+  if (!auth.ok) return auth.response;
+
   try {
     let raw: unknown;
     try {
