@@ -1,0 +1,2132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MO!D (RAIS-Pro) — Enterprise Manufacturing Intelligence OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --canvas: #EBEFF3;
+  --rail: #E4E9EF;
+  --surface: #FFFFFF;
+  --well: #EEF1F5;
+  --tile: #F5F7FA;
+  --line: rgba(19, 26, 34, 0.09);
+  --line2: #DAE0E7;
+  --ink: #101519;
+  --ink2: #3C444C;
+  --muted: #59636F;
+  --faint: #6C7784;
+  --brand: #2B54D6;
+  --brand-ink: #FFFFFF;
+  --brand-weak: #E7EDFC;
+  --verified: #0F7B63;
+  --verified-weak: #E1F1EC;
+  --decide: #A96A0E;
+  --decide-weak: #F8EEDC;
+  --decide-ink: #7A4E08;
+  --breach: #B4342A;
+  --breach-weak: #FAEAE8;
+  --on-status: #FFFFFF;
+  --sh1: 0 1px 2px rgba(16, 21, 25, 0.05);
+  --sh2: 0 6px 18px -6px rgba(16, 21, 25, 0.14);
+  --inset: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --r-card: 22px;
+  --r-well: 16px;
+  --r-tile: 14px;
+  --sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+[data-theme="dark"] {
+  --canvas: #14161A;
+  --rail: #171A1F;
+  --surface: #1B1E23;
+  --well: #22262C;
+  --tile: #1F2429;
+  --line: rgba(255, 255, 255, 0.08);
+  --line2: rgba(255, 255, 255, 0.14);
+  --ink: #F2F4F6;
+  --ink2: #D7DBE0;
+  --muted: #A8B0B8;
+  --faint: #7E868E;
+  --brand: #6FE3B4;
+  --brand-ink: #14161A;
+  --brand-weak: rgba(111, 227, 180, 0.14);
+  --verified: #6FE3B4;
+  --verified-weak: rgba(111, 227, 180, 0.13);
+  --decide: #F0B429;
+  --decide-weak: rgba(240, 180, 41, 0.13);
+  --decide-ink: #E8CE95;
+  --breach: #FF7A6B;
+  --breach-weak: rgba(255, 122, 107, 0.13);
+  --on-status: #14161A;
+  --sh1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --sh2: 0 10px 26px -10px rgba(0, 0, 0, 0.7);
+  --inset: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: #D9DDE2;
+  font-family: var(--sans);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+@keyframes fu { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes fi { from { opacity: 0; } to { opacity: 1; } }
+@keyframes dr { from { stroke-dashoffset: 900; } to { stroke-dashoffset: 0; } }
+@keyframes gw { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes gh { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes bl { 0%, 100% { opacity: 1; } 50% { opacity: 0.32; } }
+@keyframes cnt { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+
+.hvr-tile:hover { background: var(--tile) !important; }
+.hvr-sh:hover { box-shadow: 0 0 0 1px var(--line2) !important; }
+.hvr-tr-x:hover { transform: translateX(2px) !important; }
+.hvr-tr-y:hover { transform: translateY(-1px) !important; }
+.hvr-op:hover { opacity: 0.88 !important; }
+.hvr-op-bar:hover { opacity: 0.75 !important; }
+.hvr-rot:hover { transform: rotate(-18deg) !important; }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.14); border-radius: 999px; }
+[data-theme="light"] ::-webkit-scrollbar-thumb { background: rgba(16, 21, 25, 0.14); }
+
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(4, 6, 9, 0.75); backdrop-filter: blur(6px);
+  display: none; place-items: center; z-index: 999; padding: 24px;
+}
+.modal-overlay.active { display: grid; }
+.modal-card {
+  width: 100%; max-width: 740px; max-height: 88vh; overflow-y: auto; background: var(--surface);
+  border-radius: var(--r-card); box-shadow: var(--sh2); padding: 26px 30px; border: 1px solid var(--line);
+  animation: fu 220ms cubic-bezier(.2, .8, .2, 1) both;
+}
+
+.toast-box {
+  position: fixed; bottom: 20px; right: 20px; z-index: 1000; display: flex; flex-direction: column; gap: 8px;
+}
+.toast-msg {
+  background: var(--surface); color: var(--ink); border: 1px solid var(--line);
+  font-family: var(--mono); font-size: 11.5px; padding: 8px 14px; border-radius: 999px;
+  box-shadow: var(--sh2); display: flex; align-items: center; gap: 8px; animation: fu 180ms ease both;
+}
+</style>
+</head>
+<body data-theme="dark">
+
+<div id="app-frame" style="width:1440px;height:920px;background:var(--canvas);color:var(--ink);display:grid;grid-template-columns:240px 1fr;overflow:hidden;font-family:var(--sans);transition:background 260ms ease">
+
+  <!-- ==================== LEFT SIDEBAR RAIL ==================== -->
+  <aside style="background:var(--rail);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:16px 12px 12px">
+    
+    <div style="display:flex;align-items:center;gap:10px;padding:2px 8px 18px">
+      <div style="width:28px;height:28px;border-radius:999px;background:var(--ink);color:var(--canvas);display:grid;place-items:center;font:600 12px var(--sans)">M</div>
+      <div style="display:flex;flex-direction:column;line-height:1.2">
+        <span style="font:600 13.5px var(--sans);letter-spacing:-.015em">MO!D</span>
+        <span style="font:400 10.5px var(--mono);color:var(--muted)">Disposafe · FBC line</span>
+      </div>
+    </div>
+
+    <!-- Section 1: Today -->
+    <div style="font:500 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--faint);padding:0 10px 8px">Today</div>
+    <div style="display:flex;flex-direction:column;gap:3px;margin-bottom:16px">
+      <div id="nav-home" class="hvr-tile" role="button" tabindex="0" onclick="go('home')" style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:999px;cursor:pointer;background:var(--surface);box-shadow:var(--sh1);font-weight:600;transition:background 170ms cubic-bezier(.2,.8,.2,1)">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--brand);flex:none"><path d="M2 12.4 6 6.2l3 3 5-6.4"/><path d="M2 14h12"/></svg>
+        <span style="font-size:12.5px">Where we stand</span>
+      </div>
+      <div id="nav-entry" class="hvr-tile" role="button" tabindex="0" onclick="go('entry')" style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:999px;cursor:pointer;background:transparent;box-shadow:none;font-weight:400;transition:background 170ms cubic-bezier(.2,.8,.2,1)">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--muted);flex:none"><rect x="2.5" y="2.6" width="11" height="10.8" rx="3"/><path d="M8 6v4.6M5.7 8.3h4.6"/></svg>
+        <span style="font-size:12.5px">Log production</span>
+      </div>
+      <div id="nav-decide" class="hvr-tile" role="button" tabindex="0" onclick="go('decide')" style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:999px;cursor:pointer;background:transparent;box-shadow:none;font-weight:400;transition:background 170ms cubic-bezier(.2,.8,.2,1)">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--decide)" stroke-width="1.5" style="flex:none"><path d="M8 2.8 14 13.2H2Z" stroke-linejoin="round"/><path d="M8 6.6v3M8 11.2v.6"/></svg>
+        <span style="font-size:12.5px">Needs a decision</span>
+        <span style="margin-left:auto;font:500 10px var(--mono);background:var(--decide);color:var(--on-status);border-radius:999px;padding:2px 7px;animation:bl 2.6s ease-in-out infinite">2</span>
+      </div>
+    </div>
+
+    <!-- Section 2: Find the cause -->
+    <div style="font:500 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--faint);padding:0 10px 8px">Find the cause</div>
+    <div style="display:flex;flex-direction:column;gap:2px;margin-bottom:16px">
+      <div id="nav-gate" class="hvr-tile" role="button" tabindex="0" onclick="go('gate')" style="display:flex;flex-direction:column;padding:7px 11px;border-radius:999px;cursor:pointer;background:transparent;box-shadow:none;transition:background 170ms">
+        <span style="font:500 12.5px var(--sans);color:var(--ink)">By gate</span>
+        <span style="font:400 10px var(--mono);color:var(--muted)">which station loses units</span>
+      </div>
+      <div id="nav-size" class="hvr-tile" role="button" tabindex="0" onclick="go('size')" style="display:flex;flex-direction:column;padding:7px 11px;border-radius:999px;cursor:pointer;background:transparent;box-shadow:none;transition:background 170ms">
+        <span style="font:500 12.5px var(--sans);color:var(--ink)">By size</span>
+        <span style="font:400 10px var(--mono);color:var(--muted)">Fr concentration</span>
+      </div>
+      <div id="nav-defect" class="hvr-tile" role="button" tabindex="0" onclick="go('defect')" style="display:flex;flex-direction:column;padding:7px 11px;border-radius:999px;cursor:pointer;background:transparent;box-shadow:none;transition:background 170ms">
+        <span style="font:500 12.5px var(--sans);color:var(--ink)">By defect</span>
+        <span style="font:400 10px var(--mono);color:var(--muted)">top codes, Pareto</span>
+      </div>
+      <div id="nav-stability" class="hvr-tile" role="button" tabindex="0" onclick="go('stability')" style="display:flex;flex-direction:column;padding:7px 11px;border-radius:999px;cursor:pointer;background:transparent;box-shadow:none;transition:background 170ms">
+        <span style="font:500 12.5px var(--sans);color:var(--ink)">Stability</span>
+        <span style="font:400 10px var(--mono);color:var(--muted)">control limits</span>
+      </div>
+      <div id="nav-cost" class="hvr-tile" role="button" tabindex="0" onclick="go('cost')" style="display:flex;flex-direction:column;padding:7px 11px;border-radius:999px;cursor:pointer;background:transparent;box-shadow:none;transition:background 170ms">
+        <span style="font:500 12.5px var(--sans);color:var(--ink)">Cost of quality</span>
+        <span style="font:400 10px var(--mono);color:var(--muted)">₹ per gate, savings</span>
+      </div>
+    </div>
+
+    <!-- Section 3: Own & prove -->
+    <div style="font:500 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--faint);padding:0 10px 8px">Own &amp; prove</div>
+    <div style="display:flex;flex-direction:column;gap:2px">
+      <div id="nav-capa" class="hvr-tile" role="button" tabindex="0" onclick="go('capa')" style="display:flex;align-items:center;gap:10px;padding:8px 11px;border-radius:999px;cursor:pointer;background:transparent;box-shadow:none;transition:background 170ms">
+        <span style="font:500 12.5px var(--sans)">Actions</span>
+        <span style="margin-left:auto;font:500 10px var(--mono);background:var(--well);color:var(--ink2);border-radius:999px;padding:2px 7px">3</span>
+      </div>
+      <div id="nav-reports" class="hvr-tile" role="button" tabindex="0" onclick="go('reports')" style="display:flex;align-items:center;padding:8px 11px;border-radius:999px;cursor:pointer;background:transparent;box-shadow:none;font:500 12.5px var(--sans);transition:background 170ms">Reports</div>
+      <div id="nav-audit" class="hvr-tile" role="button" tabindex="0" onclick="go('audit')" style="display:flex;align-items:center;padding:8px 11px;border-radius:999px;cursor:pointer;background:transparent;box-shadow:none;font:500 12.5px var(--sans);transition:background 170ms">Audit trail</div>
+    </div>
+
+    <!-- Collapsible Admin -->
+    <div class="hvr-tile" role="button" tabindex="0" onclick="toggleAdmin()" style="margin-top:14px;display:flex;align-items:center;gap:8px;padding:8px 11px;border-radius:999px;cursor:pointer;font:400 11.5px var(--sans);color:var(--muted);transition:background 170ms">
+      <span id="admin-glyph" style="font:500 11px var(--mono);color:var(--faint);width:9px">+</span> Admin &amp; setup
+    </div>
+    <div id="admin-menu" style="display:none;flex-direction:column;gap:1px;padding-left:14px;animation:fu 190ms cubic-bezier(.2,.8,.2,1) both">
+      <div class="hvr-tile" style="padding:6px 11px;border-radius:999px;font:400 11.5px var(--sans);color:var(--muted);cursor:pointer;transition:background 170ms" onclick="showToast('Import Excel pipeline open')">Import Excel</div>
+      <div class="hvr-tile" style="padding:6px 11px;border-radius:999px;font:400 11.5px var(--sans);color:var(--muted);cursor:pointer;transition:background 170ms" onclick="showToast('File provenance lineage active')">Files &amp; lineage</div>
+      <div class="hvr-tile" style="padding:6px 11px;border-radius:999px;font:400 11.5px var(--sans);color:var(--muted);cursor:pointer;transition:background 170ms" onclick="showToast('Plant schema ontology loaded')">Plant schema</div>
+      <div class="hvr-tile" style="padding:6px 11px;border-radius:999px;font:400 11.5px var(--sans);color:var(--muted);cursor:pointer;transition:background 170ms" onclick="showToast('Costs & targets loaded')">Costs &amp; targets</div>
+    </div>
+
+    <!-- User Profile & Theme Toggle -->
+    <div style="margin-top:auto;padding-top:12px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px">
+      <div style="width:28px;height:28px;border-radius:999px;background:var(--well);border:1px solid var(--line2);display:grid;place-items:center;font:500 11px var(--mono)">G</div>
+      <div style="display:flex;flex-direction:column;line-height:1.25">
+        <span style="font:600 11.5px var(--sans)">GM</span>
+        <span style="font:400 10px var(--mono);color:var(--muted)">signed in</span>
+      </div>
+      <div class="hvr-rot" role="button" tabindex="0" onclick="toggleTheme()" title="Toggle dark mode" style="margin-left:auto;width:30px;height:30px;border-radius:999px;background:var(--surface);box-shadow:var(--sh1);display:grid;place-items:center;cursor:pointer;transition:transform 200ms cubic-bezier(.2,.8,.2,1)">
+        <span id="theme-glyph" style="font:500 12px var(--mono);color:var(--ink2)">☀</span>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ==================== MAIN WORKSPACE ==================== -->
+  <div style="display:flex;flex-direction:column;min-width:0;overflow:hidden">
+
+    <!-- Topbar Header -->
+    <header style="height:60px;flex:none;display:flex;align-items:center;gap:12px;padding:0 24px;background:var(--canvas);border-bottom:1px solid var(--line)">
+      <div style="display:flex;flex-direction:column;line-height:1.25;min-width:0">
+        <span id="top-title" style="font:600 15px var(--sans);letter-spacing:-.02em">Where we stand</span>
+        <span id="top-question" style="font:400 11px var(--sans);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Are we okay this month — and what is it costing us?</span>
+      </div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:7px">
+        <div class="hvr-sh" style="display:flex;align-items:center;gap:7px;height:32px;padding:0 13px;border-radius:999px;background:var(--surface);box-shadow:var(--sh1);font:400 11.5px var(--mono);cursor:pointer;transition:box-shadow 170ms" onclick="showToast('Date range: 1–12 Aug 2026')">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--muted)" stroke-width="1.4"><rect x="2.4" y="3.4" width="11.2" height="10.2" rx="3"/><path d="M2.4 6.5h11.2M5.6 2.2v2.4M10.4 2.2v2.4"/></svg>
+          1–12 Aug 2026
+        </div>
+        <div style="display:flex;align-items:center;background:var(--well);border-radius:999px;padding:3px;font:500 11px var(--mono)">
+          <span class="hvr-tile" style="padding:6px 11px;border-radius:999px;color:var(--muted);cursor:pointer;transition:background 170ms" onclick="showToast('Daily grain active')">D</span>
+          <span class="hvr-tile" style="padding:6px 11px;border-radius:999px;color:var(--muted);cursor:pointer;transition:background 170ms" onclick="showToast('Weekly grain active')">W</span>
+          <span style="padding:6px 11px;border-radius:999px;background:var(--surface);color:var(--ink);box-shadow:var(--sh1);cursor:pointer">M</span>
+          <span class="hvr-tile" style="padding:6px 11px;border-radius:999px;color:var(--muted);cursor:pointer;transition:background 170ms" onclick="showToast('Financial Year grain active')">FY</span>
+        </div>
+        <div class="hvr-sh" style="display:flex;align-items:center;gap:8px;height:32px;padding:0 13px;border-radius:999px;background:var(--surface);box-shadow:var(--sh1);font:400 11.5px var(--sans);cursor:pointer;transition:box-shadow 170ms" onclick="showToast('Scope: Assembly · all sizes')">
+          Assembly · all sizes
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="var(--faint)" stroke-width="1.8"><path d="M4 6.5 8 10.5l4-4"/></svg>
+        </div>
+        <div style="width:1px;height:20px;background:var(--line2)"></div>
+        <div class="hvr-sh" role="button" tabindex="0" onclick="toggleJump()" style="display:flex;align-items:center;gap:8px;height:32px;padding:0 12px;border-radius:999px;background:var(--surface);box-shadow:var(--sh1);font:400 11.5px var(--sans);color:var(--ink2);cursor:pointer;transition:box-shadow 170ms">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--muted)" stroke-width="1.6"><circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2 14 14"/></svg>
+          Jump
+          <span style="font:400 9.5px var(--mono);color:var(--faint);background:var(--well);border-radius:999px;padding:2px 6px">⌘K</span>
+        </div>
+        <div class="hvr-tr-y" role="button" tabindex="0" onclick="openProofModal()" style="height:32px;padding:0 15px;border-radius:999px;background:var(--brand);color:var(--brand-ink);display:flex;align-items:center;font:600 11.5px var(--sans);cursor:pointer;transition:opacity 170ms,transform 170ms cubic-bezier(.2,.8,.2,1)">Proof pack</div>
+      </div>
+    </header>
+
+    <!-- Scroll Viewport -->
+    <main style="flex:1;overflow-y:auto;padding:20px 24px 28px">
+
+      <!-- ==================== SCREEN 1: WHERE WE STAND (MAIN DASHBOARD) ==================== -->
+      <div id="screen-home" style="display:flex;flex-direction:column;gap:16px;animation:fi 220ms ease both">
+
+        <!-- 1. Executive Verdict Card -->
+        <div style="background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:24px 26px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+            <span style="display:inline-flex;align-items:center;gap:8px;font:600 11px var(--sans);letter-spacing:.02em;color:var(--decide);background:var(--decide-weak);border-radius:999px;padding:6px 12px">
+              <span style="width:6px;height:6px;border-radius:999px;background:var(--decide);animation:bl 2.6s ease-in-out infinite"></span>
+              Inside target · 2 checks open
+            </span>
+            <span style="font:500 11px var(--mono);color:var(--muted)">Assembly · Aug 1–12 · vs Jul 2.71% · plant target 3.00%</span>
+            <span style="margin-left:auto;font:500 11px var(--mono);color:var(--faint)">1,284 events · recomputed 2h ago</span>
+          </div>
+
+          <div style="font:600 29px/1.34 var(--sans);letter-spacing:-.03em;max-width:920px;text-wrap:pretty">
+            Rejection is <span style="color:var(--verified)">2.30%</span> — better than July and inside target. Visual carries <span style="border-bottom:2px solid var(--decide)">62% of the loss</span>, and two batches still don't balance.
+          </div>
+
+          <!-- 5-Well KPI Tile Row -->
+          <div style="display:grid;grid-template-columns:repeat(5, minmax(0, 1fr));gap:12px;margin-top:20px">
+            
+            <!-- KPI 1: Overall Rejection -->
+            <div class="hvr-tr-y" style="background:var(--well);border-radius:var(--r-tile);padding:14px 16px;box-shadow:var(--inset);cursor:pointer;transition:transform 180ms cubic-bezier(.2,.8,.2,1)" onclick="openProvenance('Overall Rejection Rate', '2.30% (9,504 rejected of 412,860 checked)')">
+              <div style="display:flex;align-items:baseline;justify-content:space-between">
+                <span style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">Rejection rate</span>
+                <span style="font:500 10px var(--mono);color:var(--verified)">● Good</span>
+              </div>
+              <div style="font:600 26px var(--mono);letter-spacing:-.04em;margin-top:6px;animation:cnt 400ms cubic-bezier(.2,.8,.2,1) both">2.30%</div>
+              <div style="font:500 11px var(--mono);color:var(--verified);margin-top:3px">▼ 0.41 pt vs Jul (2.71%)</div>
+            </div>
+
+            <!-- KPI 2: First Pass Yield -->
+            <div class="hvr-tr-y" style="background:var(--well);border-radius:var(--r-tile);padding:14px 16px;box-shadow:var(--inset);cursor:pointer;transition:transform 180ms cubic-bezier(.2,.8,.2,1)" onclick="openProvenance('First Pass Yield', '96.4% across 4 production gates')">
+              <div style="display:flex;align-items:baseline;justify-content:space-between">
+                <span style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">First pass yield</span>
+                <span style="font:500 10px var(--mono);color:var(--verified)">● 96.4%</span>
+              </div>
+              <div style="font:600 26px var(--mono);letter-spacing:-.04em;margin-top:6px;animation:cnt 400ms 60ms cubic-bezier(.2,.8,.2,1) both">96.4%</div>
+              <div style="font:500 11px var(--mono);color:var(--verified);margin-top:3px">▲ 0.4 pt vs Jul (96.0%)</div>
+            </div>
+
+            <!-- KPI 3: Top Rejecting Stage -->
+            <div class="hvr-tr-y" style="background:var(--well);border-radius:var(--r-tile);padding:14px 16px;box-shadow:var(--inset);cursor:pointer;transition:transform 180ms cubic-bezier(.2,.8,.2,1)" onclick="openProvenance('Top Rejecting Stage (Visual P17)', '5,932 rejected units')">
+              <div style="display:flex;align-items:baseline;justify-content:space-between">
+                <span style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">Worst Stage</span>
+                <span style="font:500 10px var(--mono);color:var(--breach)">● 62% loss</span>
+              </div>
+              <div style="font:600 20px var(--sans);letter-spacing:-.02em;margin-top:8px;animation:cnt 400ms 120ms cubic-bezier(.2,.8,.2,1) both;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Visual (P17)</div>
+              <div style="font:500 11px var(--mono);color:var(--breach);margin-top:5px">1.44% rej rate (5,932 u)</div>
+            </div>
+
+            <!-- KPI 4: Top Defect -->
+            <div class="hvr-tr-y" style="background:var(--well);border-radius:var(--r-tile);padding:14px 16px;box-shadow:var(--inset);cursor:pointer;transition:transform 180ms cubic-bezier(.2,.8,.2,1)" onclick="openProvenance('Top Defect (COAG)', '1,842 units in Visual')">
+              <div style="display:flex;align-items:baseline;justify-content:space-between">
+                <span style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">Top Defect</span>
+                <span style="font:500 10px var(--mono);color:var(--decide)">● 31% share</span>
+              </div>
+              <div style="font:600 26px var(--mono);letter-spacing:-.04em;margin-top:6px;animation:cnt 400ms 180ms cubic-bezier(.2,.8,.2,1) both">COAG</div>
+              <div style="font:500 11px var(--mono);color:var(--decide);margin-top:3px">1,842 u · 3 mo rising</div>
+            </div>
+
+            <!-- KPI 5: COPQ & Six-Month Sparkline -->
+            <div class="hvr-tr-y" style="background:var(--well);border-radius:var(--r-tile);padding:14px 16px;box-shadow:var(--inset);cursor:pointer;transition:transform 180ms cubic-bezier(.2,.8,.2,1)" onclick="openProvenance('Cost of Poor Quality', '₹18.4L loaded scrap')">
+              <div style="display:flex;align-items:baseline;justify-content:space-between">
+                <span style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">COPQ (Scrap)</span>
+                <span style="font:500 10px var(--mono);color:var(--faint)">₹194/u</span>
+              </div>
+              <div style="font:600 26px var(--mono);letter-spacing:-.04em;margin-top:6px;animation:cnt 400ms 240ms cubic-bezier(.2,.8,.2,1) both">₹18.4L</div>
+              <div style="font:500 11px var(--mono);color:var(--decide);margin-top:3px">₹6.2L addressable</div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- 2. Adjudication Warning Strip -->
+        <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:999px;background:var(--decide-weak)">
+          <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="var(--decide)" stroke-width="1.5" style="flex:none"><path d="M8 2.8 14 13.2H2Z" stroke-linejoin="round"/><path d="M8 6.6v3M8 11.2v.6"/></svg>
+          <span style="font:400 12.5px/1.5 var(--sans);color:var(--decide-ink)">
+            <strong style="font-weight:600">Two batches need your call before this verdict is final.</strong> FBC-16-0812 logs 214 defects against 209 rejects; its units are held out of every number above.
+          </span>
+          <span class="hvr-op" role="button" tabindex="0" onclick="go('decide')" style="margin-left:auto;font:600 11.5px var(--sans);color:var(--on-status);background:var(--decide);border-radius:999px;padding:9px 16px;cursor:pointer;flex:none;transition:opacity 170ms">Adjudicate</span>
+        </div>
+
+        <!-- 3. What is Driving It (Where, Why, Who Accordions) -->
+        <div style="display:flex;align-items:baseline;gap:10px;padding:4px 4px 0">
+          <span style="font:600 12.5px var(--sans)">What is driving it</span>
+          <span style="font:400 11px var(--mono);color:var(--muted)">ranked drivers · click to inspect underlying evidence</span>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:10px">
+
+          <!-- Accordion 1: Where -->
+          <div id="card-gate" role="button" tabindex="0" onclick="toggleAcc('gate')" style="background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh2);overflow:hidden;cursor:pointer;transition:box-shadow 200ms cubic-bezier(.2,.8,.2,1)">
+            <div style="display:flex;align-items:center;gap:16px;padding:16px 20px">
+              <span style="font:500 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--faint);width:48px;flex:none">Where</span>
+              <span style="font:500 14px var(--sans);letter-spacing:-.01em">Visual (P17) — 5,932 of 9,504 units lost</span>
+              <span style="font:400 11px var(--mono);color:var(--muted)">62% of the loss</span>
+              <span style="margin-left:auto;font:600 15px var(--mono);letter-spacing:-.03em;color:var(--breach)">1.44%</span>
+              <span id="glyph-gate" style="width:22px;height:22px;border-radius:999px;background:var(--well);display:grid;place-items:center;font:500 11px var(--mono);color:var(--ink2);flex:none;transition:background 170ms">−</span>
+            </div>
+            <div id="body-gate" style="display:block;padding:0 20px 20px;animation:fu 240ms cubic-bezier(.2,.8,.2,1) both">
+              <div style="background:var(--well);border-radius:var(--r-well);padding:16px 18px;box-shadow:var(--inset)">
+                <div style="display:flex;align-items:center;gap:12px;font:500 10px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:12px">
+                  <span style="width:150px">Gate</span><span style="width:70px;text-align:right">Checked</span><span style="flex:1"></span><span style="width:118px;text-align:right;white-space:nowrap">Rejected · rate</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:11px">
+                  <div style="display:flex;align-items:center;gap:12px"><span style="font:500 12px var(--sans);width:150px">Visual (P17)</span><span style="font:400 11px var(--mono);color:var(--muted);width:70px;text-align:right">412,860</span><div style="flex:1;height:8px;border-radius:999px;background:var(--tile);overflow:hidden"><div style="width:100%;height:100%;border-radius:999px;background:var(--breach);transform-origin:left;animation:gw 620ms cubic-bezier(.2,.8,.2,1) both"></div></div><span style="font:500 11.5px var(--mono);width:118px;text-align:right;white-space:nowrap">5,932 · 1.44%</span></div>
+                  <div style="display:flex;align-items:center;gap:12px"><span style="font:400 12px var(--sans);width:150px">Balloon (P18)</span><span style="font:400 11px var(--mono);color:var(--muted);width:70px;text-align:right">406,928</span><div style="flex:1;height:8px;border-radius:999px;background:var(--tile);overflow:hidden"><div style="width:32%;height:100%;border-radius:999px;background:var(--brand);transform-origin:left;animation:gw 620ms 70ms cubic-bezier(.2,.8,.2,1) both"></div></div><span style="font:500 11.5px var(--mono);width:118px;text-align:right;white-space:nowrap">1,884 · 0.46%</span></div>
+                  <div style="display:flex;align-items:center;gap:12px"><span style="font:400 12px var(--sans);width:150px">Valve integrity (P20)</span><span style="font:400 11px var(--mono);color:var(--muted);width:70px;text-align:right">405,044</span><div style="flex:1;height:8px;border-radius:999px;background:var(--tile);overflow:hidden"><div style="width:20%;height:100%;border-radius:999px;background:var(--brand);opacity:.62;transform-origin:left;animation:gw 620ms 140ms cubic-bezier(.2,.8,.2,1) both"></div></div><span style="font:500 11.5px var(--mono);width:118px;text-align:right;white-space:nowrap">1,206 · 0.30%</span></div>
+                  <div style="display:flex;align-items:center;gap:12px"><span style="font:400 12px var(--sans);width:150px">Final (P24)</span><span style="font:400 11px var(--mono);color:var(--muted);width:70px;text-align:right">403,838</span><div style="flex:1;height:8px;border-radius:999px;background:var(--tile);overflow:hidden"><div style="width:8%;height:100%;border-radius:999px;background:var(--brand);opacity:.38;transform-origin:left;animation:gw 620ms 210ms cubic-bezier(.2,.8,.2,1) both"></div></div><span style="font:500 11.5px var(--mono);width:118px;text-align:right;white-space:nowrap">482 · 0.12%</span></div>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
+                  <span style="font:400 11px var(--mono);color:var(--muted)">42 day-records · VISUAL INSPECTION REPORT 2025.xlsx + direct entry · last commit 2h ago</span>
+                  <span class="hvr-sh" onclick="event.stopPropagation(); openProvenance('Visual (P17) Source', '42 day records across 3 shifts')" style="margin-left:auto;display:inline-flex;align-items:center;gap:7px;font:500 11.5px var(--sans);background:var(--surface);border-radius:999px;padding:8px 14px;box-shadow:var(--sh1);cursor:pointer;flex:none;transition:box-shadow 170ms">View source</span>
+                  <span class="hvr-op" role="button" tabindex="0" onclick="event.stopPropagation(); go('gate')" style="display:inline-flex;align-items:center;gap:7px;font:600 11.5px var(--sans);color:var(--brand-ink);background:var(--brand);border-radius:999px;padding:8px 14px;cursor:pointer;flex:none;transition:opacity 170ms">Open Visual · Aug<svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5"/></svg></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Accordion 2: Why -->
+          <div id="card-defect" role="button" tabindex="0" onclick="toggleAcc('defect')" style="background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);overflow:hidden;cursor:pointer;transition:box-shadow 200ms cubic-bezier(.2,.8,.2,1)">
+            <div style="display:flex;align-items:center;gap:16px;padding:16px 20px">
+              <span style="font:500 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--faint);width:48px;flex:none">Why</span>
+              <span style="font:500 14px var(--sans);letter-spacing:-.01em">COAG — 31% of Visual rejects, third month rising</span>
+              <span style="font:400 11px var(--mono);color:var(--muted)">no owner yet</span>
+              <span style="margin-left:auto;font:600 15px var(--mono);letter-spacing:-.03em">1,842 u</span>
+              <span id="glyph-defect" style="width:22px;height:22px;border-radius:999px;background:var(--well);display:grid;place-items:center;font:500 11px var(--mono);color:var(--ink2);flex:none">+</span>
+            </div>
+            <div id="body-defect" style="display:none;padding:0 20px 20px;animation:fu 240ms cubic-bezier(.2,.8,.2,1) both">
+              <div style="background:var(--well);border-radius:var(--r-well);padding:16px 18px;box-shadow:var(--inset);display:flex;gap:24px">
+                <div style="flex:1;display:flex;flex-direction:column;gap:11px">
+                  <div style="display:flex;align-items:center;gap:12px"><span style="font:500 11.5px var(--mono);width:52px">COAG</span><div style="flex:1;height:8px;border-radius:999px;background:var(--tile);overflow:hidden"><div style="width:100%;height:100%;border-radius:999px;background:var(--verified);transform-origin:left;animation:gw 620ms cubic-bezier(.2,.8,.2,1) both"></div></div><span style="font:500 11.5px var(--mono);width:92px;text-align:right;white-space:nowrap">1,842 · 31%</span></div>
+                  <div style="display:flex;align-items:center;gap:12px"><span style="font:500 11.5px var(--mono);width:52px">SD</span><div style="flex:1;height:8px;border-radius:999px;background:var(--tile);overflow:hidden"><div style="width:65%;height:100%;border-radius:999px;background:var(--verified);opacity:.78;transform-origin:left;animation:gw 620ms 70ms cubic-bezier(.2,.8,.2,1) both"></div></div><span style="font:500 11.5px var(--mono);width:92px;text-align:right;white-space:nowrap">1,204 · 20%</span></div>
+                  <div style="display:flex;align-items:center;gap:12px"><span style="font:500 11.5px var(--mono);width:52px">BL</span><div style="flex:1;height:8px;border-radius:999px;background:var(--tile);overflow:hidden"><div style="width:52%;height:100%;border-radius:999px;background:var(--verified);opacity:.58;transform-origin:left;animation:gw 620ms 140ms cubic-bezier(.2,.8,.2,1) both"></div></div><span style="font:500 11.5px var(--mono);width:92px;text-align:right;white-space:nowrap">968 · 16%</span></div>
+                  <div style="display:flex;align-items:center;gap:12px"><span style="font:500 11.5px var(--mono);width:52px">TT</span><div style="flex:1;height:8px;border-radius:999px;background:var(--tile);overflow:hidden"><div style="width:33%;height:100%;border-radius:999px;background:var(--verified);opacity:.4;transform-origin:left;animation:gw 620ms 210ms cubic-bezier(.2,.8,.2,1) both"></div></div><span style="font:500 11.5px var(--mono);width:92px;text-align:right;white-space:nowrap">611 · 10%</span></div>
+                  <div style="display:flex;align-items:center;gap:12px"><span style="font:500 11.5px var(--mono);width:52px">PS</span><div style="flex:1;height:8px;border-radius:999px;background:var(--tile);overflow:hidden"><div style="width:22%;height:100%;border-radius:999px;background:var(--verified);opacity:.28;transform-origin:left;animation:gw 620ms 280ms cubic-bezier(.2,.8,.2,1) both"></div></div><span style="font:500 11.5px var(--mono);width:92px;text-align:right;white-space:nowrap">402 · 7%</span></div>
+                  <div style="font:400 11px var(--mono);color:var(--muted);margin-top:2px">+ 16 further codes · 2,477 u</div>
+                </div>
+                <div style="width:260px;flex:none;border-left:1px solid var(--line);padding-left:22px">
+                  <div style="font:500 10px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">COAG share, Mar → Aug</div>
+                  <svg width="238" height="78" viewBox="0 0 238 78" fill="none">
+                    <polyline points="8,62 52,56 96,46 140,36 184,27 230,18" stroke="var(--decide)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="stroke-dasharray:900;animation:dr 950ms cubic-bezier(.2,.8,.2,1) both"/>
+                    <circle cx="230" cy="18" r="3.4" fill="var(--decide)"/>
+                    <text x="8" y="75" fill="var(--faint)" style="font:500 8.5px var(--mono)">18%</text>
+                    <text x="212" y="75" fill="var(--faint)" style="font:500 8.5px var(--mono)">31%</text>
+                  </svg>
+                  <div style="font:400 12px/1.55 var(--sans);color:var(--ink2);margin-top:8px">Concentrated on 16Fr, second shift. Nobody owns it yet.</div>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;margin-top:14px">
+                <span style="font:400 11px var(--mono);color:var(--muted)">Sum of 21 plant defect codes, named as the sheet names them</span>
+                <span class="hvr-sh" onclick="event.stopPropagation(); showToast('Parked COAG on quality chase register')" style="margin-left:auto;font:500 11.5px var(--sans);background:var(--surface);border-radius:999px;padding:8px 14px;box-shadow:var(--sh1);cursor:pointer;flex:none;transition:box-shadow 170ms">Park as chase</span>
+                <span class="hvr-op" role="button" tabindex="0" onclick="event.stopPropagation(); go('capa')" style="font:600 11.5px var(--sans);color:var(--brand-ink);background:var(--brand);border-radius:999px;padding:8px 14px;cursor:pointer;flex:none;transition:opacity 170ms">Raise a CAPA for COAG</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Accordion 3: Who -->
+          <div id="card-size" role="button" tabindex="0" onclick="toggleAcc('size')" style="background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);overflow:hidden;cursor:pointer;transition:box-shadow 200ms cubic-bezier(.2,.8,.2,1)">
+            <div style="display:flex;align-items:center;gap:16px;padding:16px 20px">
+              <span style="font:500 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--faint);width:48px;flex:none">Who</span>
+              <span style="font:500 14px var(--sans);letter-spacing:-.01em">16Fr rejects at 3.14% — over target on its own</span>
+              <span style="font:400 11px var(--mono);color:var(--muted)">biggest volume too</span>
+              <span style="margin-left:auto;font:600 15px var(--mono);letter-spacing:-.03em">38% of units</span>
+              <span id="glyph-size" style="width:22px;height:22px;border-radius:999px;background:var(--well);display:grid;place-items:center;font:500 11px var(--mono);color:var(--ink2);flex:none">+</span>
+            </div>
+            <div id="body-size" style="display:none;padding:0 20px 20px;animation:fu 240ms cubic-bezier(.2,.8,.2,1) both">
+              <div style="display:flex;gap:10px">
+                <div style="flex:1;background:var(--breach-weak);border-radius:var(--r-tile);padding:13px 15px"><div style="font:500 11px var(--mono);color:var(--muted)">16Fr</div><div style="font:600 20px var(--mono);color:var(--breach);margin-top:4px;letter-spacing:-.03em">3.14%</div><div style="font:400 10.5px var(--mono);color:var(--muted);margin-top:3px">156,940 u</div></div>
+                <div style="flex:1;background:var(--well);border-radius:var(--r-tile);padding:13px 15px;box-shadow:var(--inset)"><div style="font:500 11px var(--mono);color:var(--muted)">18Fr</div><div style="font:600 20px var(--mono);margin-top:4px;letter-spacing:-.03em">2.86%</div><div style="font:400 10.5px var(--mono);color:var(--muted);margin-top:3px">98,410 u</div></div>
+                <div style="flex:1;background:var(--well);border-radius:var(--r-tile);padding:13px 15px;box-shadow:var(--inset)"><div style="font:500 11px var(--mono);color:var(--muted)">14Fr</div><div style="font:600 20px var(--mono);margin-top:4px;letter-spacing:-.03em">2.21%</div><div style="font:400 10.5px var(--mono);color:var(--muted);margin-top:3px">74,220 u</div></div>
+                <div style="flex:1;background:var(--well);border-radius:var(--r-tile);padding:13px 15px;box-shadow:var(--inset)"><div style="font:500 11px var(--mono);color:var(--muted)">20Fr</div><div style="font:600 20px var(--mono);margin-top:4px;letter-spacing:-.03em">1.92%</div><div style="font:400 10.5px var(--mono);color:var(--muted);margin-top:3px">45,180 u</div></div>
+                <div style="flex:1;background:var(--well);border-radius:var(--r-tile);padding:13px 15px;box-shadow:var(--inset)"><div style="font:500 11px var(--mono);color:var(--muted)">12Fr</div><div style="font:600 20px var(--mono);margin-top:4px;letter-spacing:-.03em">1.74%</div><div style="font:400 10.5px var(--mono);color:var(--muted);margin-top:3px">38,110 u</div></div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;margin-top:14px">
+                <span style="font:400 12px var(--sans);color:var(--ink2)">16Fr is the largest volume <em>and</em> the worst rate. Clearing COAG there recovers an estimated <strong style="font-weight:600">₹4.1L</strong> a month.</span>
+                <span class="hvr-sh" role="button" tabindex="0" onclick="event.stopPropagation(); go('size')" style="margin-left:auto;font:500 11.5px var(--sans);background:var(--surface);border-radius:999px;padding:8px 14px;box-shadow:var(--sh1);cursor:pointer;flex:none;transition:box-shadow 170ms">Chase 16Fr</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- 4. Primary 3-Column Analytics Grid (Trend, Stage Share, Pareto) -->
+        <div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:14px">
+          
+          <!-- Card 1: Rejection Trend vs Target & Mean -->
+          <div class="hvr-sh" style="background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:20px 22px;display:flex;flex-direction:column;cursor:pointer;transition:box-shadow 180ms" onclick="openProvenance('Rejection Trend vs Target', 'Monthly rejection trend lines')">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px">
+              <div>
+                <div style="font:600 13px var(--sans)">Rejection Trend</div>
+                <div style="font:400 10.5px var(--mono);color:var(--muted)">Target (3.00%) &amp; Mean (2.54%)</div>
+              </div>
+              <span style="font:600 13px var(--mono);color:var(--verified)">2.30%</span>
+            </div>
+            <svg width="100%" height="150" viewBox="0 0 320 150" fill="none" style="margin-top:auto">
+              <defs>
+                <linearGradient id="grad-trend" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="var(--verified)" stop-opacity=".24"/>
+                  <stop offset="1" stop-color="var(--verified)" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <!-- Target 3.00% dashed line -->
+              <line x1="10" y1="36" x2="310" y2="36" stroke="var(--line2)" stroke-width="1.2" stroke-dasharray="3 3"/>
+              <text x="12" y="30" fill="var(--faint)" style="font:500 8.5px var(--mono)">target 3.00%</text>
+              <!-- Mean 2.54% line -->
+              <line x1="10" y1="68" x2="310" y2="68" stroke="var(--brand)" stroke-opacity=".3" stroke-width="1" stroke-dasharray="2 4"/>
+              <text x="250" y="62" fill="var(--muted)" style="font:500 8.5px var(--mono)">mean 2.54%</text>
+              <!-- Area & Trend Polyline -->
+              <path d="M20 102 78 86 136 94 194 72 252 64 304 44V140H20Z" fill="url(#grad-trend)"/>
+              <polyline points="20,102 78,86 136,94 194,72 252,64 304,44" stroke="var(--verified)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="stroke-dasharray:900;animation:dr 1.1s cubic-bezier(.2,.8,.2,1) both"/>
+              <circle cx="304" cy="44" r="3.8" fill="var(--verified)"/>
+              <!-- X labels -->
+              <text x="20" y="146" fill="var(--faint)" style="font:500 9px var(--mono)">Mar</text>
+              <text x="78" y="146" fill="var(--faint)" style="font:500 9px var(--mono)">Apr</text>
+              <text x="136" y="146" fill="var(--faint)" style="font:500 9px var(--mono)">May</text>
+              <text x="194" y="146" fill="var(--faint)" style="font:500 9px var(--mono)">Jun</text>
+              <text x="252" y="146" fill="var(--faint)" style="font:500 9px var(--mono)">Jul</text>
+              <text x="296" y="146" fill="var(--verified)" style="font:600 9px var(--mono)">Aug</text>
+            </svg>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;padding-top:10px;border-top:1px solid var(--line);font:500 11px var(--sans);color:var(--brand)">
+              <span>View full trend →</span>
+              <span style="font:400 10.5px var(--mono);color:var(--muted)">6 periods</span>
+            </div>
+          </div>
+
+          <!-- Card 2: Rejection By Stage (Donut + Legend) -->
+          <div class="hvr-sh" style="background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:20px 22px;display:flex;flex-direction:column;cursor:pointer;transition:box-shadow 180ms" onclick="go('gate')">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px">
+              <div>
+                <div style="font:600 13px var(--sans)">Rejection By Stage</div>
+                <div style="font:400 10.5px var(--mono);color:var(--muted)">YTD Rejection Shares</div>
+              </div>
+              <span style="font:600 11.5px var(--mono);color:var(--muted)">9,504 u</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:18px;margin-top:4px">
+              <!-- SVG Donut Chart -->
+              <svg width="100" height="100" viewBox="0 0 100 100" style="flex:none;transform:rotate(-90deg)">
+                <circle cx="50" cy="50" r="38" stroke="var(--tile)" stroke-width="14" fill="none"/>
+                <!-- Visual 62.4% (dasharray 149 / 239) -->
+                <circle cx="50" cy="50" r="38" stroke="var(--breach)" stroke-width="14" stroke-dasharray="149 239" stroke-dashoffset="0" fill="none" style="animation:dr 1s cubic-bezier(.2,.8,.2,1) both"/>
+                <!-- Balloon 19.8% (dasharray 47 / 239) -->
+                <circle cx="50" cy="50" r="38" stroke="var(--brand)" stroke-width="14" stroke-dasharray="47 239" stroke-dashoffset="-149" fill="none" style="animation:dr 1s cubic-bezier(.2,.8,.2,1) both"/>
+                <!-- Valve 12.7% (dasharray 30 / 239) -->
+                <circle cx="50" cy="50" r="38" stroke="var(--decide)" stroke-width="14" stroke-dasharray="30 239" stroke-dashoffset="-196" fill="none" style="animation:dr 1s cubic-bezier(.2,.8,.2,1) both"/>
+                <!-- Final 5.1% (dasharray 13 / 239) -->
+                <circle cx="50" cy="50" r="38" stroke="var(--verified)" stroke-width="14" stroke-dasharray="13 239" stroke-dashoffset="-226" fill="none" style="animation:dr 1s cubic-bezier(.2,.8,.2,1) both"/>
+              </svg>
+              <!-- Stage Share List -->
+              <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+                <div style="display:flex;align-items:center;justify-content:space-between;font:500 11.5px var(--sans)">
+                  <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:999px;background:var(--breach)"></span>Visual (P17)</span>
+                  <span style="font:600 11.5px var(--mono)">62.4%</span>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;font:400 11.5px var(--sans);color:var(--ink2)">
+                  <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:999px;background:var(--brand)"></span>Balloon (P18)</span>
+                  <span style="font:500 11.5px var(--mono)">19.8%</span>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;font:400 11.5px var(--sans);color:var(--ink2)">
+                  <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:999px;background:var(--decide)"></span>Valve (P20)</span>
+                  <span style="font:500 11.5px var(--mono)">12.7%</span>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;font:400 11.5px var(--sans);color:var(--ink2)">
+                  <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:999px;background:var(--verified)"></span>Final (P24)</span>
+                  <span style="font:500 11.5px var(--mono)">5.1%</span>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:auto;padding-top:12px;border-top:1px solid var(--line);font:500 11px var(--sans);color:var(--brand)">
+              <span>View stage analysis →</span>
+              <span style="font:400 10.5px var(--mono);color:var(--muted)">4 stations</span>
+            </div>
+          </div>
+
+          <!-- Card 3: Top Defects (Pareto Table) -->
+          <div class="hvr-sh" style="background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:20px 22px;display:flex;flex-direction:column;cursor:pointer;transition:box-shadow 180ms" onclick="go('defect')">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px">
+              <div>
+                <div style="font:600 13px var(--sans)">Top Defects (Pareto)</div>
+                <div style="font:400 10.5px var(--mono);color:var(--muted)">80/20 Rule Analysis</div>
+              </div>
+              <span style="font:500 10.5px var(--mono);color:var(--decide)">Vital Few</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:7px">
+              <div style="display:flex;align-items:center;gap:8px;font:500 11.5px var(--mono)">
+                <span style="color:var(--faint);width:14px">1</span>
+                <span style="font-weight:600;width:52px">COAG</span>
+                <div style="flex:1;height:6px;border-radius:999px;background:var(--tile);overflow:hidden"><div style="width:31%;height:100%;background:var(--breach)"></div></div>
+                <span style="width:36px;text-align:right;font-weight:600">31%</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;font:500 11.5px var(--mono)">
+                <span style="color:var(--faint);width:14px">2</span>
+                <span style="width:52px">SD</span>
+                <div style="flex:1;height:6px;border-radius:999px;background:var(--tile);overflow:hidden"><div style="width:20%;height:100%;background:var(--brand)"></div></div>
+                <span style="width:36px;text-align:right;color:var(--ink2)">20%</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;font:500 11.5px var(--mono)">
+                <span style="color:var(--faint);width:14px">3</span>
+                <span style="width:52px">BL</span>
+                <div style="flex:1;height:6px;border-radius:999px;background:var(--tile);overflow:hidden"><div style="width:16%;height:100%;background:var(--brand);opacity:.8"></div></div>
+                <span style="width:36px;text-align:right;color:var(--ink2)">16%</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;font:500 11.5px var(--mono)">
+                <span style="color:var(--faint);width:14px">4</span>
+                <span style="width:52px">TT</span>
+                <div style="flex:1;height:6px;border-radius:999px;background:var(--tile);overflow:hidden"><div style="width:10%;height:100%;background:var(--brand);opacity:.6"></div></div>
+                <span style="width:36px;text-align:right;color:var(--muted)">10%</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;font:500 11.5px var(--mono)">
+                <span style="color:var(--faint);width:14px">5</span>
+                <span style="width:52px">PS</span>
+                <div style="flex:1;height:6px;border-radius:999px;background:var(--tile);overflow:hidden"><div style="width:7%;height:100%;background:var(--brand);opacity:.4"></div></div>
+                <span style="width:36px;text-align:right;color:var(--muted)">7%</span>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:auto;padding-top:10px;border-top:1px solid var(--line);font:500 11px var(--sans);color:var(--brand)">
+              <span>View defect Pareto →</span>
+              <span style="font:400 10.5px var(--mono);color:var(--muted)">21 plant codes</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- 5. Full Width Stage-wise Multi-Line Chart -->
+        <div style="background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:20px 24px">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px">
+            <div style="display:flex;align-items:baseline;gap:12px">
+              <span style="font:600 13px var(--sans)">Stage-wise Rejection Trend (Monthly)</span>
+              <span style="font:400 11px var(--mono);color:var(--muted)">per-stage rejection over own inspected count + Total line</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;font:500 11px var(--sans)">
+              <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:8px;height:2px;background:var(--breach)"></span>Visual</span>
+              <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:8px;height:2px;background:var(--brand)"></span>Balloon</span>
+              <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:8px;height:2px;background:var(--decide)"></span>Valve</span>
+              <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:8px;height:2px;background:var(--verified)"></span>Final</span>
+              <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:8px;height:2px;background:var(--ink)"></span>Total</span>
+            </div>
+          </div>
+          <svg width="100%" height="160" viewBox="0 0 1080 160" fill="none">
+            <!-- Gridlines -->
+            <line x1="40" y1="20" x2="1060" y2="20" stroke="var(--line)" stroke-width="1"/>
+            <line x1="40" y1="60" x2="1060" y2="60" stroke="var(--line)" stroke-width="1"/>
+            <line x1="40" y1="100" x2="1060" y2="100" stroke="var(--line)" stroke-width="1"/>
+            <line x1="40" y1="140" x2="1060" y2="140" stroke="var(--line)" stroke-width="1"/>
+            <!-- Visual Line (Breach Red) -->
+            <polyline points="60,65 240,55 420,70 600,45 780,50 960,35" stroke="var(--breach)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="stroke-dasharray:900;animation:dr 1.2s cubic-bezier(.2,.8,.2,1) both"/>
+            <!-- Balloon Line (Brand) -->
+            <polyline points="60,95 240,105 420,90 600,100 780,110 960,105" stroke="var(--brand)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="stroke-dasharray:900;animation:dr 1.2s 60ms cubic-bezier(.2,.8,.2,1) both"/>
+            <!-- Valve Line (Decide Amber) -->
+            <polyline points="60,115 240,120 420,110 600,115 780,125 960,120" stroke="var(--decide)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="stroke-dasharray:900;animation:dr 1.2s 120ms cubic-bezier(.2,.8,.2,1) both"/>
+            <!-- Final Line (Verified Green) -->
+            <polyline points="60,135 240,138 420,130 600,135 780,138 960,135" stroke="var(--verified)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="stroke-dasharray:900;animation:dr 1.2s 180ms cubic-bezier(.2,.8,.2,1) both"/>
+            <!-- Total Line (Ink) -->
+            <polyline points="60,40 240,35 420,45 600,30 780,32 960,25" stroke="var(--ink)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="stroke-dasharray:900;animation:dr 1.2s 240ms cubic-bezier(.2,.8,.2,1) both"/>
+            <!-- X axis text -->
+            <text x="60" y="156" fill="var(--faint)" style="font:500 10px var(--mono)">Mar</text>
+            <text x="240" y="156" fill="var(--faint)" style="font:500 10px var(--mono)">Apr</text>
+            <text x="420" y="156" fill="var(--faint)" style="font:500 10px var(--mono)">May</text>
+            <text x="600" y="156" fill="var(--faint)" style="font:500 10px var(--mono)">Jun</text>
+            <text x="780" y="156" fill="var(--faint)" style="font:500 10px var(--mono)">Jul</text>
+            <text x="960" y="156" fill="var(--ink)" style="font:600 10px var(--mono)">Aug (Current)</text>
+          </svg>
+        </div>
+
+        <!-- 6. Stage × Size Concentration Heatmap Matrix -->
+        <div style="background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:20px 24px">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px">
+            <div>
+              <span style="font:600 13px var(--sans)">Stage × Size Concentration Heatmap</span>
+              <div style="font:400 11px var(--mono);color:var(--muted)">rejection rate by stage and catheter size (darker cells indicate quality hotspots)</div>
+            </div>
+            <span style="font:500 10.5px var(--mono);color:var(--breach)">Worst Hotspot: Visual × 16Fr (1.86%)</span>
+          </div>
+          <div style="display:grid;grid-template-columns:140px repeat(5, 1fr);gap:8px;align-items:center">
+            <span></span>
+            <span style="font:600 11px var(--mono);color:var(--muted);text-align:center">12Fr</span>
+            <span style="font:600 11px var(--mono);color:var(--muted);text-align:center">14Fr</span>
+            <span style="font:600 11px var(--mono);color:var(--breach);text-align:center">16Fr (Loss Driver)</span>
+            <span style="font:600 11px var(--mono);color:var(--muted);text-align:center">18Fr</span>
+            <span style="font:600 11px var(--mono);color:var(--muted);text-align:center">20Fr</span>
+
+            <span style="font:500 12px var(--sans)">Visual (P17)</span>
+            <div style="height:44px;border-radius:10px;background:var(--well);display:grid;place-items:center;font:500 11px var(--mono)">0.74%</div>
+            <div style="height:44px;border-radius:10px;background:var(--verified);opacity:.35;display:grid;place-items:center;font:500 11px var(--mono);color:var(--ink)">1.12%</div>
+            <div style="height:44px;border-radius:10px;background:var(--breach);color:var(--on-status);display:grid;place-items:center;font:600 12px var(--mono)">1.86%</div>
+            <div style="height:44px;border-radius:10px;background:var(--breach);opacity:.75;color:var(--on-status);display:grid;place-items:center;font:600 12px var(--mono)">1.48%</div>
+            <div style="height:44px;border-radius:10px;background:var(--verified);opacity:.45;display:grid;place-items:center;font:500 11px var(--mono);color:var(--ink)">1.02%</div>
+
+            <span style="font:500 12px var(--sans)">Balloon (P18)</span>
+            <div style="height:44px;border-radius:10px;background:var(--well);display:grid;place-items:center;font:500 11px var(--mono)">0.32%</div>
+            <div style="height:44px;border-radius:10px;background:var(--well);display:grid;place-items:center;font:500 11px var(--mono)">0.41%</div>
+            <div style="height:44px;border-radius:10px;background:var(--brand);opacity:.85;color:var(--on-status);display:grid;place-items:center;font:600 11.5px var(--mono)">0.63%</div>
+            <div style="height:44px;border-radius:10px;background:var(--brand);opacity:.65;color:var(--on-status);display:grid;place-items:center;font:500 11px var(--mono)">0.52%</div>
+            <div style="height:44px;border-radius:10px;background:var(--well);display:grid;place-items:center;font:500 11px var(--mono)">0.38%</div>
+
+            <span style="font:500 12px var(--sans)">Valve Integrity (P20)</span>
+            <div style="height:44px;border-radius:10px;background:var(--well);display:grid;place-items:center;font:500 11px var(--mono)">0.21%</div>
+            <div style="height:44px;border-radius:10px;background:var(--well);display:grid;place-items:center;font:500 11px var(--mono)">0.28%</div>
+            <div style="height:44px;border-radius:10px;background:var(--brand);opacity:.6;color:var(--on-status);display:grid;place-items:center;font:500 11px var(--mono)">0.42%</div>
+            <div style="height:44px;border-radius:10px;background:var(--brand);opacity:.45;display:grid;place-items:center;font:500 11px var(--mono)">0.34%</div>
+            <div style="height:44px;border-radius:10px;background:var(--well);display:grid;place-items:center;font:500 11px var(--mono)">0.24%</div>
+
+            <span style="font:500 12px var(--sans)">Final (P24)</span>
+            <div style="height:44px;border-radius:10px;background:var(--well);display:grid;place-items:center;font:500 11px var(--mono)">0.08%</div>
+            <div style="height:44px;border-radius:10px;background:var(--well);display:grid;place-items:center;font:500 11px var(--mono)">0.11%</div>
+            <div style="height:44px;border-radius:10px;background:var(--well);display:grid;place-items:center;font:500 11px var(--mono)">0.16%</div>
+            <div style="height:44px;border-radius:10px;background:var(--well);display:grid;place-items:center;font:500 11px var(--mono)">0.14%</div>
+            <div style="height:44px;border-radius:10px;background:var(--well);display:grid;place-items:center;font:500 11px var(--mono)">0.10%</div>
+          </div>
+        </div>
+
+        <!-- 7. Production Funnel & Line Balance Flow -->
+        <div style="background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:22px 24px">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:18px">
+            <div>
+              <span style="font:600 13px var(--sans)">Production Yield Funnel &amp; Line Balance</span>
+              <div style="font:400 11px var(--mono);color:var(--muted)">412,860 units entered · First Pass Yield 96.4% · click any station to view its day log</div>
+            </div>
+            <span style="font:600 12.5px var(--mono);color:var(--verified)">403,356 Units Good (96.4%)</span>
+          </div>
+          <div style="display:flex;align-items:flex-end;gap:2px;height:146px">
+            <div class="hvr-op-bar" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer" onclick="go('gate')">
+              <div style="font:500 11px var(--mono);color:var(--muted)">412,860</div>
+              <div style="width:100%;height:124px;border-radius:var(--r-tile);background:var(--well);position:relative;overflow:hidden;box-shadow:var(--inset)">
+                <div style="position:absolute;inset:0;background:var(--breach);opacity:.14"></div>
+                <div style="position:absolute;left:0;right:0;bottom:0;height:34%;background:var(--breach);opacity:.9;transform-origin:bottom;animation:gh 600ms cubic-bezier(.2,.8,.2,1) both"></div>
+                <div style="position:absolute;left:12px;top:12px;font:600 14px var(--mono);color:var(--ink)">1.44%</div>
+                <div style="position:absolute;left:12px;top:34px;font:500 10.5px var(--mono);color:var(--ink2)">5,932 rej</div>
+              </div>
+              <div style="font:500 12px var(--sans)">Visual (P17)</div>
+            </div>
+            <div style="width:20px;display:grid;place-items:center;padding-bottom:34px"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--faint)" stroke-width="1.6"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5"/></svg></div>
+            <div class="hvr-op-bar" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer" onclick="go('gate')">
+              <div style="font:500 11px var(--mono);color:var(--muted)">406,928</div>
+              <div style="width:100%;height:112px;border-radius:var(--r-tile);background:var(--well);position:relative;overflow:hidden;box-shadow:var(--inset)">
+                <div style="position:absolute;left:0;right:0;bottom:0;height:13%;background:var(--brand);opacity:.85;transform-origin:bottom;animation:gh 600ms 80ms cubic-bezier(.2,.8,.2,1) both"></div>
+                <div style="position:absolute;left:12px;top:12px;font:600 14px var(--mono)">0.46%</div>
+                <div style="position:absolute;left:12px;top:34px;font:500 10.5px var(--mono);color:var(--muted)">1,884 rej</div>
+              </div>
+              <div style="font:400 12px var(--sans)">Balloon (P18)</div>
+            </div>
+            <div style="width:20px;display:grid;place-items:center;padding-bottom:34px"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--faint)" stroke-width="1.6"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5"/></svg></div>
+            <div class="hvr-op-bar" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer" onclick="go('gate')">
+              <div style="font:500 11px var(--mono);color:var(--muted)">405,044</div>
+              <div style="width:100%;height:104px;border-radius:var(--r-tile);background:var(--well);position:relative;overflow:hidden;box-shadow:var(--inset)">
+                <div style="position:absolute;left:0;right:0;bottom:0;height:9%;background:var(--brand);opacity:.6;transform-origin:bottom;animation:gh 600ms 160ms cubic-bezier(.2,.8,.2,1) both"></div>
+                <div style="position:absolute;left:12px;top:12px;font:600 14px var(--mono)">0.30%</div>
+                <div style="position:absolute;left:12px;top:34px;font:500 10.5px var(--mono);color:var(--muted)">1,206 rej</div>
+              </div>
+              <div style="font:400 12px var(--sans)">Valve (P20)</div>
+            </div>
+            <div style="width:20px;display:grid;place-items:center;padding-bottom:34px"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--faint)" stroke-width="1.6"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5"/></svg></div>
+            <div class="hvr-op-bar" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer" onclick="go('gate')">
+              <div style="font:500 11px var(--mono);color:var(--muted)">403,838</div>
+              <div style="width:100%;height:98px;border-radius:var(--r-tile);background:var(--well);position:relative;overflow:hidden;box-shadow:var(--inset)">
+                <div style="position:absolute;left:0;right:0;bottom:0;height:4%;background:var(--brand);opacity:.4;transform-origin:bottom;animation:gh 600ms 240ms cubic-bezier(.2,.8,.2,1) both"></div>
+                <div style="position:absolute;left:12px;top:12px;font:600 14px var(--mono)">0.12%</div>
+                <div style="position:absolute;left:12px;top:34px;font:500 10.5px var(--mono);color:var(--muted)">482 rej</div>
+              </div>
+              <div style="font:400 12px var(--sans)">Final (P24)</div>
+            </div>
+            <div style="width:20px;display:grid;place-items:center;padding-bottom:34px"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--faint)" stroke-width="1.6"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5"/></svg></div>
+            <div style="width:160px;display:flex;flex-direction:column;align-items:center;gap:8px">
+              <div style="font:500 11px var(--mono);color:var(--verified)">403,356 good</div>
+              <div style="width:100%;height:94px;border-radius:var(--r-tile);background:var(--verified-weak);display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px">
+                <div style="font:600 19px var(--mono);letter-spacing:-.03em;color:var(--verified)">96.4%</div>
+                <div style="font:500 10.5px var(--mono);color:var(--verified)">first pass yield</div>
+              </div>
+              <div style="font:400 12px var(--sans);color:var(--muted)">Released to Pack</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 8. AI Diagnostics Brief & Actionable Decision Cards -->
+        <div style="background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:22px 24px">
+          <div style="font:600 13px var(--sans);margin-bottom:16px">AI Diagnostics &amp; Decision Engine Actions</div>
+          <div style="display:grid;grid-template-columns:1.2fr 1px 1.4fr;gap:26px">
+            
+            <!-- Left Side: Diagnostics Narrative & Worst Bottleneck Callout -->
+            <div style="display:flex;flex-direction:column;justify-content:space-between;gap:18px">
+              <div>
+                <div style="font:600 15px/1.4 var(--sans);color:var(--ink);letter-spacing:-.015em;margin-bottom:10px">
+                  Rejection is running at 2.30%, well within the 3.00% target. Primary loss driver is concentrated in Visual Inspection (P17) on 16Fr catheters.
+                </div>
+                <div style="display:flex;flex-direction:column;gap:7px;font:400 12px/1.55 var(--sans);color:var(--ink2)">
+                  <div style="display:flex;align-items:baseline;gap:8px">
+                    <span style="font:600 10.5px var(--mono);color:var(--muted);width:100px;flex:none">COPQ IMPACT:</span>
+                    <span>₹18.4L period scrap (₹6.2L estimated addressable).</span>
+                  </div>
+                  <div style="display:flex;align-items:baseline;gap:8px">
+                    <span style="font:600 10.5px var(--mono);color:var(--muted);width:100px;flex:none">PRIMARY DRIVER:</span>
+                    <span>Visual (P17) — 1.44% rejection rate (62% of all units lost).</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Worst Stage Bottleneck Callout Box -->
+              <div style="background:var(--well);border-radius:var(--r-well);padding:14px 16px;box-shadow:var(--inset);display:flex;align-items:center;justify-content:space-between;gap:14px">
+                <div style="display:flex;align-items:center;gap:12px">
+                  <span style="width:8px;height:8px;border-radius:999px;background:var(--breach);box-shadow:0 0 6px var(--breach)"></span>
+                  <div>
+                    <div style="font:600 12.5px var(--sans)">Visual (P17) Bottleneck</div>
+                    <div style="font:400 11px var(--mono);color:var(--muted)">Concentrates 62% of losses · 1.44% rate</div>
+                  </div>
+                </div>
+                <div style="text-align:right">
+                  <div style="font:600 16px var(--mono);color:var(--breach)">₹6.2L</div>
+                  <div style="font:400 10px var(--mono);color:var(--muted)">Recovery Opp.</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Vertical Divider -->
+            <div style="background:var(--line);width:1px"></div>
+
+            <!-- Right Side: Actionable Cards with Create CAPA buttons -->
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;align-items:center;justify-content:space-between;font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">
+                <span>Recommended Decisions</span>
+                <span>Rule Engine v1.2</span>
+              </div>
+              
+              <!-- Rec 1: Critical -->
+              <div style="background:var(--well);border-radius:var(--r-well);padding:12px 14px;box-shadow:var(--inset);display:flex;flex-direction:column;gap:6px">
+                <div style="display:flex;align-items:center;justify-content:space-between">
+                  <span style="font:600 10px var(--mono);color:var(--breach);background:var(--breach-weak);padding:2px 8px;border-radius:999px">CRITICAL</span>
+                  <span style="font:400 10px var(--mono);color:var(--muted)">RULE-01-COAG · rate=1.44%</span>
+                </div>
+                <div style="font:400 12px/1.45 var(--sans);color:var(--ink)">Investigate dipping solution temperature &amp; operator curing technique on 16Fr Shift B.</div>
+                <div style="display:flex;justify-content:flex-end">
+                  <span class="hvr-op" role="button" tabindex="0" onclick="go('capa')" style="font:600 11px var(--sans);color:var(--brand-ink);background:var(--brand);padding:5px 12px;border-radius:999px;cursor:pointer">Create CAPA →</span>
+                </div>
+              </div>
+
+              <!-- Rec 2: Warning -->
+              <div style="background:var(--well);border-radius:var(--r-well);padding:12px 14px;box-shadow:var(--inset);display:flex;flex-direction:column;gap:6px">
+                <div style="display:flex;align-items:center;justify-content:space-between">
+                  <span style="font:600 10px var(--mono);color:var(--decide);background:var(--decide-weak);padding:2px 8px;border-radius:999px">WARNING</span>
+                  <span style="font:400 10px var(--mono);color:var(--muted)">RULE-05-SPC · 2 of 3 > 2σ</span>
+                </div>
+                <div style="font:400 12px/1.45 var(--sans);color:var(--ink)">Monitor Balloon station for 2 consecutive shifts to confirm stability control limits.</div>
+                <div style="display:flex;justify-content:flex-end">
+                  <span class="hvr-tile" role="button" tabindex="0" onclick="go('stability')" style="font:500 11px var(--sans);background:var(--surface);box-shadow:var(--sh1);padding:5px 12px;border-radius:999px;cursor:pointer">View Control Chart</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- 9. Open Work & ALCOA+ Defensibility Trust Score Cards -->
+        <div style="display:flex;gap:14px">
+          
+          <!-- Your Open Work -->
+          <div style="flex:1;background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:18px 20px">
+            <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:14px">
+              <span style="font:600 12.5px var(--sans)">Your open work</span>
+              <span style="margin-left:auto;font:400 11px var(--mono);color:var(--muted)">3 items</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div class="hvr-tr-x" onclick="go('decide')" style="display:flex;align-items:center;gap:12px;background:var(--well);border-radius:999px;padding:11px 16px;cursor:pointer;box-shadow:var(--inset);transition:transform 180ms cubic-bezier(.2,.8,.2,1)">
+                <span style="width:7px;height:7px;border-radius:999px;background:var(--decide);flex:none"></span>
+                <span style="font:500 12px var(--sans)">Adjudicate FBC-16-0812</span>
+                <span style="margin-left:auto;font:400 11px var(--mono);color:var(--muted)">defect sum ≠ rejected</span>
+              </div>
+              <div class="hvr-tr-x" onclick="go('capa')" style="display:flex;align-items:center;gap:12px;background:var(--well);border-radius:999px;padding:11px 16px;cursor:pointer;box-shadow:var(--inset);transition:transform 180ms cubic-bezier(.2,.8,.2,1)">
+                <span style="width:7px;height:7px;border-radius:999px;background:var(--breach);flex:none"></span>
+                <span style="font:500 12px var(--sans)">CAPA-24 · Balloon leak rework</span>
+                <span style="margin-left:auto;font:400 11px var(--mono);color:var(--breach)">overdue 3 days</span>
+              </div>
+              <div class="hvr-tr-x" onclick="go('defect')" style="display:flex;align-items:center;gap:12px;background:var(--well);border-radius:999px;padding:11px 16px;cursor:pointer;box-shadow:var(--inset);transition:transform 180ms cubic-bezier(.2,.8,.2,1)">
+                <span style="width:7px;height:7px;border-radius:999px;background:var(--brand);flex:none"></span>
+                <span style="font:500 12px var(--sans)">Chase · COAG at Visual</span>
+                <span style="margin-left:auto;font:400 11px var(--mono);color:var(--muted)">parked yesterday</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Defensibility Trust Score Gauge -->
+          <div style="width:400px;flex:none;background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:18px 20px">
+            <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:14px">
+              <span style="font:600 12.5px var(--sans)">Can these numbers be defended?</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:16px">
+              <div style="position:relative;width:78px;height:78px;flex:none">
+                <svg width="78" height="78" viewBox="0 0 78 78" fill="none">
+                  <circle cx="39" cy="39" r="33" stroke="var(--well)" stroke-width="8"/>
+                  <circle cx="39" cy="39" r="33" stroke="var(--verified)" stroke-width="8" stroke-linecap="round" stroke-dasharray="207" stroke-dashoffset="29" transform="rotate(-90 39 39)" style="animation:dr 1.2s cubic-bezier(.2,.8,.2,1) both"/>
+                </svg>
+                <div style="position:absolute;inset:0;display:grid;place-items:center;font:600 17px var(--mono);letter-spacing:-.03em">86</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:7px">
+                <div style="display:flex;align-items:center;gap:8px;font:400 11.5px var(--sans);color:var(--ink2)"><span style="width:6px;height:6px;border-radius:999px;background:var(--verified)"></span>1,284 events, every one traceable to a cell</div>
+                <div style="display:flex;align-items:center;gap:8px;font:400 11.5px var(--sans);color:var(--ink2)"><span style="width:6px;height:6px;border-radius:999px;background:var(--verified)"></span>0 numbers taken from sheet formulas</div>
+                <div style="display:flex;align-items:center;gap:8px;font:400 11.5px var(--sans);color:var(--ink2)"><span style="width:6px;height:6px;border-radius:999px;background:var(--decide)"></span>2 unresolved balance conflicts</div>
+              </div>
+            </div>
+            <div class="hvr-tile" role="button" tabindex="0" onclick="go('audit')" style="margin-top:16px;display:flex;align-items:center;justify-content:center;gap:8px;font:500 11.5px var(--sans);background:var(--well);border-radius:999px;padding:10px;cursor:pointer;box-shadow:var(--inset);transition:background 170ms">
+              Open audit trail
+              <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5"/></svg>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- ==================== INVESTIGATE (LENSES SHARED) ==================== -->
+      <div id="screen-investigate" style="display:none;flex-direction:column;gap:14px;animation:fi 220ms ease both">
+        
+        <!-- Lens Navigation Tabs -->
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="display:flex;align-items:center;background:var(--well);border-radius:999px;padding:4px;box-shadow:var(--inset)">
+            <span id="tab-gate" role="button" tabindex="0" onclick="go('gate')" style="padding:8px 15px;border-radius:999px;font:500 12px var(--sans);cursor:pointer;background:var(--surface);box-shadow:var(--sh1);color:var(--ink);transition:background 170ms">By gate</span>
+            <span id="tab-size" role="button" tabindex="0" onclick="go('size')" style="padding:8px 15px;border-radius:999px;font:500 12px var(--sans);cursor:pointer;background:transparent;box-shadow:none;color:var(--muted);transition:background 170ms">By size</span>
+            <span id="tab-defect" role="button" tabindex="0" onclick="go('defect')" style="padding:8px 15px;border-radius:999px;font:500 12px var(--sans);cursor:pointer;background:transparent;box-shadow:none;color:var(--muted);transition:background 170ms">By defect</span>
+            <span id="tab-stability" role="button" tabindex="0" onclick="go('stability')" style="padding:8px 15px;border-radius:999px;font:500 12px var(--sans);cursor:pointer;background:transparent;box-shadow:none;color:var(--muted);transition:background 170ms">Stability</span>
+            <span id="tab-cost" role="button" tabindex="0" onclick="go('cost')" style="padding:8px 15px;border-radius:999px;font:500 12px var(--sans);cursor:pointer;background:transparent;box-shadow:none;color:var(--muted);transition:background 170ms">Cost</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;font:400 11px var(--mono);color:var(--muted)">
+            <span style="background:var(--surface);border-radius:999px;padding:6px 11px;box-shadow:var(--sh1);color:var(--ink2)">Assembly</span>
+            <span style="color:var(--faint)">›</span>
+            <span style="background:var(--surface);border-radius:999px;padding:6px 11px;box-shadow:var(--sh1);color:var(--ink2)">Visual (P17)</span>
+            <span style="color:var(--faint)">›</span>
+            <span style="display:inline-flex;align-items:center;gap:7px;background:var(--brand-weak);border-radius:999px;padding:6px 11px;color:var(--brand)">16Fr <span style="cursor:pointer;font-weight:600" onclick="showToast('Cleared 16Fr scope filter')">×</span></span>
+          </div>
+          <span style="margin-left:auto;font:400 11px var(--mono);color:var(--muted)">scope carries across every lens</span>
+        </div>
+
+        <!-- LENS 1: BY GATE -->
+        <div id="lens-gate" style="display:none;flex-direction:column;gap:14px;animation:fu 220ms cubic-bezier(.2,.8,.2,1) both">
+          <div style="background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:22px 24px">
+            <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:18px">
+              <span style="font:600 13px var(--sans)">Units through the line</span>
+              <span style="font:400 11px var(--mono);color:var(--muted)">each gate inspects what the one before it passed — rates never sum</span>
+            </div>
+            <div style="display:flex;align-items:flex-end;gap:2px;height:150px">
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px">
+                <div style="font:500 11px var(--mono);color:var(--muted)">412,860</div>
+                <div style="width:100%;height:126px;border-radius:var(--r-tile);background:var(--well);position:relative;overflow:hidden;box-shadow:var(--inset)">
+                  <div style="position:absolute;inset:0;background:var(--breach);opacity:.14"></div>
+                  <div style="position:absolute;left:0;right:0;bottom:0;height:34%;background:var(--breach);opacity:.9;transform-origin:bottom;animation:gh 600ms cubic-bezier(.2,.8,.2,1) both"></div>
+                  <div style="position:absolute;left:12px;top:12px;font:600 15px var(--mono);letter-spacing:-.03em;color:var(--ink)">1.44%</div>
+                  <div style="position:absolute;left:12px;top:36px;font:500 11px var(--mono);color:var(--ink2)">5,932 rejected</div>
+                </div>
+                <div style="font:500 12px var(--sans)">Visual (P17)</div>
+              </div>
+              <div style="width:22px;display:grid;place-items:center;padding-bottom:34px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--faint)" stroke-width="1.6"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5"/></svg></div>
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px">
+                <div style="font:500 11px var(--mono);color:var(--muted)">406,928</div>
+                <div style="width:100%;height:112px;border-radius:var(--r-tile);background:var(--well);position:relative;overflow:hidden;box-shadow:var(--inset)">
+                  <div style="position:absolute;left:0;right:0;bottom:0;height:13%;background:var(--brand);opacity:.85;transform-origin:bottom;animation:gh 600ms 80ms cubic-bezier(.2,.8,.2,1) both"></div>
+                  <div style="position:absolute;left:12px;top:12px;font:600 15px var(--mono);letter-spacing:-.03em">0.46%</div>
+                  <div style="position:absolute;left:12px;top:36px;font:500 11px var(--mono)">1,884 rejected</div>
+                </div>
+                <div style="font:400 12px var(--sans)">Balloon (P18)</div>
+              </div>
+              <div style="width:22px;display:grid;place-items:center;padding-bottom:34px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--faint)" stroke-width="1.6"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5"/></svg></div>
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px">
+                <div style="font:500 11px var(--mono);color:var(--muted)">405,044</div>
+                <div style="width:100%;height:104px;border-radius:var(--r-tile);background:var(--well);position:relative;overflow:hidden;box-shadow:var(--inset)">
+                  <div style="position:absolute;left:0;right:0;bottom:0;height:9%;background:var(--brand);opacity:.6;transform-origin:bottom;animation:gh 600ms 160ms cubic-bezier(.2,.8,.2,1) both"></div>
+                  <div style="position:absolute;left:12px;top:12px;font:600 15px var(--mono);letter-spacing:-.03em">0.30%</div>
+                  <div style="position:absolute;left:12px;top:36px;font:500 11px var(--mono)">1,206 rejected</div>
+                </div>
+                <div style="font:400 12px var(--sans)">Valve integrity (P20)</div>
+              </div>
+              <div style="width:22px;display:grid;place-items:center;padding-bottom:34px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--faint)" stroke-width="1.6"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5"/></svg></div>
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px">
+                <div style="font:500 11px var(--mono);color:var(--muted)">403,838</div>
+                <div style="width:100%;height:98px;border-radius:var(--r-tile);background:var(--well);position:relative;overflow:hidden;box-shadow:var(--inset)">
+                  <div style="position:absolute;left:0;right:0;bottom:0;height:4%;background:var(--brand);opacity:.4;transform-origin:bottom;animation:gh 600ms 240ms cubic-bezier(.2,.8,.2,1) both"></div>
+                  <div style="position:absolute;left:12px;top:12px;font:600 15px var(--mono);letter-spacing:-.03em">0.12%</div>
+                  <div style="position:absolute;left:12px;top:36px;font:500 11px var(--mono)">482 rejected</div>
+                </div>
+                <div style="font:400 12px var(--sans)">Final (P24)</div>
+              </div>
+              <div style="width:22px;display:grid;place-items:center;padding-bottom:34px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--faint)" stroke-width="1.6"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5"/></svg></div>
+              <div style="width:150px;display:flex;flex-direction:column;align-items:center;gap:8px">
+                <div style="font:500 11px var(--mono);color:var(--verified)">403,356 good</div>
+                <div style="width:100%;height:94px;border-radius:var(--r-tile);background:var(--verified-weak);display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px">
+                  <div style="font:600 19px var(--mono);letter-spacing:-.03em;color:var(--verified)">96.4%</div>
+                  <div style="font:500 10.5px var(--mono);color:var(--verified)">first pass yield</div>
+                </div>
+                <div style="font:400 12px var(--sans);color:var(--muted)">Released</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:18px 20px">
+            <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px">
+              <span style="font:600 13px var(--sans)">Visual (P17), day by day</span>
+              <span style="font:400 11px var(--mono);color:var(--muted)">1–12 Aug · dashed line is the 3.00% plant target</span>
+              <span style="margin-left:auto;font:400 11px var(--mono);color:var(--muted)">click a day to see its batches</span>
+            </div>
+            <div style="display:flex;align-items:flex-end;gap:7px;height:118px;padding:0 2px">
+              <div class="hvr-op-bar" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px;cursor:pointer" onclick="showToast('1 Aug: 1.56% (450 rej)')"><div style="width:100%;height:52%;border-radius:999px 999px 8px 8px;background:var(--brand);opacity:.55;transform-origin:bottom;animation:gh 500ms both"></div><span style="font:400 10px var(--mono);color:var(--muted)">1</span></div>
+              <div class="hvr-op-bar" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px;cursor:pointer" onclick="showToast('2 Aug: 1.32% (380 rej)')"><div style="width:100%;height:44%;border-radius:999px 999px 8px 8px;background:var(--brand);opacity:.55;transform-origin:bottom;animation:gh 500ms 30ms both"></div><span style="font:400 10px var(--mono);color:var(--muted)">2</span></div>
+              <div class="hvr-op-bar" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px;cursor:pointer" onclick="showToast('4 Aug: 1.83% (510 rej)')"><div style="width:100%;height:61%;border-radius:999px 999px 8px 8px;background:var(--brand);opacity:.55;transform-origin:bottom;animation:gh 500ms 60ms both"></div><span style="font:400 10px var(--mono);color:var(--muted)">4</span></div>
+              <div class="hvr-op-bar" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px;cursor:pointer" onclick="showToast('5 Aug: 1.44% (420 rej)')"><div style="width:100%;height:48%;border-radius:999px 999px 8px 8px;background:var(--brand);opacity:.55;transform-origin:bottom;animation:gh 500ms 90ms both"></div><span style="font:400 10px var(--mono);color:var(--muted)">5</span></div>
+              <div class="hvr-op-bar" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px;cursor:pointer" onclick="showToast('6 Aug: 2.10% (620 rej)')"><div style="width:100%;height:70%;border-radius:999px 999px 8px 8px;background:var(--brand);opacity:.55;transform-origin:bottom;animation:gh 500ms 120ms both"></div><span style="font:400 10px var(--mono);color:var(--muted)">6</span></div>
+              <div class="hvr-op-bar" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px;cursor:pointer" onclick="showToast('7 Aug: 1.74% (490 rej)')"><div style="width:100%;height:58%;border-radius:999px 999px 8px 8px;background:var(--brand);opacity:.55;transform-origin:bottom;animation:gh 500ms 150ms both"></div><span style="font:400 10px var(--mono);color:var(--muted)">7</span></div>
+              <div class="hvr-op-bar" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px;cursor:pointer" onclick="showToast('8 Aug breached target — 3.42% (Rule 1 special cause)')"><div style="width:100%;height:96%;border-radius:999px 999px 8px 8px;background:var(--breach);transform-origin:bottom;animation:gh 500ms 180ms both"></div><span style="font:500 10px var(--mono);color:var(--breach)">8</span></div>
+              <div class="hvr-op-bar" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px;cursor:pointer" onclick="showToast('9 Aug: 2.22% (610 rej)')"><div style="width:100%;height:74%;border-radius:999px 999px 8px 8px;background:var(--brand);opacity:.55;transform-origin:bottom;animation:gh 500ms 210ms both"></div><span style="font:400 10px var(--mono);color:var(--muted)">9</span></div>
+              <div class="hvr-op-bar" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px;cursor:pointer" onclick="showToast('11 Aug: 1.68% (460 rej)')"><div style="width:100%;height:56%;border-radius:999px 999px 8px 8px;background:var(--brand);opacity:.55;transform-origin:bottom;animation:gh 500ms 240ms both"></div><span style="font:400 10px var(--mono);color:var(--muted)">11</span></div>
+              <div class="hvr-op-bar" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px;cursor:pointer" onclick="showToast('12 Aug: 1.89% (540 rej) · 1 open balance conflict')"><div style="width:100%;height:63%;border-radius:999px 999px 8px 8px;background:var(--decide);opacity:.75;transform-origin:bottom;animation:gh 500ms 270ms both"></div><span style="font:500 10px var(--mono);color:var(--decide)">12</span></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:16px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line);font:400 11px var(--mono);color:var(--muted)">
+              <span style="display:inline-flex;align-items:center;gap:7px"><span style="width:9px;height:9px;border-radius:999px;background:var(--breach)"></span>8 Aug breached target — 3.42%</span>
+              <span style="display:inline-flex;align-items:center;gap:7px"><span style="width:9px;height:9px;border-radius:999px;background:var(--decide)"></span>12 Aug still has an open balance conflict</span>
+              <span style="margin-left:auto;color:var(--faint)">3 Aug, 10 Aug — no production logged</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- LENS 2: BY SIZE -->
+        <div id="lens-size" style="display:none;gap:14px;animation:fu 220ms cubic-bezier(.2,.8,.2,1) both">
+          <div style="flex:1;background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:20px 22px">
+            <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:16px">
+              <span style="font:600 13px var(--sans)">Rejection by French size</span>
+              <span style="font:400 11px var(--mono);color:var(--muted)">bar = share of volume · number = its own rate</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div class="hvr-tr-x" onclick="showToast('16Fr is the primary driver of scrap')" style="display:flex;align-items:center;gap:14px;padding:11px 14px;border-radius:999px;background:var(--breach-weak);cursor:pointer;transition:transform 180ms cubic-bezier(.2,.8,.2,1)">
+                <span style="font:600 12.5px var(--mono);width:52px">16Fr</span>
+                <div style="flex:1;height:10px;border-radius:999px;background:var(--tile);overflow:hidden"><div style="width:100%;height:100%;border-radius:999px;background:var(--breach);transform-origin:left;animation:gw 620ms both"></div></div>
+                <span style="font:400 11px var(--mono);color:var(--muted);width:74px;text-align:right">156,940 u</span>
+                <span style="font:600 13px var(--mono);color:var(--breach);width:60px;text-align:right">3.14%</span>
+              </div>
+              <div class="hvr-tr-x" onclick="showToast('18Fr scrap: 2.86%')" style="display:flex;align-items:center;gap:14px;padding:11px 14px;border-radius:999px;background:var(--well);box-shadow:var(--inset);cursor:pointer;transition:transform 180ms cubic-bezier(.2,.8,.2,1)">
+                <span style="font:500 12.5px var(--mono);width:52px">18Fr</span>
+                <div style="flex:1;height:10px;border-radius:999px;background:var(--tile);overflow:hidden"><div style="width:63%;height:100%;border-radius:999px;background:var(--brand);opacity:.8;transform-origin:left;animation:gw 620ms 60ms both"></div></div>
+                <span style="font:400 11px var(--mono);color:var(--muted);width:74px;text-align:right">98,410 u</span>
+                <span style="font:600 13px var(--mono);width:60px;text-align:right">2.86%</span>
+              </div>
+              <div class="hvr-tr-x" onclick="showToast('14Fr scrap: 2.21%')" style="display:flex;align-items:center;gap:14px;padding:11px 14px;border-radius:999px;background:var(--well);box-shadow:var(--inset);cursor:pointer;transition:transform 180ms cubic-bezier(.2,.8,.2,1)">
+                <span style="font:500 12.5px var(--mono);width:52px">14Fr</span>
+                <div style="flex:1;height:10px;border-radius:999px;background:var(--tile);overflow:hidden"><div style="width:47%;height:100%;border-radius:999px;background:var(--brand);opacity:.62;transform-origin:left;animation:gw 620ms 120ms both"></div></div>
+                <span style="font:400 11px var(--mono);color:var(--muted);width:74px;text-align:right">74,220 u</span>
+                <span style="font:600 13px var(--mono);width:60px;text-align:right">2.21%</span>
+              </div>
+              <div class="hvr-tr-x" onclick="showToast('20Fr scrap: 1.92%')" style="display:flex;align-items:center;gap:14px;padding:11px 14px;border-radius:999px;background:var(--well);box-shadow:var(--inset);cursor:pointer;transition:transform 180ms cubic-bezier(.2,.8,.2,1)">
+                <span style="font:500 12.5px var(--mono);width:52px">20Fr</span>
+                <div style="flex:1;height:10px;border-radius:999px;background:var(--tile);overflow:hidden"><div style="width:29%;height:100%;border-radius:999px;background:var(--brand);opacity:.5;transform-origin:left;animation:gw 620ms 180ms both"></div></div>
+                <span style="font:400 11px var(--mono);color:var(--muted);width:74px;text-align:right">45,180 u</span>
+                <span style="font:600 13px var(--mono);width:60px;text-align:right">1.92%</span>
+              </div>
+              <div class="hvr-tr-x" onclick="showToast('12Fr scrap: 1.74%')" style="display:flex;align-items:center;gap:14px;padding:11px 14px;border-radius:999px;background:var(--well);box-shadow:var(--inset);cursor:pointer;transition:transform 180ms cubic-bezier(.2,.8,.2,1)">
+                <span style="font:500 12.5px var(--mono);width:52px">12Fr</span>
+                <div style="flex:1;height:10px;border-radius:999px;background:var(--tile);overflow:hidden"><div style="width:24%;height:100%;border-radius:999px;background:var(--brand);opacity:.38;transform-origin:left;animation:gw 620ms 240ms both"></div></div>
+                <span style="font:400 11px var(--mono);color:var(--muted);width:74px;text-align:right">38,110 u</span>
+                <span style="font:600 13px var(--mono);width:60px;text-align:right">1.74%</span>
+              </div>
+            </div>
+            <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);font:400 12px/1.6 var(--sans);color:var(--ink2)">Male 2-way runs 6Fr–30Fr; only sizes with production in this window are listed. 3-way starts at 16Fr, which is also where the loss concentrates.</div>
+          </div>
+
+          <div style="width:400px;flex:none;display:flex;flex-direction:column;gap:14px">
+            <div style="background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:18px 20px">
+              <div style="font:600 13px var(--sans);margin-bottom:4px">16Fr, six months</div>
+              <div style="font:400 11px var(--mono);color:var(--muted);margin-bottom:12px">rate has climbed every month since April</div>
+              <svg width="358" height="112" viewBox="0 0 358 112" fill="none">
+                <defs><linearGradient id="sz" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--breach)" stop-opacity=".18"/><stop offset="1" stop-color="var(--breach)" stop-opacity="0"/></linearGradient></defs>
+                <line x1="0" y1="34" x2="358" y2="34" stroke="var(--line2)" stroke-width="1" stroke-dasharray="2 4"/>
+                <text x="4" y="28" fill="var(--faint)" style="font:500 9px var(--mono)">target 3.00%</text>
+                <path d="M10 84 78 76 146 64 214 50 282 40 348 26V112H10Z" fill="url(#sz)"/>
+                <polyline points="10,84 78,76 146,64 214,50 282,40 348,26" stroke="var(--breach)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="stroke-dasharray:900;animation:dr 1.1s cubic-bezier(.2,.8,.2,1) both"/>
+                <circle cx="348" cy="26" r="4" fill="var(--breach)"/>
+                <text x="10" y="106" fill="var(--faint)" style="font:500 9px var(--mono)">Mar</text>
+                <text x="332" y="106" fill="var(--faint)" style="font:500 9px var(--mono)">Aug</text>
+              </svg>
+            </div>
+            <div style="background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:18px 20px">
+              <div style="font:600 13px var(--sans);margin-bottom:12px">Where 16Fr loses units</div>
+              <div style="display:flex;flex-direction:column;gap:9px">
+                <div style="display:flex;align-items:center;gap:10px"><span style="font:400 12px var(--sans);width:120px">Visual (P17)</span><div style="flex:1;height:8px;border-radius:999px;background:var(--well);overflow:hidden"><div style="width:100%;height:100%;border-radius:999px;background:var(--breach);transform-origin:left;animation:gw 600ms both"></div></div><span style="font:500 11px var(--mono);width:44px;text-align:right">2,914</span></div>
+                <div style="display:flex;align-items:center;gap:10px"><span style="font:400 12px var(--sans);width:120px">Balloon (P18)</span><div style="flex:1;height:8px;border-radius:999px;background:var(--well);overflow:hidden"><div style="width:34%;height:100%;border-radius:999px;background:var(--brand);opacity:.8;transform-origin:left;animation:gw 600ms 70ms both"></div></div><span style="font:500 11px var(--mono);width:44px;text-align:right">992</span></div>
+                <div style="display:flex;align-items:center;gap:10px"><span style="font:400 12px var(--sans);width:120px">Valve (P20)</span><div style="flex:1;height:8px;border-radius:999px;background:var(--well);overflow:hidden"><div style="width:21%;height:100%;border-radius:999px;background:var(--brand);opacity:.6;transform-origin:left;animation:gw 600ms 140ms both"></div></div><span style="font:500 11px var(--mono);width:44px;text-align:right">614</span></div>
+                <div style="display:flex;align-items:center;gap:10px"><span style="font:400 12px var(--sans);width:120px">Final (P24)</span><div style="flex:1;height:8px;border-radius:999px;background:var(--well);overflow:hidden"><div style="width:7%;height:100%;border-radius:999px;background:var(--brand);opacity:.4;transform-origin:left;animation:gw 600ms 210ms both"></div></div><span style="font:500 11px var(--mono);width:44px;text-align:right">203</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- LENS 3: BY DEFECT -->
+        <div id="lens-defect" style="display:none;gap:14px;animation:fu 220ms cubic-bezier(.2,.8,.2,1) both">
+          <div style="flex:1;background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:20px 22px">
+            <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:6px">
+              <span style="font:600 13px var(--sans)">Five codes account for 84% of Visual rejects</span>
+            </div>
+            <div style="font:400 11px var(--mono);color:var(--muted);margin-bottom:18px">bars = units · line = running total · 21 codes in the plant schema</div>
+            <div style="position:relative;height:196px">
+              <svg width="100%" height="196" viewBox="0 0 700 196" fill="none" preserveAspectRatio="none" style="position:absolute;inset:0">
+                <polyline points="60,120 180,84 300,58 420,40 540,28 660,16" stroke="var(--decide)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" vector-effect="non-scaling-stroke" style="stroke-dasharray:900;animation:dr 1.2s cubic-bezier(.2,.8,.2,1) both"/>
+              </svg>
+              <div style="position:absolute;inset:0;display:flex;align-items:flex-end;gap:16px">
+                <div class="hvr-op-bar" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer" onclick="showToast('COAG: 1,842 units (31% of scrap)')"><span style="font:600 12px var(--mono)">1,842</span><div style="width:100%;height:150px;border-radius:16px 16px 8px 8px;background:var(--verified);transform-origin:bottom;animation:gh 620ms cubic-bezier(.2,.8,.2,1) both"></div><span style="font:600 11.5px var(--mono)">COAG</span></div>
+                <div class="hvr-op-bar" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer" onclick="showToast('SD: 1,204 units (20% of scrap)')"><span style="font:500 12px var(--mono)">1,204</span><div style="width:100%;height:98px;border-radius:16px 16px 8px 8px;background:var(--verified);opacity:.78;transform-origin:bottom;animation:gh 620ms 60ms both"></div><span style="font:500 11.5px var(--mono)">SD</span></div>
+                <div class="hvr-op-bar" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer" onclick="showToast('BL: 968 units (16% of scrap)')"><span style="font:500 12px var(--mono)">968</span><div style="width:100%;height:79px;border-radius:16px 16px 8px 8px;background:var(--verified);opacity:.6;transform-origin:bottom;animation:gh 620ms 120ms both"></div><span style="font:500 11.5px var(--mono)">BL</span></div>
+                <div class="hvr-op-bar" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer" onclick="showToast('TT: 611 units (10% of scrap)')"><span style="font:500 12px var(--mono)">611</span><div style="width:100%;height:50px;border-radius:16px 16px 8px 8px;background:var(--verified);opacity:.45;transform-origin:bottom;animation:gh 620ms 180ms both"></div><span style="font:500 11.5px var(--mono)">TT</span></div>
+                <div class="hvr-op-bar" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer" onclick="showToast('PS: 402 units (7% of scrap)')"><span style="font:500 12px var(--mono)">402</span><div style="width:100%;height:33px;border-radius:16px 16px 8px 8px;background:var(--verified);opacity:.32;transform-origin:bottom;animation:gh 620ms 240ms both"></div><span style="font:500 11.5px var(--mono)">PS</span></div>
+                <div class="hvr-op-bar" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer" onclick="showToast('Other 16 codes: 905 units total')"><span style="font:400 12px var(--mono);color:var(--muted)">905</span><div style="width:100%;height:26px;border-radius:16px 16px 8px 8px;background:var(--well);box-shadow:var(--inset);transform-origin:bottom;animation:gh 620ms 300ms both"></div><span style="font:400 11.5px var(--mono);color:var(--muted)">+16</span></div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;margin-top:18px;padding-top:14px;border-top:1px solid var(--line)">
+              <span style="font:400 12px var(--sans);color:var(--ink2)">COAG alone is 31%. It is the only code that has risen for three consecutive months.</span>
+              <span class="hvr-op" role="button" tabindex="0" onclick="go('capa')" style="margin-left:auto;font:600 11.5px var(--sans);color:var(--brand-ink);background:var(--brand);border-radius:999px;padding:9px 15px;cursor:pointer;flex:none;transition:opacity 170ms">Raise a CAPA</span>
+            </div>
+          </div>
+
+          <div style="width:400px;flex:none;background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:18px 20px">
+            <div style="font:600 13px var(--sans);margin-bottom:4px">COAG · where it lands</div>
+            <div style="font:400 11px var(--mono);color:var(--muted);margin-bottom:14px">size × shift, units this month</div>
+            <div style="display:grid;grid-template-columns:56px 1fr 1fr 1fr;gap:6px;align-items:center">
+              <span></span>
+              <span style="font:500 10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);text-align:center">A</span>
+              <span style="font:500 10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);text-align:center">B</span>
+              <span style="font:500 10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);text-align:center">C</span>
+
+              <span style="font:500 11.5px var(--mono)">16Fr</span>
+              <div style="height:44px;border-radius:12px;background:var(--verified);opacity:.35;display:grid;place-items:center;font:500 11px var(--mono);color:var(--ink)">188</div>
+              <div style="height:44px;border-radius:12px;background:var(--verified);display:grid;place-items:center;font:600 12px var(--mono);color:var(--on-status)">742</div>
+              <div style="height:44px;border-radius:12px;background:var(--verified);opacity:.5;display:grid;place-items:center;font:500 11px var(--mono);color:var(--ink)">276</div>
+
+              <span style="font:500 11.5px var(--mono)">18Fr</span>
+              <div style="height:44px;border-radius:12px;background:var(--verified);opacity:.2;display:grid;place-items:center;font:500 11px var(--mono);color:var(--ink2)">96</div>
+              <div style="height:44px;border-radius:12px;background:var(--verified);opacity:.42;display:grid;place-items:center;font:500 11px var(--mono);color:var(--ink)">231</div>
+              <div style="height:44px;border-radius:12px;background:var(--verified);opacity:.16;display:grid;place-items:center;font:500 11px var(--mono);color:var(--ink2)">74</div>
+
+              <span style="font:500 11.5px var(--mono)">14Fr</span>
+              <div style="height:44px;border-radius:12px;background:var(--well);box-shadow:var(--inset);display:grid;place-items:center;font:400 11px var(--mono);color:var(--muted)">41</div>
+              <div style="height:44px;border-radius:12px;background:var(--verified);opacity:.24;display:grid;place-items:center;font:500 11px var(--mono);color:var(--ink2)">128</div>
+              <div style="height:44px;border-radius:12px;background:var(--well);box-shadow:var(--inset);display:grid;place-items:center;font:400 11px var(--mono);color:var(--muted)">66</div>
+            </div>
+            <div style="margin-top:16px;padding:12px 14px;border-radius:var(--r-tile);background:var(--decide-weak);font:400 11.5px/1.55 var(--sans);color:var(--decide-ink)">Shift B on 16Fr is <strong style="font-weight:600">40% of all COAG</strong> — a shift-and-size pattern, not a line-wide one.</div>
+          </div>
+        </div>
+
+        <!-- LENS 4: STABILITY -->
+        <div id="lens-stability" style="display:none;gap:14px;animation:fu 220ms cubic-bezier(.2,.8,.2,1) both">
+          <div style="flex:1;background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:20px 22px">
+            <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:4px">
+              <span style="font:600 13px var(--sans)">Visual (P17) daily rate against its own control limits</span>
+            </div>
+            <div style="font:400 11px var(--mono);color:var(--muted);margin-bottom:16px">centre 1.38% · UCL 2.94% · LCL 0.00% · limits from this window's own variation, not the target</div>
+            <svg width="100%" height="240" viewBox="0 0 720 240" fill="none" style="display:block">
+              <line x1="30" y1="42" x2="700" y2="42" stroke="var(--breach)" stroke-width="1.4" stroke-dasharray="5 4"/>
+              <text x="30" y="34" fill="var(--breach)" style="font:500 10px var(--mono)">UCL 2.94%</text>
+              <line x1="30" y1="132" x2="700" y2="132" stroke="var(--verified)" stroke-width="1.4"/>
+              <text x="30" y="126" fill="var(--verified)" style="font:500 10px var(--mono)">centre 1.38%</text>
+              <line x1="30" y1="212" x2="700" y2="212" stroke="var(--line2)" stroke-width="1.4" stroke-dasharray="5 4"/>
+              <text x="30" y="228" fill="var(--muted)" style="font:500 10px var(--mono)">LCL 0.00%</text>
+              <polyline points="60,150 118,164 176,140 234,158 292,126 350,144 408,52 466,118 524,146 582,136 640,60 690,112" stroke="var(--brand)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" style="stroke-dasharray:900;animation:dr 1.3s cubic-bezier(.2,.8,.2,1) both"/>
+              <circle cx="60" cy="150" r="3.6" fill="var(--brand)"/><circle cx="118" cy="164" r="3.6" fill="var(--brand)"/><circle cx="176" cy="140" r="3.6" fill="var(--brand)"/><circle cx="234" cy="158" r="3.6" fill="var(--brand)"/><circle cx="292" cy="126" r="3.6" fill="var(--brand)"/><circle cx="350" cy="144" r="3.6" fill="var(--brand)"/>
+              <circle cx="408" cy="52" r="5.2" fill="var(--breach)"/><circle cx="466" cy="118" r="3.6" fill="var(--brand)"/><circle cx="524" cy="146" r="3.6" fill="var(--brand)"/><circle cx="582" cy="136" r="3.6" fill="var(--brand)"/>
+              <circle cx="640" cy="60" r="5.2" fill="var(--decide)"/><circle cx="690" cy="112" r="3.6" fill="var(--brand)"/>
+              <text x="404" y="38" fill="var(--breach)" style="font:600 10px var(--mono)">8 Aug</text>
+              <text x="634" y="46" fill="var(--decide)" style="font:600 10px var(--mono)">12 Aug</text>
+            </svg>
+          </div>
+          <div style="width:400px;flex:none;background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:18px 20px">
+            <div style="font:600 13px var(--sans);margin-bottom:14px">What the rules flagged</div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div style="padding:13px 15px;border-radius:var(--r-tile);background:var(--breach-weak)">
+                <div style="display:flex;align-items:center;gap:8px"><span style="font:600 11px var(--mono);color:var(--breach)">RULE 1</span><span style="margin-left:auto;font:500 11px var(--mono);color:var(--breach)">8 Aug</span></div>
+                <div style="font:400 12px/1.55 var(--sans);color:var(--ink2);margin-top:5px">One point above the upper control limit — 3.42% against a 2.94% UCL. Special cause; not normal variation.</div>
+              </div>
+              <div style="padding:13px 15px;border-radius:var(--r-tile);background:var(--decide-weak)">
+                <div style="display:flex;align-items:center;gap:8px"><span style="font:600 11px var(--mono);color:var(--decide)">RULE 5</span><span style="margin-left:auto;font:500 11px var(--mono);color:var(--decide)">11–12 Aug</span></div>
+                <div style="font:400 12px/1.55 var(--sans);color:var(--decide-ink);margin-top:5px">Two of three consecutive points beyond 2σ on the high side. Watch the next shift before acting.</div>
+              </div>
+              <div style="padding:13px 15px;border-radius:var(--r-tile);background:var(--well);box-shadow:var(--inset)">
+                <div style="font:500 11px var(--mono);color:var(--muted)">RULES 2, 3, 4 · clear</div>
+                <div style="font:400 12px/1.55 var(--sans);color:var(--muted);margin-top:5px">No run of nine on one side, no six-point trend, no fourteen-point alternation.</div>
+              </div>
+            </div>
+            <div style="margin-top:14px;font:400 11px/1.55 var(--mono);color:var(--muted)">Limits recomputed from 12 day-records. Two days had no production and are excluded rather than read as zero.</div>
+          </div>
+        </div>
+
+        <!-- LENS 5: COST OF QUALITY -->
+        <div id="lens-cost" style="display:none;flex-direction:column;gap:14px;animation:fu 220ms cubic-bezier(.2,.8,.2,1) both">
+          <div style="display:flex;gap:12px">
+            <div style="flex:1;background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:18px 20px">
+              <div style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">Cost of poor quality</div>
+              <div style="font:600 30px var(--mono);letter-spacing:-.04em;margin-top:8px">₹18.4L</div>
+              <div style="font:400 11.5px var(--mono);color:var(--muted);margin-top:4px">9,504 units × ₹194 loaded cost</div>
+            </div>
+            <div style="flex:1;background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:18px 20px">
+              <div style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">Addressable</div>
+              <div style="font:600 30px var(--mono);letter-spacing:-.04em;margin-top:8px;color:var(--decide)">₹6.2L</div>
+              <div style="font:400 11.5px var(--mono);color:var(--muted);margin-top:4px">COAG + BL, the two codes with owners possible</div>
+            </div>
+            <div style="flex:1;background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:18px 20px">
+              <div style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">If target held all year</div>
+              <div style="font:600 30px var(--mono);letter-spacing:-.04em;margin-top:8px;color:var(--verified)">₹41.6L</div>
+              <div style="font:400 11.5px var(--mono);color:var(--muted);margin-top:4px">FY 26–27 run rate at 3.00% vs today</div>
+            </div>
+          </div>
+          <div style="background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:20px 22px">
+            <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:18px">
+              <span style="font:600 13px var(--sans)">Where the money goes</span>
+              <span style="font:400 11px var(--mono);color:var(--muted)">scrap at every gate, plus rework where the plant reworks</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:center;gap:14px">
+                <span style="font:500 12px var(--sans);width:150px">Visual (P17)</span>
+                <div style="flex:1;height:34px;border-radius:999px;background:var(--well);overflow:hidden;box-shadow:var(--inset);display:flex">
+                  <div style="width:76%;height:100%;background:var(--breach);border-radius:999px;display:flex;align-items:center;padding-left:14px;font:500 11.5px var(--mono);color:var(--on-status);transform-origin:left;animation:gw 640ms both">₹11.5L scrap</div>
+                </div>
+                <span style="font:600 12.5px var(--mono);width:64px;text-align:right">₹11.5L</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:14px">
+                <span style="font:400 12px var(--sans);width:150px">Balloon (P18)</span>
+                <div style="flex:1;height:34px;border-radius:999px;background:var(--well);overflow:hidden;box-shadow:var(--inset);display:flex">
+                  <div style="width:24%;height:100%;background:var(--brand);opacity:.85;border-radius:999px;display:flex;align-items:center;padding-left:14px;font:500 11.5px var(--mono);color:var(--on-status);transform-origin:left;animation:gw 640ms 70ms both">₹3.7L</div>
+                </div>
+                <span style="font:500 12.5px var(--mono);width:64px;text-align:right">₹3.7L</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:14px">
+                <span style="font:400 12px var(--sans);width:150px">Valve integrity (P20)</span>
+                <div style="flex:1;height:34px;border-radius:999px;background:var(--well);overflow:hidden;box-shadow:var(--inset);display:flex">
+                  <div style="width:15%;height:100%;background:var(--brand);opacity:.6;border-radius:999px;display:flex;align-items:center;padding-left:14px;font:500 11.5px var(--mono);color:var(--on-status);transform-origin:left;animation:gw 640ms 140ms both">₹2.3L</div>
+                </div>
+                <span style="font:500 12.5px var(--mono);width:64px;text-align:right">₹2.3L</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:14px">
+                <span style="font:400 12px var(--sans);width:150px">Final (P24)</span>
+                <div style="flex:1;height:34px;border-radius:999px;background:var(--well);overflow:hidden;box-shadow:var(--inset);display:flex">
+                  <div style="width:6%;height:100%;background:var(--brand);opacity:.4;border-radius:999px;transform-origin:left;animation:gw 640ms 210ms both"></div>
+                </div>
+                <span style="font:500 12.5px var(--mono);width:64px;text-align:right">₹0.9L</span>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;margin-top:18px;padding-top:14px;border-top:1px solid var(--line)">
+              <span style="font:400 12px var(--sans);color:var(--ink2)">Costs come from Admin → Costs &amp; targets (₹194/unit, set 1 Apr 2026). Change it there and every figure here recomputes.</span>
+              <span class="hvr-tile" onclick="openProvenance('Loaded Unit Cost', '₹194 per catheter basis')" style="margin-left:auto;font:500 11.5px var(--sans);background:var(--well);border-radius:999px;padding:8px 14px;box-shadow:var(--inset);cursor:pointer;flex:none;transition:background 170ms">View source</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ==================== SCREEN 2: LOG PRODUCTION (DATA ENTRY) ==================== -->
+      <div id="screen-entry" style="display:none;gap:14px;animation:fi 220ms ease both">
+
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:14px">
+
+          <!-- Batch Context Header Card -->
+          <div style="background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:20px 22px">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+              <span style="font:600 13px var(--sans)">Which batch are you logging?</span>
+              <span style="margin-left:auto;display:inline-flex;align-items:center;gap:7px;font:400 11px var(--mono);color:var(--muted);background:var(--well);border-radius:999px;padding:6px 12px;box-shadow:var(--inset)">
+                <span style="width:6px;height:6px;border-radius:999px;background:var(--decide);animation:bl 2.6s ease-in-out infinite"></span>
+                draft auto-saved · safe to walk away
+              </span>
+            </div>
+
+            <!-- Segmented Selectors: Section & Gate -->
+            <div style="display:flex;flex-wrap:wrap;gap:22px">
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <span style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">Section</span>
+                <div style="display:flex;background:var(--well);border-radius:999px;padding:4px;box-shadow:var(--inset)">
+                  <span id="sec-primary" class="hvr-tile" style="padding:9px 15px;border-radius:999px;font:400 12px var(--sans);color:var(--muted);cursor:pointer;transition:background 170ms" onclick="setSection('primary')">Primary</span>
+                  <span id="sec-secondary" class="hvr-tile" style="padding:9px 15px;border-radius:999px;font:400 12px var(--sans);color:var(--muted);cursor:pointer;transition:background 170ms" onclick="setSection('secondary')">Secondary</span>
+                  <span id="sec-assembly" style="padding:9px 15px;border-radius:999px;font:600 12px var(--sans);background:var(--surface);box-shadow:var(--sh1);cursor:pointer" onclick="setSection('assembly')">Assembly</span>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <span style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">Inspection Gate</span>
+                <div style="display:flex;background:var(--well);border-radius:999px;padding:4px;box-shadow:var(--inset)">
+                  <span id="gate-p17" style="padding:9px 14px;border-radius:999px;font:600 12px var(--sans);background:var(--surface);box-shadow:var(--sh1);cursor:pointer" onclick="setGate('visual')">Visual · P17</span>
+                  <span id="gate-p18" class="hvr-tile" style="padding:9px 14px;border-radius:999px;font:400 12px var(--sans);color:var(--muted);cursor:pointer;transition:background 170ms" onclick="setGate('balloon')">Balloon · P18</span>
+                  <span id="gate-p20" class="hvr-tile" style="padding:9px 14px;border-radius:999px;font:400 12px var(--sans);color:var(--muted);cursor:pointer;transition:background 170ms" onclick="setGate('valve')">Valve · P20</span>
+                  <span id="gate-p24" class="hvr-tile" style="padding:9px 14px;border-radius:999px;font:400 12px var(--sans);color:var(--muted);cursor:pointer;transition:background 170ms" onclick="setGate('final')">Final · P24</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Segmented Selectors: Category, Type & French Size -->
+            <div style="display:flex;flex-wrap:wrap;gap:22px;margin-top:16px">
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <span style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">Category</span>
+                <div style="display:flex;background:var(--well);border-radius:999px;padding:4px;box-shadow:var(--inset)">
+                  <span id="cat-male" style="padding:8px 14px;border-radius:999px;font:600 11.5px var(--sans);background:var(--surface);box-shadow:var(--sh1);cursor:pointer" onclick="setCategory('male')">Male</span>
+                  <span id="cat-female" class="hvr-tile" style="padding:8px 14px;border-radius:999px;font:400 11.5px var(--sans);color:var(--muted);cursor:pointer" onclick="setCategory('female')">Female</span>
+                  <span id="cat-paed" class="hvr-tile" style="padding:8px 14px;border-radius:999px;font:400 11.5px var(--sans);color:var(--muted);cursor:pointer" onclick="setCategory('paediatric')">Paediatric</span>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <span style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">Type</span>
+                <div style="display:flex;background:var(--well);border-radius:999px;padding:4px;box-shadow:var(--inset)">
+                  <span id="type-2way" style="padding:8px 14px;border-radius:999px;font:600 11.5px var(--sans);background:var(--surface);box-shadow:var(--sh1);cursor:pointer" onclick="setType('2way')">2 way</span>
+                  <span id="type-3way" class="hvr-tile" style="padding:8px 14px;border-radius:999px;font:400 11.5px var(--sans);color:var(--muted);cursor:pointer" onclick="setType('3way')">3 way</span>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:8px;flex:1;min-width:320px">
+                <span style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">French Size (2-way runs 6Fr to 30Fr)</span>
+                <div id="size-pill-row" style="display:flex;flex-wrap:wrap;gap:6px">
+                  <span id="size-10Fr" class="size-pill hvr-tile" style="min-width:48px;text-align:center;padding:8px 11px;border-radius:999px;background:var(--well);box-shadow:var(--inset);font:500 11.5px var(--mono);color:var(--muted);cursor:pointer" onclick="setSize('10Fr')">10Fr</span>
+                  <span id="size-12Fr" class="size-pill hvr-tile" style="min-width:48px;text-align:center;padding:8px 11px;border-radius:999px;background:var(--well);box-shadow:var(--inset);font:500 11.5px var(--mono);color:var(--muted);cursor:pointer" onclick="setSize('12Fr')">12Fr</span>
+                  <span id="size-14Fr" class="size-pill hvr-tile" style="min-width:48px;text-align:center;padding:8px 11px;border-radius:999px;background:var(--well);box-shadow:var(--inset);font:500 11.5px var(--mono);color:var(--muted);cursor:pointer" onclick="setSize('14Fr')">14Fr</span>
+                  <span id="size-16Fr" class="size-pill" style="min-width:48px;text-align:center;padding:8px 11px;border-radius:999px;background:var(--brand);color:var(--brand-ink);font:600 11.5px var(--mono);cursor:pointer" onclick="setSize('16Fr')">16Fr</span>
+                  <span id="size-18Fr" class="size-pill hvr-tile" style="min-width:48px;text-align:center;padding:8px 11px;border-radius:999px;background:var(--well);box-shadow:var(--inset);font:500 11.5px var(--mono);color:var(--muted);cursor:pointer" onclick="setSize('18Fr')">18Fr</span>
+                  <span id="size-20Fr" class="size-pill hvr-tile" style="min-width:48px;text-align:center;padding:8px 11px;border-radius:999px;background:var(--well);box-shadow:var(--inset);font:500 11.5px var(--mono);color:var(--muted);cursor:pointer" onclick="setSize('20Fr')">20Fr</span>
+                  <span id="size-22Fr" class="size-pill hvr-tile" style="min-width:48px;text-align:center;padding:8px 11px;border-radius:999px;background:var(--well);box-shadow:var(--inset);font:500 11.5px var(--mono);color:var(--muted);cursor:pointer" onclick="setSize('22Fr')">22Fr</span>
+                  <span id="size-24Fr" class="size-pill hvr-tile" style="min-width:48px;text-align:center;padding:8px 11px;border-radius:999px;background:var(--well);box-shadow:var(--inset);font:500 11.5px var(--mono);color:var(--muted);cursor:pointer" onclick="setSize('24Fr')">24Fr</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Batch Identifier & Trace Fields -->
+            <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <span style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">Batch ID</span>
+                <div style="display:flex;align-items:center;gap:8px;height:40px;padding:0 14px;border-radius:999px;background:var(--well);box-shadow:var(--inset);font:600 12.5px var(--mono)">
+                  <span id="field-batch-id">FBC-16-0812</span>
+                  <span style="font:400 9.5px var(--mono);color:var(--verified);background:var(--verified-weak);padding:2px 6px;border-radius:4px">auto</span>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <span style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">Date Logged</span>
+                <div style="display:flex;align-items:center;gap:8px;height:40px;padding:0 14px;border-radius:999px;background:var(--well);box-shadow:var(--inset);font:500 12px var(--mono)">
+                  12 Aug 2026
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <span style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">Shift</span>
+                <div style="display:flex;background:var(--well);border-radius:999px;padding:3px;box-shadow:var(--inset);height:40px;align-items:center">
+                  <span id="shift-a" class="hvr-tile" style="padding:0 14px;height:34px;display:grid;place-items:center;border-radius:999px;font:400 12px var(--mono);color:var(--muted);cursor:pointer" onclick="setShift('A')">A</span>
+                  <span id="shift-b" style="padding:0 14px;height:34px;display:grid;place-items:center;border-radius:999px;font:600 12px var(--mono);background:var(--surface);box-shadow:var(--sh1);cursor:pointer" onclick="setShift('B')">B</span>
+                  <span id="shift-c" class="hvr-tile" style="padding:0 14px;height:34px;display:grid;place-items:center;border-radius:999px;font:400 12px var(--mono);color:var(--muted);cursor:pointer" onclick="setShift('C')">C</span>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:6px;flex:1;min-width:180px">
+                <span style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">Logged By</span>
+                <div style="display:flex;align-items:center;gap:8px;height:40px;padding:0 14px;border-radius:999px;background:var(--well);box-shadow:var(--inset);font:400 12px var(--sans)">
+                  <span>Supervisor (OP-104)</span>
+                  <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="var(--faint)" stroke-width="1.8" style="margin-left:auto"><path d="M4 6.5 8 10.5l4-4"/></svg>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quantities Card -->
+          <div style="background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:20px 22px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+              <span style="font:600 13px var(--sans)">Quantities &amp; Counts</span>
+              <span style="font:400 11px var(--mono);color:var(--muted)">Checked count inherited from previous gate (Balloon accepted = 6,000)</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));gap:12px;margin-top:14px">
+              
+              <!-- Checked -->
+              <div style="background:var(--well);border-radius:var(--r-well);padding:14px 16px;box-shadow:var(--inset)">
+                <div style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">Checked</div>
+                <div style="font:600 27px var(--mono);letter-spacing:-.04em;margin-top:7px">6,000</div>
+                <div style="font:400 10.5px var(--mono);color:var(--muted);margin-top:3px">trolley total</div>
+              </div>
+
+              <!-- Accepted (Derived) -->
+              <div style="background:var(--verified-weak);border-radius:var(--r-well);padding:14px 16px">
+                <div style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--verified)">Accepted</div>
+                <div id="entry-accept" style="font:600 27px var(--mono);letter-spacing:-.04em;margin-top:7px;color:var(--verified)">5,762</div>
+                <div style="font:400 10.5px var(--mono);color:var(--verified);margin-top:3px">derived: 6,000 − 29 − 209</div>
+              </div>
+
+              <!-- Hold -->
+              <div style="background:var(--well);border-radius:var(--r-well);padding:14px 16px;box-shadow:var(--inset)">
+                <div style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">Hold / Quarantine</div>
+                <div style="font:600 27px var(--mono);letter-spacing:-.04em;margin-top:7px">29</div>
+                <div style="font:400 10.5px var(--mono);color:var(--muted);margin-top:3px">re-inspection bin</div>
+              </div>
+
+              <!-- Rejected with Tactile Stepper -->
+              <div style="background:var(--breach-weak);border-radius:var(--r-well);padding:14px 16px">
+                <div style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--breach)">Rejected (Scrap)</div>
+                <div style="display:flex;align-items:center;gap:10px;margin-top:7px">
+                  <span class="hvr-sh" role="button" tabindex="0" onclick="decRej()" style="width:34px;height:34px;border-radius:999px;background:var(--surface);box-shadow:var(--sh1);display:grid;place-items:center;font:500 16px var(--mono);color:var(--ink2);cursor:pointer;flex:none;transition:transform 150ms">−</span>
+                  <span id="entry-rej" style="font:600 27px var(--mono);letter-spacing:-.04em;color:var(--breach);min-width:62px">209</span>
+                  <span class="hvr-sh" role="button" tabindex="0" onclick="incRej()" style="width:34px;height:34px;border-radius:999px;background:var(--surface);box-shadow:var(--sh1);display:grid;place-items:center;font:500 16px var(--mono);color:var(--ink2);cursor:pointer;flex:none;transition:transform 150ms">+</span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Tactile Defect Matrix Card (All 21 Codes with Search Filter) -->
+          <div style="background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:20px 22px">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+              <span style="font:600 13px var(--sans)">Defect Codes (Visual · 21 plant codes)</span>
+              <span style="font:400 11px var(--mono);color:var(--muted)">single tap to add +1</span>
+              <div style="margin-left:auto;display:flex;align-items:center;gap:8px;background:var(--well);border-radius:999px;padding:4px 12px;box-shadow:var(--inset)">
+                <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="var(--muted)" stroke-width="1.6"><circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2 14 14"/></svg>
+                <input id="defect-filter" type="text" placeholder="Filter codes..." oninput="filterDefectPills(this.value)" style="border:none;background:transparent;font:400 11px var(--mono);color:var(--ink);outline:none;width:90px" />
+              </div>
+            </div>
+
+            <!-- Defect Pills Matrix -->
+            <div id="defect-pill-grid" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:14px">
+              <div id="pill-COAG" class="defect-pill hvr-tr-y" role="button" tabindex="0" onclick="bump('COAG')" style="display:flex;align-items:center;gap:10px;height:46px;padding:0 8px 0 14px;border-radius:999px;background:var(--verified-weak);cursor:pointer;transition:transform 150ms cubic-bezier(.2,.8,.2,1)">
+                <span style="font:600 12px var(--mono);color:var(--verified)">COAG</span>
+                <span id="tally-COAG" style="min-width:38px;height:32px;border-radius:999px;background:var(--verified);color:var(--on-status);display:grid;place-items:center;font:600 12.5px var(--mono)">96</span>
+              </div>
+
+              <div id="pill-SD" class="defect-pill hvr-tr-y" role="button" tabindex="0" onclick="bump('SD')" style="display:flex;align-items:center;gap:10px;height:46px;padding:0 8px 0 14px;border-radius:999px;background:var(--verified-weak);cursor:pointer;transition:transform 150ms cubic-bezier(.2,.8,.2,1)">
+                <span style="font:600 12px var(--mono);color:var(--verified)">SD</span>
+                <span id="tally-SD" style="min-width:38px;height:32px;border-radius:999px;background:var(--verified);color:var(--on-status);display:grid;place-items:center;font:600 12.5px var(--mono)">61</span>
+              </div>
+
+              <div id="pill-BL" class="defect-pill hvr-tr-y" role="button" tabindex="0" onclick="bump('BL')" style="display:flex;align-items:center;gap:10px;height:46px;padding:0 8px 0 14px;border-radius:999px;background:var(--verified-weak);cursor:pointer;transition:transform 150ms cubic-bezier(.2,.8,.2,1)">
+                <span style="font:600 12px var(--mono);color:var(--verified)">BL</span>
+                <span id="tally-BL" style="min-width:38px;height:32px;border-radius:999px;background:var(--verified);color:var(--on-status);display:grid;place-items:center;font:600 12.5px var(--mono)">34</span>
+              </div>
+
+              <div id="pill-TT" class="defect-pill hvr-tr-y" role="button" tabindex="0" onclick="bump('TT')" style="display:flex;align-items:center;gap:10px;height:46px;padding:0 8px 0 14px;border-radius:999px;background:var(--verified-weak);cursor:pointer;transition:transform 150ms cubic-bezier(.2,.8,.2,1)">
+                <span style="font:600 12px var(--mono);color:var(--verified)">TT</span>
+                <span id="tally-TT" style="min-width:38px;height:32px;border-radius:999px;background:var(--verified);color:var(--on-status);display:grid;place-items:center;font:600 12.5px var(--mono)">23</span>
+              </div>
+
+              <div id="pill-PS" class="defect-pill hvr-tile" role="button" tabindex="0" onclick="bump('PS')" style="display:flex;align-items:center;gap:8px;height:46px;padding:0 16px;border-radius:999px;background:var(--well);box-shadow:var(--inset);font:500 12px var(--mono);color:var(--muted);cursor:pointer;transition:background 170ms">
+                <span>PS</span>
+                <span id="tally-PS" style="display:none;min-width:30px;height:26px;border-radius:999px;background:var(--verified);color:var(--on-status);place-items:center;font:600 11.5px var(--mono)">0</span>
+              </div>
+
+              <div id="pill-SB" class="defect-pill hvr-tile" role="button" tabindex="0" onclick="bump('SB')" style="display:flex;align-items:center;gap:8px;height:46px;padding:0 16px;border-radius:999px;background:var(--well);box-shadow:var(--inset);font:500 12px var(--mono);color:var(--muted);cursor:pointer;transition:background 170ms">
+                <span>SB</span>
+                <span id="tally-SB" style="display:none;min-width:30px;height:26px;border-radius:999px;background:var(--verified);color:var(--on-status);place-items:center;font:600 11.5px var(--mono)">0</span>
+              </div>
+
+              <div id="pill-PW" class="defect-pill hvr-tile" role="button" tabindex="0" onclick="bump('PW')" style="display:flex;align-items:center;gap:8px;height:46px;padding:0 16px;border-radius:999px;background:var(--well);box-shadow:var(--inset);font:500 12px var(--mono);color:var(--muted);cursor:pointer;transition:background 170ms">
+                <span>PW</span>
+                <span id="tally-PW" style="display:none;min-width:30px;height:26px;border-radius:999px;background:var(--verified);color:var(--on-status);place-items:center;font:600 11.5px var(--mono)">0</span>
+              </div>
+
+              <div id="pill-FP" class="defect-pill hvr-tile" role="button" tabindex="0" onclick="bump('FP')" style="display:flex;align-items:center;gap:8px;height:46px;padding:0 16px;border-radius:999px;background:var(--well);box-shadow:var(--inset);font:500 12px var(--mono);color:var(--muted);cursor:pointer;transition:background 170ms">
+                <span>FP</span>
+                <span id="tally-FP" style="display:none;min-width:30px;height:26px;border-radius:999px;background:var(--verified);color:var(--on-status);place-items:center;font:600 11.5px var(--mono)">0</span>
+              </div>
+
+              <div id="pill-RW" class="defect-pill hvr-tile" role="button" tabindex="0" onclick="bump('RW')" style="display:flex;align-items:center;gap:8px;height:46px;padding:0 16px;border-radius:999px;background:var(--well);box-shadow:var(--inset);font:500 12px var(--mono);color:var(--muted);cursor:pointer;transition:background 170ms">
+                <span>RW</span>
+                <span id="tally-RW" style="display:none;min-width:30px;height:26px;border-radius:999px;background:var(--verified);color:var(--on-status);place-items:center;font:600 11.5px var(--mono)">0</span>
+              </div>
+
+              <div id="pill-BEP" class="defect-pill hvr-tile" role="button" tabindex="0" onclick="bump('BEP')" style="display:flex;align-items:center;gap:8px;height:46px;padding:0 16px;border-radius:999px;background:var(--well);box-shadow:var(--inset);font:500 12px var(--mono);color:var(--muted);cursor:pointer;transition:background 170ms">
+                <span>BEP</span>
+                <span id="tally-BEP" style="display:none;min-width:30px;height:26px;border-radius:999px;background:var(--verified);color:var(--on-status);place-items:center;font:600 11.5px var(--mono)">0</span>
+              </div>
+
+              <div id="pill-DEC" class="defect-pill hvr-tile" role="button" tabindex="0" onclick="bump('DEC')" style="display:flex;align-items:center;gap:8px;height:46px;padding:0 16px;border-radius:999px;background:var(--well);box-shadow:var(--inset);font:500 12px var(--mono);color:var(--muted);cursor:pointer;transition:background 170ms">
+                <span>DEC</span>
+                <span id="tally-DEC" style="display:none;min-width:30px;height:26px;border-radius:999px;background:var(--verified);color:var(--on-status);place-items:center;font:600 11.5px var(--mono)">0</span>
+              </div>
+
+              <div id="pill-BM" class="defect-pill hvr-tile" role="button" tabindex="0" onclick="bump('BM')" style="display:flex;align-items:center;gap:8px;height:46px;padding:0 16px;border-radius:999px;background:var(--well);box-shadow:var(--inset);font:500 12px var(--mono);color:var(--muted);cursor:pointer;transition:background 170ms">
+                <span>BM</span>
+                <span id="tally-BM" style="display:none;min-width:30px;height:26px;border-radius:999px;background:var(--verified);color:var(--on-status);place-items:center;font:600 11.5px var(--mono)">0</span>
+              </div>
+
+              <div id="pill-WEB" class="defect-pill hvr-tile" role="button" tabindex="0" onclick="bump('WEB')" style="display:flex;align-items:center;gap:8px;height:46px;padding:0 16px;border-radius:999px;background:var(--well);box-shadow:var(--inset);font:500 12px var(--mono);color:var(--muted);cursor:pointer;transition:background 170ms">
+                <span>WEB</span>
+                <span id="tally-WEB" style="display:none;min-width:30px;height:26px;border-radius:999px;background:var(--verified);color:var(--on-status);place-items:center;font:600 11.5px var(--mono)">0</span>
+              </div>
+
+              <div id="pill-CT" class="defect-pill hvr-tile" role="button" tabindex="0" onclick="bump('CT')" style="display:flex;align-items:center;gap:8px;height:46px;padding:0 16px;border-radius:999px;background:var(--well);box-shadow:var(--inset);font:500 12px var(--mono);color:var(--muted);cursor:pointer;transition:background 170ms">
+                <span>CT</span>
+                <span id="tally-CT" style="display:none;min-width:30px;height:26px;border-radius:999px;background:var(--verified);color:var(--on-status);place-items:center;font:600 11.5px var(--mono)">0</span>
+              </div>
+
+              <div id="pill-SL" class="defect-pill hvr-tile" role="button" tabindex="0" onclick="bump('SL')" style="display:flex;align-items:center;gap:8px;height:46px;padding:0 16px;border-radius:999px;background:var(--well);box-shadow:var(--inset);font:500 12px var(--mono);color:var(--muted);cursor:pointer;transition:background 170ms">
+                <span>SL</span>
+                <span id="tally-SL" style="display:none;min-width:30px;height:26px;border-radius:999px;background:var(--verified);color:var(--on-status);place-items:center;font:600 11.5px var(--mono)">0</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Mass Balance Dock & Shift History Right Column -->
+        <div style="width:392px;flex:none;display:flex;flex-direction:column;gap:14px">
+
+          <!-- Mass Balance Live Card -->
+          <div id="box-balance" style="background:var(--decide-weak);border-radius:var(--r-card);box-shadow:var(--sh1);padding:20px 22px;transition:background 240ms ease">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span id="dot-balance" style="width:26px;height:26px;border-radius:999px;background:var(--decide);display:grid;place-items:center;flex:none">
+                <span id="glyph-balance" style="font:600 13px var(--mono);color:var(--on-status)">!</span>
+              </span>
+              <span id="title-balance" style="font:600 13px var(--sans);color:var(--decide-ink)">These two don't agree yet</span>
+            </div>
+
+            <div style="display:flex;align-items:baseline;gap:14px;margin-top:16px">
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <span style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">Defects total</span>
+                <span id="sum-defects" style="font:600 24px var(--mono);letter-spacing:-.04em;color:var(--decide-ink)">214</span>
+              </div>
+              <span id="op-balance" style="font:400 16px var(--mono);color:var(--muted);padding-bottom:2px">≠</span>
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <span style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">Rejected</span>
+                <span id="sum-rejected" style="font:600 24px var(--mono);letter-spacing:-.04em">209</span>
+              </div>
+              <div style="margin-left:auto;display:flex;flex-direction:column;gap:3px;text-align:right">
+                <span style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">Gap</span>
+                <span id="gap-balance" style="font:600 24px var(--mono);letter-spacing:-.04em;color:var(--decide-ink)">+5</span>
+              </div>
+            </div>
+
+            <div id="copy-balance" style="font:400 12px/1.6 var(--sans);color:var(--decide-ink);margin-top:14px;text-wrap:pretty">
+              The plant's rule is that we ask rather than assume. Pick which number is true — the choice travels with the batch.
+            </div>
+
+            <!-- Conflict Resolution Options -->
+            <div id="opts-unbalanced" style="display:flex;flex-direction:column;gap:8px;margin-top:16px;animation:fu 200ms cubic-bezier(.2,.8,.2,1) both">
+              <div class="hvr-tr-x" onclick="resolveChoice('rejected')" style="display:flex;align-items:center;gap:12px;background:var(--surface);border-radius:999px;padding:12px 16px;cursor:pointer;box-shadow:var(--sh1);transition:transform 170ms cubic-bezier(.2,.8,.2,1)">
+                <span style="font:500 12px var(--sans)">Rejected is right (209) — defect list is short</span>
+                <span style="margin-left:auto;font:400 10.5px var(--mono);color:var(--muted)">flags finding</span>
+              </div>
+              <div class="hvr-tr-x" onclick="resolveChoice('defects')" style="display:flex;align-items:center;gap:12px;background:var(--surface);border-radius:999px;padding:12px 16px;cursor:pointer;box-shadow:var(--sh1);transition:transform 170ms cubic-bezier(.2,.8,.2,1)">
+                <span style="font:500 12px var(--sans)">Defects are right — raise rejected to 214</span>
+                <span style="margin-left:auto;font:400 10.5px var(--mono);color:var(--muted)">correction</span>
+              </div>
+              <div style="font:400 11px/1.5 var(--mono);color:var(--muted);padding:2px 4px">Recorded with your name against it. Nothing is altered silently.</div>
+            </div>
+          </div>
+
+          <!-- This Shift So Far Worklist Card -->
+          <div style="background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:20px 22px">
+            <div style="font:600 13px var(--sans);margin-bottom:14px">This Shift so far (Shift B · 12 Aug)</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div class="hvr-tr-x" onclick="openLotProgress('FBC-16-0812')" style="display:flex;align-items:center;gap:12px;background:var(--decide-weak);border-radius:999px;padding:11px 15px;cursor:pointer">
+                <span style="width:7px;height:7px;border-radius:999px;background:var(--decide);flex:none;animation:bl 2.6s ease-in-out infinite"></span>
+                <span style="font:500 11.5px var(--mono);color:var(--decide-ink)">FBC-16-0812</span>
+                <span style="font:400 11px var(--sans);color:var(--decide-ink)">Visual</span>
+                <span style="margin-left:auto;font:500 11px var(--mono);color:var(--decide)">draft conflict</span>
+              </div>
+              <div class="hvr-tr-x" onclick="openLotProgress('FBC-18-0812')" style="display:flex;align-items:center;gap:12px;background:var(--well);border-radius:999px;padding:11px 15px;box-shadow:var(--inset);cursor:pointer">
+                <span style="width:7px;height:7px;border-radius:999px;background:var(--verified);flex:none"></span>
+                <span style="font:500 11.5px var(--mono)">FBC-18-0812</span>
+                <span style="font:400 11px var(--sans);color:var(--muted)">Visual</span>
+                <span style="margin-left:auto;font:500 11px var(--mono);color:var(--verified)">on ledger</span>
+              </div>
+              <div class="hvr-tr-x" onclick="openLotProgress('FBC-14-0812')" style="display:flex;align-items:center;gap:12px;background:var(--well);border-radius:999px;padding:11px 15px;box-shadow:var(--inset);cursor:pointer">
+                <span style="width:7px;height:7px;border-radius:999px;background:var(--verified);flex:none"></span>
+                <span style="font:500 11.5px var(--mono)">FBC-14-0812</span>
+                <span style="font:400 11px var(--sans);color:var(--muted)">Balloon</span>
+                <span style="margin-left:auto;font:500 11px var(--mono);color:var(--verified)">on ledger</span>
+              </div>
+            </div>
+
+            <!-- Shift Totals -->
+            <div style="display:flex;gap:20px;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
+              <div><div style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">Checked</div><div style="font:600 17px var(--mono);letter-spacing:-.03em;margin-top:4px">18,400</div></div>
+              <div><div style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">Rejected</div><div style="font:600 17px var(--mono);letter-spacing:-.03em;margin-top:4px">431</div></div>
+              <div><div style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">Shift Rate</div><div style="font:600 17px var(--mono);letter-spacing:-.03em;margin-top:4px">2.34%</div></div>
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div style="display:flex;gap:10px">
+            <div class="hvr-sh" onclick="showToast('Draft batch saved locally')" style="flex:1;display:flex;align-items:center;justify-content:center;height:50px;border-radius:999px;background:var(--surface);box-shadow:var(--sh1);font:500 12.5px var(--sans);cursor:pointer;transition:box-shadow 170ms">Save draft</div>
+            <div id="btn-commit" class="hvr-tr-y" onclick="commitBatch()" style="flex:2;display:flex;align-items:center;justify-content:center;gap:9px;height:50px;border-radius:999px;background:var(--well);color:var(--muted);font:600 13px var(--sans);cursor:pointer;transition:opacity 170ms,transform 170ms cubic-bezier(.2,.8,.2,1)">
+              <span id="label-commit">Resolve to commit</span>
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5"/></svg>
+            </div>
+          </div>
+          <div style="font:400 10.5px/1.55 var(--mono);color:var(--muted);text-align:center">Writes 1 stage-day event + defect breakdown directly to append-only ledger.</div>
+        </div>
+      </div>
+
+      <!-- ==================== SCREEN 3: NEEDS A DECISION ==================== -->
+      <div id="screen-decide" style="display:none;flex-direction:column;gap:14px;animation:fi 220ms ease both">
+        <div style="background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:24px 26px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+            <span style="font:600 13px var(--sans);color:var(--decide-ink)">Needs a decision · 2 open batch conflicts</span>
+          </div>
+          <div style="font:400 12.5px/1.6 var(--sans);color:var(--ink2);max-width:800px">
+            Batch <strong>FBC-16-0812</strong> logged on Shift B by OP-104 recorded 209 rejected catheters on the physical tally sheet, but its defect breakdown sums to 214. Pick the verified ground truth to unlock ledger commit.
+          </div>
+          <div style="display:flex;gap:12px;margin-top:20px">
+            <button class="hvr-op" onclick="resolveChoice('defects'); showToast('Defects accepted (214). Event committed to ledger.'); go('home')" style="height:38px;padding:0 18px;border-radius:999px;background:var(--brand);color:var(--brand-ink);border:none;font:600 12px var(--sans);cursor:pointer">Accept Defect Breakdown (214)</button>
+            <button class="hvr-sh" onclick="resolveChoice('rejected'); showToast('Physical count (209) accepted. Conflict finding recorded.'); go('home')" style="height:38px;padding:0 18px;border-radius:999px;background:var(--surface);box-shadow:var(--sh1);border:1px solid var(--line);font:500 12px var(--sans);cursor:pointer">Accept Physical Count (209)</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== SCREEN 4: ACTIONS (CAPA) ==================== -->
+      <div id="screen-capa" style="display:none;flex-direction:column;gap:14px;animation:fi 220ms ease both">
+        <div style="background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:22px 24px">
+          <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:16px">
+            <span style="font:600 13px var(--sans)">Quality Actions &amp; Ownership</span>
+            <span style="margin-left:auto;font:400 11px var(--mono);color:var(--muted)">3 open actions</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div class="hvr-tr-x" style="display:flex;align-items:center;gap:14px;background:var(--well);border-radius:999px;padding:14px 18px;box-shadow:var(--inset);cursor:pointer" onclick="showToast('Reviewing CAPA-24')">
+              <span style="width:8px;height:8px;border-radius:999px;background:var(--breach)"></span>
+              <div style="display:flex;flex-direction:column">
+                <span style="font:600 12.5px var(--sans)">CAPA-24 · Balloon pinhole &amp; leak rework</span>
+                <span style="font:400 10.5px var(--mono);color:var(--muted)">Assigned: Lead QC Eng · Overdue 3 days</span>
+              </div>
+              <span style="margin-left:auto;font:500 11.5px var(--mono);color:var(--breach)">overdue</span>
+            </div>
+            <div class="hvr-tr-x" style="display:flex;align-items:center;gap:14px;background:var(--well);border-radius:999px;padding:14px 18px;box-shadow:var(--inset);cursor:pointer" onclick="showToast('Reviewing CAPA-25')">
+              <span style="width:8px;height:8px;border-radius:999px;background:var(--decide)"></span>
+              <div style="display:flex;flex-direction:column">
+                <span style="font:600 12.5px var(--sans)">CAPA-25 · COAG Catheter Dipping Solution Temperature Study</span>
+                <span style="font:400 10.5px var(--mono);color:var(--muted)">Assigned: Shift B Supervisor · Due 18 Aug</span>
+              </div>
+              <span style="margin-left:auto;font:500 11.5px var(--mono);color:var(--decide)">in progress</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== SCREEN 5: AUDIT TRAIL ==================== -->
+      <div id="screen-audit" style="display:none;gap:14px;animation:fi 220ms ease both">
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;gap:12px">
+            <div style="flex:1;background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:18px 20px">
+              <div style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">Events on ledger</div>
+              <div style="font:600 27px var(--mono);letter-spacing:-.04em;margin-top:7px">1,284</div>
+              <div style="font:400 11px var(--mono);color:var(--muted);margin-top:3px">append-only · 0 rewritten</div>
+            </div>
+            <div style="flex:1;background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:18px 20px">
+              <div style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">Corrections</div>
+              <div style="font:600 27px var(--mono);letter-spacing:-.04em;margin-top:7px">7</div>
+              <div style="font:400 11px var(--mono);color:var(--muted);margin-top:3px">each supersedes, none deletes</div>
+            </div>
+            <div style="flex:1;background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);padding:18px 20px">
+              <div style="font:500 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)">Open conflicts</div>
+              <div style="font:600 27px var(--mono);letter-spacing:-.04em;margin-top:7px;color:var(--decide)">2</div>
+              <div style="font:400 11px var(--mono);color:var(--muted);margin-top:3px">held out of every KPI</div>
+            </div>
+          </div>
+
+          <div style="background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh1);overflow:hidden">
+            <div style="display:flex;align-items:center;gap:10px;padding:18px 20px 14px">
+              <span style="font:600 13px var(--sans)">Event stream (newest first)</span>
+            </div>
+            <!-- Row 1 -->
+            <div id="row-evt-1" class="hvr-tile" role="button" tabindex="0" onclick="toggleEvent()" style="display:flex;align-items:center;gap:12px;padding:13px 20px;border-top:1px solid var(--line);background:var(--tile);cursor:pointer">
+              <span style="width:112px;font:400 11px var(--mono);color:var(--muted)">12 Aug 14:22</span>
+              <span style="width:96px"><span style="font:500 10.5px var(--mono);color:var(--decide);background:var(--decide-weak);border-radius:999px;padding:4px 9px">conflict</span></span>
+              <span style="flex:1;font:400 12px var(--sans)">FBC-16-0812 · Visual · defect sum 214 ≠ rejected 209</span>
+              <span style="width:104px;font:400 11px var(--sans);color:var(--muted)">Supervisor</span>
+              <span style="width:86px;text-align:right;font:400 10.5px var(--mono);color:var(--faint)">a91f·4c</span>
+            </div>
+            <div id="detail-evt-1" style="display:block;padding:0 20px 18px;background:var(--tile)">
+              <div style="background:var(--surface);border-radius:var(--r-well);padding:16px 18px;box-shadow:var(--sh1)">
+                <div style="display:flex;gap:26px;flex-wrap:wrap">
+                  <div style="display:flex;flex-direction:column;gap:4px"><span style="font:500 10px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)">Source</span><span style="font:400 12px var(--sans)">Direct entry · shop-floor terminal 2</span></div>
+                  <div style="display:flex;flex-direction:column;gap:4px"><span style="font:500 10px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)">Content hash</span><span style="font:400 12px var(--mono)">a91f4c7e…d2</span></div>
+                  <div style="display:flex;flex-direction:column;gap:4px"><span style="font:500 10px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)">Status</span><span style="font:500 12px var(--sans);color:var(--decide)">awaiting adjudication</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== SCREEN 6: REPORTS ==================== -->
+      <div id="screen-reports" style="display:none;gap:14px;animation:fi 220ms ease both">
+        <div style="flex:1;background:var(--well);border-radius:var(--r-card);padding:22px;display:flex;justify-content:center">
+          <div style="width:720px;background:#FFFFFF;border-radius:10px;box-shadow:var(--sh2);padding:44px 48px;color:#101519;font-family:var(--sans)">
+            <div style="display:flex;align-items:baseline;gap:10px;padding-bottom:14px;border-bottom:2px solid #101519">
+              <span style="font:600 17px var(--sans);letter-spacing:-.02em">Monthly Quality Report</span>
+              <span style="font:400 11.5px var(--mono);color:#5E6B79">August 2026 · Assembly · FBC line</span>
+            </div>
+            <div style="font:600 20px/1.45 var(--sans);letter-spacing:-.02em;margin:20px 0 6px">Rejection ran at 2.30% against a 3.00% target. Visual (P17) accounts for 62% of all units lost.</div>
+            <div style="display:flex;gap:0;border-top:1px solid #DAE0E7;border-bottom:1px solid #DAE0E7;padding:14px 0;margin-top:20px">
+              <div style="flex:1"><div style="font:500 9.5px var(--mono);color:#5E6B79">Checked</div><div style="font:600 19px var(--mono);margin-top:5px">412,860</div></div>
+              <div style="flex:1"><div style="font:500 9.5px var(--mono);color:#5E6B79">Rejected</div><div style="font:600 19px var(--mono);margin-top:5px">9,504</div></div>
+              <div style="flex:1"><div style="font:500 9.5px var(--mono);color:#5E6B79">Rate</div><div style="font:600 19px var(--mono);margin-top:5px">2.30%</div></div>
+              <div style="flex:1"><div style="font:500 9.5px var(--mono);color:#5E6B79">FPY</div><div style="font:600 19px var(--mono);margin-top:5px">96.4%</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+
+  </div>
+
+</div>
+
+<!-- ==================== PROVENANCE / VIEW SOURCE MODAL ==================== -->
+<div id="modal-provenance" class="modal-overlay" onclick="closeProvenance()">
+  <div class="modal-card" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:16px">
+      <div>
+        <div id="modal-prov-title" style="font:600 15px var(--sans)">Overall Rejection Rate — Source Trace</div>
+        <div id="modal-prov-sub" style="font:400 10.5px var(--mono);color:var(--muted)">42 day-records · 0 formula estimates</div>
+      </div>
+      <div class="hvr-tile" onclick="closeProvenance()" style="width:28px;height:28px;border-radius:999px;background:var(--well);display:grid;place-items:center;cursor:pointer;font:500 12px var(--mono)">✕</div>
+    </div>
+    <div style="background:var(--well);border-radius:var(--r-well);padding:14px 16px;box-shadow:var(--inset);margin-bottom:16px">
+      <div style="font:600 12px var(--sans);margin-bottom:6px">Deterministic Ledger Provenance</div>
+      <div style="font:400 11.5px/1.55 var(--sans);color:var(--ink2)">
+        Every figure on MO!D originates from discrete inspection &amp; production events on the append-only ledger. No KPI originates from AI models or unverified Excel spreadsheet totals.
+      </div>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font:400 11px var(--mono)">
+      <thead>
+        <tr style="border-bottom:1px solid var(--line);color:var(--muted);text-align:left">
+          <th style="padding:6px 8px">DATE</th>
+          <th style="padding:6px 8px">GATE</th>
+          <th style="padding:6px 8px">WORKBOOK · SHEET</th>
+          <th style="padding:6px 8px">CELL / ROW</th>
+          <th style="padding:6px 8px;text-align:right">CHECKED</th>
+          <th style="padding:6px 8px;text-align:right">REJECTED</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom:1px solid var(--line)">
+          <td style="padding:6px 8px">12 Aug 2026</td>
+          <td style="padding:6px 8px">Visual (P17)</td>
+          <td style="padding:6px 8px">VISUAL_REPORT_2025.xlsx · AUG</td>
+          <td style="padding:6px 8px">Row 184 · Col C:F</td>
+          <td style="padding:6px 8px;text-align:right">6,000</td>
+          <td style="padding:6px 8px;text-align:right;color:var(--breach)">209</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--line)">
+          <td style="padding:6px 8px">11 Aug 2026</td>
+          <td style="padding:6px 8px">Visual (P17)</td>
+          <td style="padding:6px 8px">VISUAL_REPORT_2025.xlsx · AUG</td>
+          <td style="padding:6px 8px">Row 182 · Col C:F</td>
+          <td style="padding:6px 8px;text-align:right">5,800</td>
+          <td style="padding:6px 8px;text-align:right;color:var(--breach)">118</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--line)">
+          <td style="padding:6px 8px">10 Aug 2026</td>
+          <td style="padding:6px 8px">Balloon (P18)</td>
+          <td style="padding:6px 8px">VALVE_INTEGRITY_2025.xlsx · AUG</td>
+          <td style="padding:6px 8px">Row 142 · Col D:G</td>
+          <td style="padding:6px 8px;text-align:right">5,400</td>
+          <td style="padding:6px 8px;text-align:right;color:var(--brand)">96</td>
+        </tr>
+      </tbody>
+    </table>
+    <div style="display:flex;justify-content:flex-end;margin-top:16px">
+      <button class="hvr-op" onclick="closeProvenance()" style="height:34px;padding:0 16px;border-radius:999px;background:var(--brand);color:var(--brand-ink);border:none;font:600 11.5px var(--sans);cursor:pointer">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== COMMAND PALETTE (⌘K) MODAL ==================== -->
+<div id="modal-jump" class="modal-overlay" onclick="toggleJump()">
+  <div class="modal-card" onclick="event.stopPropagation()" style="max-width:540px">
+    <div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:12px">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="var(--muted)" stroke-width="1.6"><circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2 14 14"/></svg>
+      <input id="jump-input" type="text" placeholder="Jump to screen or analysis..." style="flex:1;border:none;background:transparent;font:500 13px var(--sans);color:var(--ink);outline:none" />
+      <span style="font:400 9.5px var(--mono);color:var(--muted);background:var(--well);padding:2px 6px;border-radius:4px">ESC</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:3px">
+      <div class="hvr-tile" onclick="go('home'); toggleJump()" style="padding:8px 12px;border-radius:999px;cursor:pointer;display:flex;align-items:center;gap:10px"><span style="font:600 10.5px var(--mono);color:var(--brand);width:48px">HOME</span><span style="font:500 12.5px var(--sans)">Where we stand</span></div>
+      <div class="hvr-tile" onclick="go('entry'); toggleJump()" style="padding:8px 12px;border-radius:999px;cursor:pointer;display:flex;align-items:center;gap:10px"><span style="font:600 10.5px var(--mono);color:var(--brand);width:48px">ENTRY</span><span style="font:500 12.5px var(--sans)">Log production</span></div>
+      <div class="hvr-tile" onclick="go('gate'); toggleJump()" style="padding:8px 12px;border-radius:999px;cursor:pointer;display:flex;align-items:center;gap:10px"><span style="font:600 10.5px var(--mono);color:var(--brand);width:48px">GATE</span><span style="font:500 12.5px var(--sans)">By gate (Inspection Stations)</span></div>
+      <div class="hvr-tile" onclick="go('defect'); toggleJump()" style="padding:8px 12px;border-radius:999px;cursor:pointer;display:flex;align-items:center;gap:10px"><span style="font:600 10.5px var(--mono);color:var(--brand);width:48px">DEFECT</span><span style="font:500 12.5px var(--sans)">By defect (Pareto Analysis)</span></div>
+      <div class="hvr-tile" onclick="go('stability'); toggleJump()" style="padding:8px 12px;border-radius:999px;cursor:pointer;display:flex;align-items:center;gap:10px"><span style="font:600 10.5px var(--mono);color:var(--brand);width:48px">SPC</span><span style="font:500 12.5px var(--sans)">Stability (Control Limits)</span></div>
+      <div class="hvr-tile" onclick="go('audit'); toggleJump()" style="padding:8px 12px;border-radius:999px;cursor:pointer;display:flex;align-items:center;gap:10px"><span style="font:600 10.5px var(--mono);color:var(--brand);width:48px">AUDIT</span><span style="font:500 12.5px var(--sans)">Audit trail (Ledger)</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Tray -->
+<div id="toast-tray" class="toast-box"></div>
+
+<!-- JavaScript Logic Engine -->
+<script>
+const SCREENS = {
+  home: ["Where we stand", "Are we okay this month — and what is it costing us?"],
+  entry: ["Log production", "What still needs logging for 12 Aug?"],
+  decide: ["Needs a decision", "Two batches don't balance. Yours to call."],
+  gate: ["By gate", "Which station is losing the units?"],
+  size: ["By size", "Which French size carries the loss?"],
+  defect: ["By defect", "Which codes, and are they moving?"],
+  stability: ["Stability", "Is the process in control, or drifting?"],
+  cost: ["Cost of quality", "What is the rejection costing, and what is recoverable?"],
+  capa: ["Actions", "Who owns what, and by when?"],
+  reports: ["Reports", "The monthly pack, ready to print."],
+  audit: ["Audit trail", "Prove any number back to its cell."]
+};
+
+const LENSES = ["gate", "size", "defect", "stability", "cost"];
+
+let state = {
+  screen: 'home',
+  theme: 'dark',
+  open: 'gate',
+  adminOpen: false,
+  rejected: 209,
+  defects: { COAG: 96, SD: 61, BL: 34, TT: 23 },
+  evtOpen: true
+};
+
+function go(screenKey) {
+  state.screen = screenKey;
+  const isLens = LENSES.includes(screenKey);
+
+  document.getElementById('screen-home').style.display = (screenKey === 'home') ? 'flex' : 'none';
+  document.getElementById('screen-entry').style.display = (screenKey === 'entry') ? 'flex' : 'none';
+  document.getElementById('screen-decide').style.display = (screenKey === 'decide') ? 'flex' : 'none';
+  document.getElementById('screen-capa').style.display = (screenKey === 'capa') ? 'flex' : 'none';
+  document.getElementById('screen-reports').style.display = (screenKey === 'reports') ? 'flex' : 'none';
+  document.getElementById('screen-audit').style.display = (screenKey === 'audit') ? 'flex' : 'none';
+  document.getElementById('screen-investigate').style.display = isLens ? 'flex' : 'none';
+
+  if (isLens) {
+    LENSES.forEach(k => {
+      const l = document.getElementById('lens-' + k);
+      if (l) l.style.display = (k === screenKey) ? 'flex' : 'none';
+      const t = document.getElementById('tab-' + k);
+      if (t) {
+        if (k === screenKey) {
+          t.style.background = 'var(--surface)';
+          t.style.boxShadow = 'var(--sh1)';
+          t.style.color = 'var(--ink)';
+        } else {
+          t.style.background = 'transparent';
+          t.style.boxShadow = 'none';
+          t.style.color = 'var(--muted)';
+        }
+      }
+    });
+  }
+
+  Object.keys(SCREENS).forEach(k => {
+    const nav = document.getElementById('nav-' + k);
+    if (nav) {
+      const isActive = (k === screenKey);
+      nav.style.background = isActive ? 'var(--surface)' : 'transparent';
+      nav.style.boxShadow = isActive ? 'var(--sh1)' : 'none';
+      nav.style.fontWeight = isActive ? '600' : '400';
+      const svg = nav.querySelector('svg');
+      if (svg) svg.style.color = isActive ? 'var(--brand)' : 'var(--muted)';
+    }
+  });
+
+  const meta = SCREENS[screenKey] || SCREENS.home;
+  document.getElementById('top-title').innerText = meta[0];
+  document.getElementById('top-question').innerText = meta[1];
+}
+
+function toggleAcc(key) {
+  state.open = (state.open === key) ? null : key;
+  ['gate', 'defect', 'size'].forEach(k => {
+    const body = document.getElementById('body-' + k);
+    const glyph = document.getElementById('glyph-' + k);
+    const card = document.getElementById('card-' + k);
+    if (body && glyph && card) {
+      const isOpen = (state.open === k);
+      body.style.display = isOpen ? 'block' : 'none';
+      glyph.innerText = isOpen ? '−' : '+';
+      card.style.boxShadow = isOpen ? 'var(--sh2)' : 'var(--sh1)';
+    }
+  });
+}
+
+function toggleTheme() {
+  state.theme = (state.theme === 'dark') ? 'light' : 'dark';
+  document.body.setAttribute('data-theme', state.theme);
+  document.getElementById('theme-glyph').innerText = (state.theme === 'dark') ? '☀' : '☾';
+  showToast(`Theme: ${state.theme === 'dark' ? 'Industrial Obsidian' : 'Cleanroom Porcelain'}`);
+}
+
+function toggleAdmin() {
+  state.adminOpen = !state.adminOpen;
+  document.getElementById('admin-menu').style.display = state.adminOpen ? 'flex' : 'none';
+  document.getElementById('admin-glyph').innerText = state.adminOpen ? '−' : '+';
+}
+
+function toggleEvent() {
+  state.evtOpen = !state.evtOpen;
+  document.getElementById('detail-evt-1').style.display = state.evtOpen ? 'block' : 'none';
+  document.getElementById('row-evt-1').style.background = state.evtOpen ? 'var(--tile)' : 'transparent';
+}
+
+function setSection(sec) {
+  ['primary', 'secondary', 'assembly'].forEach(s => {
+    const el = document.getElementById('sec-' + s);
+    if (!el) return;
+    if (s === sec) {
+      el.style.background = 'var(--surface)';
+      el.style.boxShadow = 'var(--sh1)';
+      el.style.fontWeight = '600';
+      el.style.color = 'var(--ink)';
+    } else {
+      el.style.background = 'transparent';
+      el.style.boxShadow = 'none';
+      el.style.fontWeight = '400';
+      el.style.color = 'var(--muted)';
+    }
+  });
+  showToast(`Section: ${sec.charAt(0).toUpperCase() + sec.slice(1)}`);
+}
+
+function setGate(gate) {
+  const map = { visual: 'p17', balloon: 'p18', valve: 'p20', final: 'p24' };
+  Object.keys(map).forEach(g => {
+    const el = document.getElementById('gate-' + map[g]);
+    if (!el) return;
+    if (g === gate) {
+      el.style.background = 'var(--surface)';
+      el.style.boxShadow = 'var(--sh1)';
+      el.style.fontWeight = '600';
+      el.style.color = 'var(--ink)';
+    } else {
+      el.style.background = 'transparent';
+      el.style.boxShadow = 'none';
+      el.style.fontWeight = '400';
+      el.style.color = 'var(--muted)';
+    }
+  });
+  showToast(`Inspection Gate: ${gate.toUpperCase()}`);
+}
+
+function setCategory(cat) {
+  const map = { male: 'cat-male', female: 'cat-female', paediatric: 'cat-paed' };
+  Object.keys(map).forEach(c => {
+    const el = document.getElementById(map[c]);
+    if (!el) return;
+    if (c === cat) {
+      el.style.background = 'var(--surface)';
+      el.style.boxShadow = 'var(--sh1)';
+      el.style.fontWeight = '600';
+      el.style.color = 'var(--ink)';
+    } else {
+      el.style.background = 'transparent';
+      el.style.boxShadow = 'none';
+      el.style.fontWeight = '400';
+      el.style.color = 'var(--muted)';
+    }
+  });
+  showToast(`Category: ${cat.charAt(0).toUpperCase() + cat.slice(1)}`);
+}
+
+function setType(type) {
+  ['2way', '3way'].forEach(t => {
+    const el = document.getElementById('type-' + t);
+    if (!el) return;
+    if (t === type) {
+      el.style.background = 'var(--surface)';
+      el.style.boxShadow = 'var(--sh1)';
+      el.style.fontWeight = '600';
+      el.style.color = 'var(--ink)';
+    } else {
+      el.style.background = 'transparent';
+      el.style.boxShadow = 'none';
+      el.style.fontWeight = '400';
+      el.style.color = 'var(--muted)';
+    }
+  });
+  showToast(`Type: ${type === '2way' ? '2 Way' : '3 Way'}`);
+}
+
+function setSize(sz) {
+  const sizes = ['10Fr', '12Fr', '14Fr', '16Fr', '18Fr', '20Fr', '22Fr', '24Fr'];
+  sizes.forEach(s => {
+    const el = document.getElementById('size-' + s);
+    if (!el) return;
+    if (s === sz) {
+      el.style.background = 'var(--brand)';
+      el.style.color = 'var(--brand-ink)';
+      el.style.fontWeight = '600';
+      el.style.boxShadow = 'none';
+    } else {
+      el.style.background = 'var(--well)';
+      el.style.color = 'var(--muted)';
+      el.style.fontWeight = '500';
+      el.style.boxShadow = 'var(--inset)';
+    }
+  });
+  const num = sz.replace('Fr', '');
+  const batchId = `FBC-${num}-0812`;
+  document.getElementById('field-batch-id').innerText = batchId;
+  showToast(`Size: ${sz} (Batch ${batchId})`);
+}
+
+function setShift(shift) {
+  ['A', 'B', 'C'].forEach(s => {
+    const el = document.getElementById('shift-' + s.toLowerCase());
+    if (!el) return;
+    if (s === shift) {
+      el.style.background = 'var(--surface)';
+      el.style.boxShadow = 'var(--sh1)';
+      el.style.fontWeight = '600';
+      el.style.color = 'var(--ink)';
+    } else {
+      el.style.background = 'transparent';
+      el.style.boxShadow = 'none';
+      el.style.fontWeight = '400';
+      el.style.color = 'var(--muted)';
+    }
+  });
+  showToast(`Shift: Shift ${shift}`);
+}
+
+function filterDefectPills(query) {
+  const q = (query || '').trim().toUpperCase();
+  const pills = document.querySelectorAll('.defect-pill');
+  pills.forEach(p => {
+    const id = p.id.replace('pill-', '');
+    if (!q || id.includes(q)) {
+      p.style.display = 'flex';
+    } else {
+      p.style.display = 'none';
+    }
+  });
+}
+
+function openLotProgress(batchId) {
+  openProvenance(`Lot Progress (${batchId})`, `Assembly Line Multi-Station Travel Card`);
+}
+
+function bump(code) {
+  state.defects[code] = (state.defects[code] || 0) + 1;
+  const el = document.getElementById('tally-' + code);
+  const pill = document.getElementById('pill-' + code);
+  if (el) {
+    el.innerText = state.defects[code];
+    el.style.display = 'grid';
+  }
+  if (pill) {
+    pill.style.background = 'var(--verified-weak)';
+    const span = pill.querySelector('span:first-child');
+    if (span) span.style.color = 'var(--verified)';
+  }
+  recalculateMassBalance();
+}
+
+function incRej() {
+  state.rejected++;
+  document.getElementById('entry-rej').innerText = state.rejected;
+  recalculateMassBalance();
+}
+
+function decRej() {
+  state.rejected = Math.max(0, state.rejected - 1);
+  document.getElementById('entry-rej').innerText = state.rejected;
+  recalculateMassBalance();
+}
+
+function recalculateMassBalance() {
+  const sum = Object.values(state.defects).reduce((a, b) => a + b, 0);
+  const gap = sum - state.rejected;
+  const balanced = (gap === 0);
+
+  document.getElementById('sum-defects').innerText = sum;
+  document.getElementById('sum-rejected').innerText = state.rejected;
+  document.getElementById('gap-balance').innerText = balanced ? '0' : (gap > 0 ? '+' + gap : gap);
+  document.getElementById('op-balance').innerText = balanced ? '=' : '≠';
+
+  // Derived accepted quantity = Checked (6000) - Hold (29) - Rejected
+  const derivedAccepted = Math.max(0, 6000 - 29 - state.rejected);
+  const acceptEl = document.getElementById('entry-accept');
+  if (acceptEl) {
+    acceptEl.innerText = derivedAccepted.toLocaleString();
+  }
+
+  const box = document.getElementById('box-balance');
+  const dot = document.getElementById('dot-balance');
+  const glyph = document.getElementById('glyph-balance');
+  const title = document.getElementById('title-balance');
+  const copy = document.getElementById('copy-balance');
+  const opts = document.getElementById('opts-unbalanced');
+  const btn = document.getElementById('btn-commit');
+  const label = document.getElementById('label-commit');
+
+  if (balanced) {
+    box.style.background = 'var(--verified-weak)';
+    dot.style.background = 'var(--verified)';
+    glyph.innerText = '✓';
+    title.style.color = 'var(--verified)';
+    title.innerText = 'Balances — ready for the ledger';
+    copy.style.color = 'var(--verified)';
+    copy.innerText = 'Defect counts add up to the rejected quantity. Commit and it becomes an event nobody can quietly rewrite.';
+    opts.style.display = 'none';
+    btn.style.background = 'var(--brand)';
+    btn.style.color = 'var(--brand-ink)';
+    label.innerText = 'Commit to ledger';
+  } else {
+    box.style.background = 'var(--decide-weak)';
+    dot.style.background = 'var(--decide)';
+    glyph.innerText = '!';
+    title.style.color = 'var(--decide-ink)';
+    title.innerText = 'These two don\'t agree yet';
+    copy.style.color = 'var(--decide-ink)';
+    copy.innerText = 'The plant\'s rule is that we ask rather than assume. Pick which number is true — the choice travels with the batch.';
+    opts.style.display = 'flex';
+    btn.style.background = 'var(--well)';
+    btn.style.color = 'var(--muted)';
+    label.innerText = 'Resolve to commit';
+  }
+}
+
+function resolveChoice(type) {
+  if (type === 'defects') {
+    const sum = Object.values(state.defects).reduce((a, b) => a + b, 0);
+    state.rejected = sum;
+    document.getElementById('entry-rej').innerText = sum;
+    showToast(`Rejected updated to ${sum} (matches defect sum)`);
+  } else {
+    showToast('Recorded finding: Physical count (209) confirmed on ledger');
+  }
+  recalculateMassBalance();
+}
+
+function commitBatch() {
+  const sum = Object.values(state.defects).reduce((a, b) => a + b, 0);
+  if (sum !== state.rejected) {
+    showToast('Resolve conflict before ledger commit');
+    return;
+  }
+  showToast('Batch FBC-16-0812 committed to ledger (sha256:d91a·4e)');
+}
+
+function openProvenance(title, sub) {
+  document.getElementById('modal-prov-title').innerText = title + ' — Source Trace';
+  document.getElementById('modal-prov-sub').innerText = sub;
+  document.getElementById('modal-provenance').classList.add('active');
+}
+
+function closeProvenance() {
+  document.getElementById('modal-provenance').classList.remove('active');
+}
+
+function toggleJump() {
+  const m = document.getElementById('modal-jump');
+  m.classList.toggle('active');
+  if (m.classList.contains('active')) {
+    setTimeout(() => document.getElementById('jump-input').focus(), 40);
+  }
+}
+
+function openProofModal() {
+  showToast('Generated cryptographic proof pack: Aug_2026_Disposafe_Ledger.zip');
+}
+
+function showToast(msg) {
+  const tray = document.getElementById('toast-tray');
+  const t = document.createElement('div');
+  t.className = 'toast-msg';
+  t.innerHTML = `<span style="width:6px;height:6px;border-radius:999px;background:var(--brand)"></span><span>${msg}</span>`;
+  tray.appendChild(t);
+  setTimeout(() => {
+    t.style.opacity = '0';
+    t.style.transform = 'translateY(6px)';
+    t.style.transition = 'all 160ms ease';
+    setTimeout(() => t.remove(), 180);
+  }, 2200);
+}
+
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    e.preventDefault();
+    toggleJump();
+  }
+  if (e.key === 'Escape') {
+    document.getElementById('modal-jump').classList.remove('active');
+    closeProvenance();
+  }
+});
+
+// Init
+recalculateMassBalance();
+</script>
+</body>
+</html>
