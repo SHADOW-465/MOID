@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
-import { describeProductType } from "@/lib/entry/disposafe-matrix";
+import { describeProductType, CATHETER_CATEGORIES, PRODUCT_TYPES } from "@/lib/entry/disposafe-matrix";
 import { useEvents } from "@/components/app/EventsContext";
 import DatePicker from "@/components/ui/DatePicker";
 import { useConfirm } from "@/components/ui/ConfirmContext";
@@ -157,6 +157,9 @@ export default function AuditPage() {
   const [sizeFilter, setSizeFilter] = useState("all");
   /** Lot completion, same vocabulary as Data Entry -> History. */
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "complete">("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [typeStoredFilter, setTypeStoredFilter] = useState("all");
+  const [sortOrder, setSortOrder] = useState<"newest" | "oldest" | "batch-asc" | "batch-desc" | "volume-desc" | "rejection-desc">("newest");
   const [page, setPage] = useState(0);
 
   /** Which batches are expanded */
@@ -189,7 +192,7 @@ export default function AuditPage() {
 
   useEffect(() => {
     setPage(0);
-  }, [searchQuery, typeFilter, stageFilter, sourceFilter, sizeFilter, statusFilter, dateFrom, dateTo, viewMode]);
+  }, [searchQuery, typeFilter, stageFilter, sourceFilter, sizeFilter, statusFilter, categoryFilter, typeStoredFilter, sortOrder, dateFrom, dateTo, viewMode]);
 
   const commentsMap = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -256,14 +259,33 @@ export default function AuditPage() {
   const sizeOptions = useMemo(() => listRowSizes(allRows), [allRows]);
 
   const entryRows = useMemo(
-    () =>
-      filterEntryRows(allRows, {
+    () => {
+      let rows = filterEntryRows(allRows, {
         source: sourceFilter as "all" | "manual" | "excel",
         stageId: stageFilter,
         size: sizeFilter,
         search: searchQuery,
-      }),
-    [allRows, sourceFilter, stageFilter, sizeFilter, searchQuery],
+      });
+      if (categoryFilter !== "all") {
+        rows = rows.filter((r) => {
+          const pt = r.productType ?? "";
+          const desc = describeProductType(pt) ?? pt;
+          if (categoryFilter === "Male") return pt === "2 way" || pt === "3 way" || desc.startsWith("Male");
+          if (categoryFilter === "Female") return pt === "Female" || desc.includes("Female");
+          if (categoryFilter === "Peadiatric") return pt === "Peadiatric" || desc.includes("Peadiatric");
+          return desc.toLowerCase().includes(categoryFilter.toLowerCase());
+        });
+      }
+      if (typeStoredFilter !== "all") {
+        rows = rows.filter(
+          (r) =>
+            r.productType === typeStoredFilter ||
+            describeProductType(r.productType)?.includes(typeStoredFilter),
+        );
+      }
+      return rows;
+    },
+    [allRows, sourceFilter, stageFilter, sizeFilter, categoryFilter, typeStoredFilter, searchQuery],
   );
 
   /** Lot completion — over ALL events, never the filtered set, or a stage filter
@@ -271,13 +293,23 @@ export default function AuditPage() {
   const batchProgress = useMemo(() => buildBatchProgress(events), [events]);
 
   const batchGroups = useMemo(() => {
-    const groups = groupByBatchThenStage(entryRows);
-    if (statusFilter === "all") return groups;
-    return groups.filter((g) => {
-      const complete = progressFor(batchProgress, g.batch)?.status === "complete";
-      return statusFilter === "complete" ? complete : !complete;
+    let groups = groupByBatchThenStage(entryRows);
+    if (statusFilter !== "all") {
+      groups = groups.filter((g) => {
+        const complete = progressFor(batchProgress, g.batch)?.status === "complete";
+        return statusFilter === "complete" ? complete : !complete;
+      });
+    }
+    return [...groups].sort((a, b) => {
+      if (sortOrder === "newest") return b.dateTo.localeCompare(a.dateTo) || a.batch.localeCompare(b.batch);
+      if (sortOrder === "oldest") return a.dateFrom.localeCompare(b.dateFrom) || a.batch.localeCompare(b.batch);
+      if (sortOrder === "batch-asc") return a.batch.localeCompare(b.batch);
+      if (sortOrder === "batch-desc") return b.batch.localeCompare(a.batch);
+      if (sortOrder === "volume-desc") return b.checkedQty - a.checkedQty || a.batch.localeCompare(b.batch);
+      if (sortOrder === "rejection-desc") return b.rejectedQty - a.rejectedQty || a.batch.localeCompare(b.batch);
+      return 0;
     });
-  }, [entryRows, statusFilter, batchProgress]);
+  }, [entryRows, statusFilter, sortOrder, batchProgress]);
 
   /**
    * Erase a displayed row from the ledger. This is the ONLY erase path in the
@@ -584,6 +616,37 @@ export default function AuditPage() {
                 ariaLabel="Filter by size"
               />
             )}
+            <Select
+              value={categoryFilter}
+              onChange={setCategoryFilter}
+              options={[
+                { value: "all", label: "All categories" },
+                ...CATHETER_CATEGORIES.map((c) => ({ value: c, label: c })),
+              ]}
+              ariaLabel="Filter by category"
+            />
+            <Select
+              value={typeStoredFilter}
+              onChange={setTypeStoredFilter}
+              options={[
+                { value: "all", label: "All product types" },
+                ...PRODUCT_TYPES.map((pt) => ({ value: pt, label: pt })),
+              ]}
+              ariaLabel="Filter by product type"
+            />
+            <Select
+              value={sortOrder}
+              onChange={(v) => setSortOrder(v as any)}
+              options={[
+                { value: "newest", label: "Sort: Newest" },
+                { value: "oldest", label: "Sort: Oldest" },
+                { value: "batch-asc", label: "Sort: Batch A–Z" },
+                { value: "batch-desc", label: "Sort: Batch Z–A" },
+                { value: "volume-desc", label: "Sort: Volume High–Low" },
+                { value: "rejection-desc", label: "Sort: Rejection High–Low" },
+              ]}
+              ariaLabel="Sort order"
+            />
             {/* Lot completion is a batch-level idea, so it is offered only where
                 the list is batches. */}
             {viewMode === "batch" && (
@@ -603,7 +666,7 @@ export default function AuditPage() {
                 value={typeFilter}
                 onChange={setTypeFilter}
                 options={[
-                  { value: "all", label: "All types" },
+                  { value: "all", label: "All event types" },
                   { value: "production", label: "Production" },
                   { value: "inspection", label: "Inspection" },
                   { value: "rejection", label: "Rejection" },

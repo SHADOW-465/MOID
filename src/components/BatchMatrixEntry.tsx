@@ -19,6 +19,7 @@ import {
   PRODUCT_TYPES,
   PRODUCT_TYPE_STORAGE_KEY,
   CATHETER_CATEGORIES,
+  describeProductType,
   defectEntryTitle,
   sizesFor,
   typeIsSelectable,
@@ -170,6 +171,8 @@ export default function BatchMatrixEntry({
     setCatheterType(ty);
   }, []);
   const [typeFilter, setTypeFilter] = useState<string>("All Type");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [savedSortOrder, setSavedSortOrder] = useState<"newest" | "oldest" | "batch-asc" | "batch-desc" | "volume-desc" | "rejection-desc">("newest");
   const [operator, setOperator] = useState<string>(ENTRY_ROLES[0]);
   const [shift, setShift] = useState("Day Shift");
   const [batchId, setBatchId] = useState(() => buildBatchId(today(), "14Fr") ?? "");
@@ -200,6 +203,32 @@ export default function BatchMatrixEntry({
   const [previewId, setPreviewId] = useState<string | null>(null);
   /** Filter over the defect tiles — 21 codes is a lot to scan on a shop floor. */
   const [defectFilter, setDefectFilter] = useState("");
+
+  const filteredSaved = useMemo(() => {
+    let list = saved;
+    if (categoryFilter !== "all") {
+      list = list.filter((b) => {
+        const pt = b.productType || "2 way";
+        const desc = describeProductType(pt) ?? pt;
+        if (categoryFilter === "Male") return pt === "2 way" || pt === "3 way" || desc.startsWith("Male");
+        if (categoryFilter === "Female") return pt === "Female" || desc.includes("Female");
+        if (categoryFilter === "Peadiatric") return pt === "Peadiatric" || desc.includes("Peadiatric");
+        return desc.toLowerCase().includes(categoryFilter.toLowerCase());
+      });
+    }
+    if (typeFilter !== "All Type") {
+      list = list.filter((b) => (b.productType || "2 way") === typeFilter);
+    }
+    return [...list].sort((a, b) => {
+      if (savedSortOrder === "newest") return new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime();
+      if (savedSortOrder === "oldest") return new Date(a.savedAt).getTime() - new Date(b.savedAt).getTime();
+      if (savedSortOrder === "batch-asc") return a.batchId.localeCompare(b.batchId);
+      if (savedSortOrder === "batch-desc") return b.batchId.localeCompare(a.batchId);
+      if (savedSortOrder === "volume-desc") return b.checked - a.checked;
+      if (savedSortOrder === "rejection-desc") return b.reject - a.reject;
+      return 0;
+    });
+  }, [saved, categoryFilter, typeFilter, savedSortOrder]);
 
   /**
    * Row currently loaded into the form for revision. Save replaces this row in
@@ -2455,10 +2484,8 @@ export default function BatchMatrixEntry({
             cursor: saveDisabled ? "not-allowed" : "pointer",
           }}
         >
-          {saveLabel}
         </button>
       </div>
-
 
       {/* Shift list */}
       <div>
@@ -2471,16 +2498,41 @@ export default function BatchMatrixEntry({
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <Select
+              value={categoryFilter}
+              onChange={setCategoryFilter}
+              options={[
+                { value: "all", label: "Category: All" },
+                ...CATHETER_CATEGORIES.map((c) => ({ value: c, label: `Category: ${c}` })),
+              ]}
+              block={false}
+              size="sm"
+              ariaLabel="Filter by category"
+            />
+            <Select
               value={typeFilter}
               onChange={setTypeFilter}
               options={[
-                { value: "All Type", label: "All Type" },
-                ...[...PRODUCT_TYPES, "Peadiatric"].map((t) => ({ value: t, label: t })),
+                { value: "All Type", label: "Type: All" },
+                ...[...PRODUCT_TYPES, "Peadiatric"].map((t) => ({ value: t, label: `Type: ${t}` })),
               ]}
               block={false}
               size="sm"
               ariaLabel="Filter by type"
-              style={{ minWidth: 118 }}
+            />
+            <Select
+              value={savedSortOrder}
+              onChange={(v) => setSavedSortOrder(v as any)}
+              options={[
+                { value: "newest", label: "Sort: Newest" },
+                { value: "oldest", label: "Sort: Oldest" },
+                { value: "batch-asc", label: "Sort: Batch A–Z" },
+                { value: "batch-desc", label: "Sort: Batch Z–A" },
+                { value: "volume-desc", label: "Sort: Qty High–Low" },
+                { value: "rejection-desc", label: "Sort: Rejection High–Low" },
+              ]}
+              block={false}
+              size="sm"
+              ariaLabel="Sort order"
             />
             <button type="button" onClick={exportCSV} style={btnGhost}>Export Session CSV</button>
           </div>
@@ -2492,9 +2544,9 @@ export default function BatchMatrixEntry({
             <br />
             <span style={{ color: "var(--text-2)" }}>Save a batch above — it will list here until the shift ends.</span>
           </div>
-        ) : saved.filter((b) => typeFilter === "All Type" || (b.productType || "2 way") === typeFilter).length === 0 ? (
+        ) : filteredSaved.length === 0 ? (
           <div style={{ textAlign: "center", padding: 28, color: "var(--text-3)", fontSize: 13, border: "1px dashed var(--border)", borderRadius: 10 }}>
-            No batches for type &quot;{typeFilter}&quot;.
+            No batches match current category / type filter.
           </div>
         ) : (
           <div style={{ overflowX: "auto", borderRadius: 10, border: "1px solid var(--border)" }}>
@@ -2516,8 +2568,7 @@ export default function BatchMatrixEntry({
                 </tr>
               </thead>
               <tbody>
-                {saved
-                  .filter((b) => typeFilter === "All Type" || (b.productType || "2 way") === typeFilter)
+                {filteredSaved
                   .map((rec) => {
                   const primaryRow = rec.macro === "primary";
                   const secondaryRow = rec.macro === "secondary";

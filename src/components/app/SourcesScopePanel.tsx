@@ -14,6 +14,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTweaks } from "@/components/editorial/TweaksContext";
 import DatePicker from "@/components/ui/DatePicker";
+import Select from "@/components/ui/Select";
 import {
   countBySourceChannel,
   describeActiveScope,
@@ -679,6 +680,21 @@ function BatchesPane({
   onToggle: (b: string) => void;
   onClear: () => void;
 }) {
+  const [sortOrder, setSortOrder] = useState<"selected" | "asc" | "desc">("selected");
+
+  const displayBatches = useMemo(() => {
+    return [...filteredBatches].sort((a, b) => {
+      if (sortOrder === "selected") {
+        const sa = selectedIds.includes(a);
+        const sb = selectedIds.includes(b);
+        if (sa && !sb) return -1;
+        if (!sa && sb) return 1;
+      }
+      if (sortOrder === "desc") return b.localeCompare(a);
+      return a.localeCompare(b);
+    });
+  }, [filteredBatches, sortOrder, selectedIds]);
+
   return (
     <>
       <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
@@ -694,13 +710,26 @@ function BatchesPane({
           placeholder="Search batch…"
           aria-label="Search batches"
           className="sources-search"
-          style={searchInput}
+          style={{ ...searchInput, flex: 1, minWidth: 120 }}
+        />
+        <Select
+          value={sortOrder}
+          onChange={(v) => setSortOrder(v as any)}
+          options={[
+            { value: "selected", label: "Sort: Selected first" },
+            { value: "asc", label: "Sort: Batch A–Z" },
+            { value: "desc", label: "Sort: Batch Z–A" },
+          ]}
+          variant="pill"
+          size="sm"
+          block={false}
+          ariaLabel="Sort batch list"
         />
       </div>
       {batchOptions.length === 0 && (
         <EmptyState>No batch IDs yet — enter them in Data Entry or map them from Excel.</EmptyState>
       )}
-      {batchOptions.length > 0 && filteredBatches.length === 0 && (
+      {batchOptions.length > 0 && displayBatches.length === 0 && (
         <EmptyState>No batches match “{batchSearch}”.</EmptyState>
       )}
       <div
@@ -710,7 +739,7 @@ function BatchesPane({
           gap: 8,
         }}
       >
-        {filteredBatches.map((b) => {
+        {displayBatches.map((b) => {
           const selected = selectedIds.includes(b);
           return (
             <button

@@ -16,7 +16,6 @@
 
 import React, { useMemo, useState } from "react";
 import type { Grain } from "@/lib/analytics/scope";
-import { describeProductType } from "@/lib/entry/disposafe-matrix";
 import {
   buildEntryRows,
   filterEntryRows,
@@ -34,9 +33,13 @@ import LotProgress from "@/components/LotProgress";
 import EntryRevisionHistory from "@/components/entry/EntryRevisionHistory";
 import Icon from "@/components/editorial/Icon";
 import { usePersona } from "@/components/app/PersonaContext";
+import Select from "@/components/ui/Select";
+import { CATHETER_CATEGORIES, PRODUCT_TYPES, describeProductType } from "@/lib/entry/disposafe-matrix";
 
 type SourceScope = "mine" | "all";
 type StatusScope = "all" | "open" | "complete";
+type SortOption = "newest" | "oldest" | "batch-asc" | "batch-desc" | "volume-desc" | "rejection-desc";
+
 
 const STAGE_LABEL: Record<string, string> = {
   visual: "Visual",
@@ -127,6 +130,9 @@ export default function EntryHistory({
   const [scope, setScope] = useState<SourceScope>("mine");
   const [status, setStatus] = useState<StatusScope>(initialStatus);
   const [size, setSize] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [productTypeFilter, setProductTypeFilter] = useState("all");
+  const [sortOrder, setSortOrder] = useState<SortOption>("newest");
   const [openBatch, setOpenBatch] = useState<string | null>(null);
   const [historyRow, setHistoryRow] = useState<AuditEntryRow | null>(null);
 
@@ -141,15 +147,42 @@ export default function EntryHistory({
   const sizeOptions = useMemo(() => listRowSizes(scopedRows), [scopedRows]);
 
   const groups = useMemo(() => {
-    const rows = filterEntryRows(scopedRows, { search, size });
-    const all = groupByBatchThenStage(rows);
-    if (status === "all") return all;
-    return all.filter((g) => {
-      const p = progressFor(progressMap, g.batch);
-      const complete = p?.status === "complete";
-      return status === "complete" ? complete : !complete;
+    let rows = filterEntryRows(scopedRows, { search, size });
+    if (categoryFilter !== "all") {
+      rows = rows.filter((r) => {
+        const pt = r.productType ?? "";
+        const desc = describeProductType(pt) ?? pt;
+        if (categoryFilter === "Male") return pt === "2 way" || pt === "3 way" || desc.startsWith("Male");
+        if (categoryFilter === "Female") return pt === "Female" || desc.includes("Female");
+        if (categoryFilter === "Peadiatric") return pt === "Peadiatric" || desc.includes("Peadiatric");
+        return desc.toLowerCase().includes(categoryFilter.toLowerCase());
+      });
+    }
+    if (productTypeFilter !== "all") {
+      rows = rows.filter(
+        (r) =>
+          r.productType === productTypeFilter ||
+          describeProductType(r.productType)?.includes(productTypeFilter),
+      );
+    }
+    let all = groupByBatchThenStage(rows);
+    if (status !== "all") {
+      all = all.filter((g) => {
+        const p = progressFor(progressMap, g.batch);
+        const complete = p?.status === "complete";
+        return status === "complete" ? complete : !complete;
+      });
+    }
+    return [...all].sort((a, b) => {
+      if (sortOrder === "newest") return b.dateTo.localeCompare(a.dateTo) || a.batch.localeCompare(b.batch);
+      if (sortOrder === "oldest") return a.dateFrom.localeCompare(b.dateFrom) || a.batch.localeCompare(b.batch);
+      if (sortOrder === "batch-asc") return a.batch.localeCompare(b.batch);
+      if (sortOrder === "batch-desc") return b.batch.localeCompare(a.batch);
+      if (sortOrder === "volume-desc") return b.checkedQty - a.checkedQty || a.batch.localeCompare(b.batch);
+      if (sortOrder === "rejection-desc") return b.rejectedQty - a.rejectedQty || a.batch.localeCompare(b.batch);
+      return 0;
     });
-  }, [scopedRows, search, size, status, progressMap]);
+  }, [scopedRows, search, size, categoryFilter, productTypeFilter, status, sortOrder, progressMap]);
 
   const periods = useMemo(() => groupByPeriod(groups, grain), [groups, grain]);
 
@@ -234,49 +267,98 @@ export default function EntryHistory({
         </div>
       </header>
 
-      {/* Filters + counts share one band: the numbers describe the current filter. */}
+      {/* Dropdown filters + counts share one band */}
       <div
         style={{
           display: "flex",
           flexWrap: "wrap",
           alignItems: "center",
-          gap: "10px 18px",
+          gap: "8px 12px",
           padding: "10px var(--pad-card)",
           borderBottom: "1px solid var(--border)",
           background: "var(--surface-2, var(--bg))",
         }}
       >
-        <SegGroup
-          label="Source"
+        <Select
           value={scope}
           onChange={(v) => setScope(v as SourceScope)}
           options={[
-            { value: "mine", label: "Typed here" },
-            { value: "all", label: "All sources" },
+            { value: "mine", label: "Source: Typed here" },
+            { value: "all", label: "Source: All sources" },
           ]}
+          variant="pill"
+          size="sm"
+          block={false}
+          ariaLabel="Source filter"
         />
-        <SegGroup
-          label="Status"
+        <Select
           value={status}
           onChange={(v) => setStatus(v as StatusScope)}
           options={[
-            { value: "all", label: "All" },
-            { value: "open", label: "In progress" },
-            { value: "complete", label: "Complete" },
+            { value: "all", label: "Status: All" },
+            { value: "open", label: "Status: In progress" },
+            { value: "complete", label: "Status: Complete" },
           ]}
+          variant="pill"
+          size="sm"
+          block={false}
+          ariaLabel="Status filter"
         />
         {sizeOptions.length > 0 && (
-          <SegGroup
-            label="Size"
+          <Select
             value={size}
             onChange={setSize}
-            mono
             options={[
-              { value: "all", label: "All" },
-              ...sizeOptions.map((sz) => ({ value: sz, label: sz.replace(/^Fr/i, "") })),
+              { value: "all", label: "Size: All sizes" },
+              ...sizeOptions.map((sz) => ({ value: sz, label: `Size: ${sz}` })),
             ]}
+            mono
+            variant="pill"
+            size="sm"
+            block={false}
+            ariaLabel="Size filter"
           />
         )}
+        <Select
+          value={categoryFilter}
+          onChange={setCategoryFilter}
+          options={[
+            { value: "all", label: "Category: All" },
+            ...CATHETER_CATEGORIES.map((c) => ({ value: c, label: `Category: ${c}` })),
+          ]}
+          variant="pill"
+          size="sm"
+          block={false}
+          ariaLabel="Category filter"
+        />
+        <Select
+          value={productTypeFilter}
+          onChange={setProductTypeFilter}
+          options={[
+            { value: "all", label: "Type: All" },
+            ...PRODUCT_TYPES.map((pt) => ({ value: pt, label: `Type: ${pt}` })),
+          ]}
+          variant="pill"
+          size="sm"
+          block={false}
+          ariaLabel="Product type filter"
+        />
+        <Select
+          value={sortOrder}
+          onChange={(v) => setSortOrder(v as SortOption)}
+          options={[
+            { value: "newest", label: "Sort: Newest first" },
+            { value: "oldest", label: "Sort: Oldest first" },
+            { value: "batch-asc", label: "Sort: Batch (A–Z)" },
+            { value: "batch-desc", label: "Sort: Batch (Z–A)" },
+            { value: "volume-desc", label: "Sort: Checked (High–Low)" },
+            { value: "rejection-desc", label: "Sort: Rejections (High–Low)" },
+          ]}
+          variant="pill"
+          size="sm"
+          block={false}
+          ariaLabel="Sort order"
+        />
         <p className="muted" style={{ margin: 0, fontSize: "var(--text-sm)", marginLeft: "auto" }}>
           <Num>{summary.batches}</Num> batch{summary.batches === 1 ? "" : "es"} ·{" "}
           <Num>{summary.rows}</Num> row{summary.rows === 1 ? "" : "s"}
