@@ -86,6 +86,21 @@ export function productTypeFor(category: CatheterCategory, type: CatheterType): 
   return type;
 }
 
+/**
+ * How a recorded `productType` reads on a history / audit row.
+ *
+ * The stored string collapses the two controls the operator actually used:
+ * "2 way" means Male + 2 way, and the word Male never appears. Showing it raw
+ * is why the category looked like it had not been recorded at all — it had,
+ * losslessly, but only half of it was ever printed.
+ */
+export function describeProductType(productType: string | null | undefined): string | null {
+  const pt = (productType ?? "").trim();
+  if (!pt) return null;
+  const { category, type } = categoryAndTypeFrom(pt);
+  return typeIsSelectable(category) ? `${category} · ${type}` : category;
+}
+
 /** Inverse of productTypeFor, for loading a saved/draft record back into the
  *  category+type controls. */
 export function categoryAndTypeFrom(productType: string | undefined | null): { category: CatheterCategory; type: CatheterType } {

@@ -15,10 +15,13 @@
 // not be able to un-save it; that is the Audit trail's job and the GM's call.
 
 import React, { useMemo, useState } from "react";
+import type { Grain } from "@/lib/analytics/scope";
+import { describeProductType } from "@/lib/entry/disposafe-matrix";
 import {
   buildEntryRows,
   filterEntryRows,
   groupByBatchThenStage,
+  groupByPeriod,
   isDirectEntry,
   batchFiguresInconsistent,
   listRowSizes,
@@ -107,6 +110,7 @@ export default function EntryHistory({
   onEdit,
   onReuse,
   initialStatus = "all",
+  grain = "month",
 }: {
   events: AuditEventLike[];
   /** Open this station's recorded row on the entry form for correction. */
@@ -115,6 +119,8 @@ export default function EntryHistory({
   onReuse?: (row: AuditEntryRow) => void;
   /** Status to land on, e.g. arriving from the dashboard's WIP strip. */
   initialStatus?: StatusScope;
+  /** Topbar Day / Week / Month / FY — groups the list under period headers. */
+  grain?: Grain;
 }) {
   const { canEraseLedger } = usePersona();
   const [search, setSearch] = useState("");
@@ -144,6 +150,8 @@ export default function EntryHistory({
       return status === "complete" ? complete : !complete;
     });
   }, [scopedRows, search, size, status, progressMap]);
+
+  const periods = useMemo(() => groupByPeriod(groups, grain), [groups, grain]);
 
   const summary = useMemo(() => {
     let open = 0;
@@ -315,18 +323,43 @@ export default function EntryHistory({
             <span style={{ textAlign: "right" }}>Accepted</span>
             <span style={{ textAlign: "right" }}>Rejected</span>
           </div>
-          {groups.map((g) => (
-            <HistoryBatch
-              key={g.batch}
-              group={g}
-              open={openBatch === g.batch}
-              onToggle={() => setOpenBatch((b) => (b === g.batch ? null : g.batch))}
-              progress={progressFor(progressMap, g.batch)}
-              onEdit={onEdit}
-              onReuse={onReuse}
-              onHistory={setHistoryRow}
-              canErase={canEraseLedger}
-            />
+          {periods.map((p) => (
+            <div key={p.period}>
+              {/* One header per period. The list is lot-first, so this only
+                  files the lots — it never splits a lot's stages apart. */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "baseline",
+                  gap: 10,
+                  padding: "10px var(--pad-card) 6px",
+                  borderBottom: "1px solid var(--border)",
+                  background: "var(--surface)",
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 1,
+                }}
+              >
+                <span style={{ fontSize: "var(--text-sm)", fontWeight: 700 }}>{p.label}</span>
+                <span className="small" style={{ color: "var(--text-3)" }}>
+                  {p.batchCount} {p.batchCount === 1 ? "lot" : "lots"} · {p.rowCount}{" "}
+                  {p.rowCount === 1 ? "entry" : "entries"}
+                </span>
+              </div>
+              {p.groups.map((g) => (
+                <HistoryBatch
+                  key={g.batch}
+                  group={g}
+                  open={openBatch === g.batch}
+                  onToggle={() => setOpenBatch((b) => (b === g.batch ? null : g.batch))}
+                  progress={progressFor(progressMap, g.batch)}
+                  onEdit={onEdit}
+                  onReuse={onReuse}
+                  onHistory={setHistoryRow}
+                  canErase={canEraseLedger}
+                />
+              ))}
+            </div>
           ))}
         </div>
       )}
@@ -522,6 +555,14 @@ function HistoryBatch({
                         <span style={{ fontFamily: "var(--font-mono)", fontSize: 12.5 }}>
                           {r.size ?? "—"}
                         </span>
+                        {/* Category and Type. Recorded on every event since the
+                            form had those controls, and printed nowhere on this
+                            screen — which read as "it was never saved". */}
+                        {describeProductType(r.productType) && (
+                          <span style={{ fontSize: 12.5, color: "var(--text-2)" }}>
+                            {describeProductType(r.productType)}
+                          </span>
+                        )}
                         <span className="muted" style={{ fontSize: 12 }}>
                           Saved {fmtStamp(r.recordedAt)}
                           {edited ? " · edited" : ""}

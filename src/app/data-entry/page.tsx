@@ -4,6 +4,7 @@
 import React, { useState, useEffect } from "react";
 import AppShell from "@/components/app/AppShell";
 import { useEvents } from "@/components/app/EventsContext";
+import { useTweaks } from "@/components/editorial/TweaksContext";
 import BatchMatrixEntry from "@/components/BatchMatrixEntry";
 import EntryHistory from "@/components/EntryHistory";
 import Tabs from "@/components/ui/Tabs";
@@ -19,6 +20,10 @@ const TAB_HINT: Record<EntryMode, string> = {
 
 export default function DataEntryPage() {
   const { events } = useEvents();
+  // The topbar Day / Week / Month / FY control had no effect on this screen.
+  // It now files History under period headers — the grouping the operator
+  // wanted, without touching what the ledger stores.
+  const { t } = useTweaks();
   const [activeTab, setActiveTab] = useState<EntryMode>("matrix");
   const [success, setSuccess] = useState<string | null>(null);
   /** History → Edit / Reuse lot payload for the entry form. */
@@ -150,6 +155,7 @@ export default function DataEntryPage() {
           onEdit={handleEdit}
           onReuse={handleReuse}
           initialStatus={initialStatus}
+          grain={t.grain}
         />
       )}
     </AppShell>

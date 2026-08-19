@@ -8,6 +8,7 @@ import {
   typeIsSelectable,
   productTypeFor,
   categoryAndTypeFrom,
+  describeProductType,
   ENTRY_ROLES,
   toEntryRole,
 } from "@/lib/entry/disposafe-matrix";
@@ -141,5 +142,35 @@ describe("entry roles", () => {
 
   test("valid roles pass through untouched", () => {
     for (const r of ENTRY_ROLES) expect(toEntryRole(r)).toBe(r);
+  });
+});
+
+// The category the operator picked was recorded from day one but only ever
+// half-printed: "2 way" with no mention of Male, which read as "the category
+// was not saved". It was — productType is a lossless encoding of the pair.
+describe("describeProductType", () => {
+  it("names both controls for Male, where Type is a real choice", () => {
+    expect(describeProductType("2 way")).toBe("Male · 2 way");
+    expect(describeProductType("3 way")).toBe("Male · 3 way");
+  });
+
+  it("names only the category where Type is not selectable", () => {
+    // Female / Peadiatric are written as "2 way" behind the scenes, so
+    // printing a type here would be inventing a choice nobody made.
+    expect(describeProductType("Female")).toBe("Female");
+    expect(describeProductType("Peadiatric")).toBe("Peadiatric");
+  });
+
+  it("returns null for an unrecorded value rather than a fake default", () => {
+    expect(describeProductType(null)).toBeNull();
+    expect(describeProductType(undefined)).toBeNull();
+    expect(describeProductType("   ")).toBeNull();
+  });
+
+  it("round-trips whatever productTypeFor produces", () => {
+    for (const [cat, ty] of [["Male", "2 way"], ["Male", "3 way"], ["Female", "2 way"], ["Peadiatric", "2 way"]] as const) {
+      const stored = productTypeFor(cat, ty);
+      expect(describeProductType(stored)).toContain(cat);
+    }
   });
 });

@@ -3,6 +3,7 @@
 
 export type AuditDatePreset = "7d" | "30d" | "90d" | "all";
 import { canonicalBatchId } from "@/lib/entry/batch-id";
+import { periodKey, periodLabel, type Grain } from "./scope";
 
 export interface AuditEventLike {
   eventId?: string;
@@ -572,6 +573,48 @@ export function buildEntryRows(
  * Hierarchy for display: Batch → Stage → entry rows (Excel-like sheet feel).
  * Includes dynamic stage-to-stage yield input cascading for multi-stage batches.
  */
+/** A run of batch groups that share a calendar period. */
+export interface AuditPeriodGroup {
+  /** periodKey value — "2026-08-19", "2026-08", "FY26-27". */
+  period: string;
+  /** Human label for the header. */
+  label: string;
+  groups: AuditBatchGroup[];
+  batchCount: number;
+  rowCount: number;
+}
+
+/**
+ * Bucket batch groups into calendar periods for the History list.
+ *
+ * A lot spans days, so it is filed under `dateTo` — the last day anything was
+ * recorded against it. Splitting a lot across two headers would break the one
+ * thing this screen is for: seeing a lot's stages together.
+ *
+ * Periods come back newest first, which is the order someone looking for what
+ * they just entered reads in.
+ */
+export function groupByPeriod(groups: AuditBatchGroup[], grain: Grain): AuditPeriodGroup[] {
+  const byPeriod = new Map<string, AuditBatchGroup[]>();
+  for (const g of groups) {
+    const day = g.dateTo || g.dateFrom;
+    const key = day ? periodKey(day, grain) : "unknown";
+    const arr = byPeriod.get(key);
+    if (arr) arr.push(g);
+    else byPeriod.set(key, [g]);
+  }
+
+  return [...byPeriod.entries()]
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([period, inPeriod]) => ({
+      period,
+      label: period === "unknown" ? "No date recorded" : periodLabel(period),
+      groups: inPeriod,
+      batchCount: inPeriod.length,
+      rowCount: inPeriod.reduce((n, g) => n + g.rowCount, 0),
+    }));
+}
+
 export function groupByBatchThenStage(rows: AuditEntryRow[]): AuditBatchGroup[] {
   const byBatch = new Map<string, AuditEntryRow[]>();
   for (const r of rows) {

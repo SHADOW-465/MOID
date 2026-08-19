@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { describeProductType } from "@/lib/entry/disposafe-matrix";
 import { useEvents } from "@/components/app/EventsContext";
 import DatePicker from "@/components/ui/DatePicker";
 import { useConfirm } from "@/components/ui/ConfirmContext";
@@ -1119,8 +1120,10 @@ function EntryGrid({
                 {/* Product type has been written onto every event since day one
                     and displayed nowhere — including here, where the audit
                     trail is meant to show what was actually recorded. */}
-                {r.productType && (
-                  <span style={{ color: "var(--text-2)", fontSize: 12 }}>{r.productType}</span>
+                {describeProductType(r.productType) && (
+                  <span style={{ color: "var(--text-2)", fontSize: 12 }}>
+                    {describeProductType(r.productType)}
+                  </span>
                 )}
                 <span style={{ color: "var(--text-3)", fontSize: 12 }}>
                   {fmtStamp(r.recordedAt)}
