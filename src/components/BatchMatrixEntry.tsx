@@ -52,6 +52,7 @@ import {
   toDisplaySize,
 } from "@/lib/entry/batch-id";
 import { checkEntry, summariseLedger } from "@/lib/entry/check-entry";
+import { nextDefectColumns } from "@/lib/entry/defect-columns";
 import {
   describeShiftWindow,
   isWithinShiftWindow,
@@ -387,23 +388,28 @@ export default function BatchMatrixEntry({
   // effect, before this one ever runs.
   const activeDefectsStageRef = useRef<string | null>(null);
   const [activeDefects, setActiveDefects] = useState(resolvedDefects);
+  // Mirrored so the effect can read them without depending on them — it must
+  // react to the SCHEMA changing, not to every keystroke, and `activeDefects`
+  // is its own output.
+  const defectsRef = useRef<Record<string, number>>({});
+  defectsRef.current = defects;
+  const activeDefectsRef = useRef(activeDefects);
+  activeDefectsRef.current = activeDefects;
   useEffect(() => {
     const stageChanged = activeDefectsStageRef.current !== stageId;
-    if (!stageChanged && userTouchedQty.current) return;
     activeDefectsStageRef.current = stageId;
-    setActiveDefects((prev) => {
-      if (
-        prev.length === resolvedDefects.length &&
-        prev.every(
-          (d, i) =>
-            d.key === resolvedDefects[i]?.key &&
-            d.name === resolvedDefects[i]?.name,
-        )
-      ) {
-        return prev;
-      }
-      return resolvedDefects;
-    });
+    // The rule itself is `lib/entry/defect-columns.ts` — pure, and covered by
+    // tests, because getting it wrong is what made the defect grid render
+    // blank while the counts were still in state and still saving.
+    setActiveDefects((prev) =>
+      nextDefectColumns({
+        prev,
+        incoming: resolvedDefects,
+        stageChanged,
+        touched: userTouchedQty.current,
+        values: defectsRef.current,
+      }),
+    );
   }, [resolvedDefects, stageId]);
 
   const hideDefects = resolvedDefects.length === 0 && activeDefects.length === 0;
@@ -601,6 +607,44 @@ export default function BatchMatrixEntry({
     setAckReasons({});
   }, [warningKey]);
 
+  /**
+   * Advisories wait for a save attempt.
+   *
+   * They used to render live off every keystroke. Type Checked = 400 and the
+   * form immediately said "400 of 400 rejected have no reason" — before there
+   * was any chance to enter one. Save, and the freshly-written row came
+   * straight back as "this station already has this lot". Clear the form and
+   * an empty one announced "no quantity has been entered". All three were
+   * technically true and none were useful, so operators learned to tick past
+   * the panel, which is worse than not showing it.
+   *
+   * Blocks still appear as soon as there is something to be wrong about — they
+   * stop the save, so hiding them would be a dead Save button with no reason
+   * given. Warnings and notes appear when the operator asks to save, or when
+   * they are editing a row that already exists.
+   */
+  const [saveAttempted, setSaveAttempted] = useState(false);
+  const formEngaged =
+    checked > 0 ||
+    accept > 0 ||
+    hold > 0 ||
+    trolleys > 0 ||
+    bin.trim() !== "" ||
+    remarks.trim() !== "" ||
+    defectSum > 0 ||
+    !!editingId;
+  const showBlocks = formEngaged || saveAttempted;
+  const showAdvisories = saveAttempted || !!editingId;
+
+  // A different lot or station is a different entry — start quiet again.
+  const attemptCtx = `${stageId}|${batchId.trim().toUpperCase()}`;
+  const attemptCtxRef = useRef(attemptCtx);
+  useEffect(() => {
+    if (attemptCtxRef.current === attemptCtx) return;
+    attemptCtxRef.current = attemptCtx;
+    setSaveAttempted(false);
+  }, [attemptCtx]);
+
   // Pass is "this lot at this station again" — never a leftover from Visual
   // when the operator has moved on to Balloon. Sign-out appeared to "fix" it
   // because pass is not in the draft and reset to 1 on a fresh mount.
@@ -641,7 +685,11 @@ export default function BatchMatrixEntry({
     canWrite && (persona !== "operator" || withinShift || hasGrant);
 
   const unackedWarnings = verdict.warnings.filter((w) => !acked[w.code]);
-  const saveDisabled = saving || !mayEdit || !verdict.canSave || unackedWarnings.length > 0;
+  // Only once they are on screen. Disabling for a warning the operator has not
+  // been shown is a dead button with no stated reason — the first click is
+  // what surfaces them.
+  const saveDisabled =
+    saving || !mayEdit || !verdict.canSave || (showAdvisories && unackedWarnings.length > 0);
 
 
   const identityCols = "minmax(150px, 1.1fr) minmax(110px, 0.9fr) minmax(140px, 1fr)";
@@ -909,6 +957,9 @@ export default function BatchMatrixEntry({
 
   const clearFormKeepContext = () => {
     resetQtys();
+    // The row just written is now on the ledger, so leaving this on would
+    // greet the next entry with "this station already has this lot".
+    setSaveAttempted(false);
     // Keep the lot: clearing quantities to enter the next station is the exact
     // multi-day case, so the code must survive it.
     const id = buildBatchId(batchDate, size);
@@ -1192,6 +1243,11 @@ export default function BatchMatrixEntry({
     // which is how a guard meaning "this station is already recorded" shipped
     // keyed on "all four assembly gates are done" and locked finished lots out
     // of every other station.
+    // From here on the operator has asked to save, so everything checkEntry
+    // found becomes visible — including the warnings that were held back
+    // while they were still typing.
+    setSaveAttempted(true);
+
     if (verdict.blocks.length > 0) {
       setErr(verdict.blocks[0].message);
       document.getElementById("entry-verdict")?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -2100,8 +2156,11 @@ export default function BatchMatrixEntry({
         />
       </div>
 
-      {/* Live balance strip — shows the correct split, not only a mismatch flag */}
-      {showReject && (
+      {/* Live balance strip — shows the correct split, not only a mismatch flag.
+          Hidden until something is entered: on an empty form it read
+          "Checked 0 = Accept 0 + Reject 0 · Enter quantities", which is the
+          same "you have not typed anything" the operator can already see. */}
+      {showReject && formEngaged && (
         <div
           style={{
             marginBottom: 12,
@@ -2184,9 +2243,10 @@ export default function BatchMatrixEntry({
       {/* One panel for everything wrong with this entry. Blocks stop the save;
           warnings need a per-item acknowledgement so a single confirm can never
           stand in as consent to a different problem. */}
-      {(verdict.blocks.length > 0 || verdict.warnings.length > 0 || verdict.notes.length > 0) && (
+      {((showBlocks && verdict.blocks.length > 0) ||
+        (showAdvisories && (verdict.warnings.length > 0 || verdict.notes.length > 0))) && (
         <div id="entry-verdict" style={{ display: "grid", gap: 8, marginBottom: 14 }}>
-          {verdict.blocks.map((b) => (
+          {(showBlocks ? verdict.blocks : []).map((b) => (
             <div
               key={b.code}
               role="alert"
@@ -2203,19 +2263,10 @@ export default function BatchMatrixEntry({
                   {b.action}
                 </div>
               )}
-              {b.code === "pass-needs-reason" && (
-                <input
-                  value={passReason}
-                  onChange={(e) => setPassReason(e.target.value)}
-                  placeholder={`Why did this lot come through ${processName} again?`}
-                  aria-label="Reason this lot came through this station again"
-                  style={{ ...inp, marginTop: 8 }}
-                />
-              )}
             </div>
           ))}
 
-          {verdict.warnings.map((w) => {
+          {(showAdvisories ? verdict.warnings : []).map((w) => {
             const on = !!acked[w.code];
             return (
               <div
@@ -2235,71 +2286,21 @@ export default function BatchMatrixEntry({
                     {w.action}
                   </div>
                 )}
-                {w.code === "pass-without-first" ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPass(1);
-                      setPassReason("");
-                    }}
-                    style={{
-                      marginTop: 8,
-                      fontSize: 12.5,
-                      fontWeight: 700,
-                      padding: "6px 10px",
-                      borderRadius: 8,
-                      border: "1px solid var(--accent)",
-                      background: "var(--accent)",
-                      color: "var(--text-invert)",
-                      cursor: "pointer",
-                    }}
-                  >
-                    This is the first time at {processName}
-                  </button>
-                ) : (
-                  <label style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 8, fontSize: 12.5, cursor: "pointer" }}>
-                    <input
-                      type="checkbox"
-                      checked={on}
-                      onChange={(e) => {
-                        setAcked((cur) => ({ ...cur, [w.code]: e.target.checked }));
-                        if (w.code === "station-already-recorded" && e.target.checked) {
-                          setPass(1);
-                          setPassReason("");
-                        }
-                      }}
-                    />
-                    {w.code === "station-already-recorded"
-                      ? "Yes — replace the existing entry (rewrite)"
-                      : "I have checked this and want to save anyway"}
-                  </label>
-                )}
-                {w.code === "station-already-recorded" && (
-                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed var(--border-strong)" }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, cursor: "pointer" }}>
-                      <input
-                        type="checkbox"
-                        checked={pass > 1}
-                        onChange={(e) => {
-                          setPass(e.target.checked ? 2 : 1);
-                          if (!e.target.checked) setPassReason("");
-                          if (e.target.checked) {
-                            setAcked((cur) => ({ ...cur, "station-already-recorded": false }));
-                          }
-                        }}
-                      />
-                      No — this lot came through {processName} again (keep both)
-                    </label>
-                    {pass > 1 && (
-                      <input
-                        value={passReason}
-                        onChange={(e) => setPassReason(e.target.value)}
-                        placeholder={`Why did it come through ${processName} again? (required)`}
-                        style={{ ...inp, marginTop: 7 }}
-                      />
-                    )}
-                  </div>
-                )}
+                {/* One decision per warning. Re-entering a lot at a station
+                    is a rewrite — the "or keep both as a second pass" option
+                    that used to sit here asked an operator mid-entry to make a
+                    ledger-shape decision, and the two checkboxes contradicted
+                    each other on screen. */}
+                <label style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 8, fontSize: 12.5, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    onChange={(e) => setAcked((cur) => ({ ...cur, [w.code]: e.target.checked }))}
+                  />
+                  {w.code === "station-already-recorded"
+                    ? "Replace the existing entry"
+                    : "I have checked this — save anyway"}
+                </label>
                 {on && warningNeedsReason(w.code) && (
                   <input
                     value={ackReasons[w.code] ?? ""}
@@ -2312,7 +2313,7 @@ export default function BatchMatrixEntry({
             );
           })}
 
-          {verdict.notes.map((n) => (
+          {(showAdvisories ? verdict.notes : []).map((n) => (
             <div key={n.code} className="small" style={{ color: "var(--text-3)", paddingLeft: 2 }}>
               {n.message}
             </div>

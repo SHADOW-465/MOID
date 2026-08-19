@@ -245,8 +245,8 @@ export function checkEntry(
       warnings.push({
         code: "rejected-not-fully-explained",
         severity: "warn",
-        message: `${gap} of the ${draft.rejected} rejected ${gap === 1 ? "piece has" : "pieces have"} no defect reason.`,
-        action: "Add the missing reasons, or save with the cause recorded as unknown.",
+        message: `${gap} of ${draft.rejected} rejected ${gap === 1 ? "piece has" : "pieces have"} no reason.`,
+        action: "Add the reasons, or save with the cause recorded as unknown.",
       });
     }
   }
@@ -261,34 +261,9 @@ export function checkEntry(
     warnings.push({
       code: "station-already-recorded",
       severity: "warn",
-      message:
-        `${station} is already recorded for lot ${lot}${when} ` +
-        `(${prior.checked} checked, ${prior.rejected} rejected).`,
-      action:
-        "Saving replaces it. If this is the next lot, change the lot code. " +
-        "If the lot genuinely came through twice, declare a second pass.",
+      message: `${station} already has lot ${lot}${when} — ${prior.checked} checked, ${prior.rejected} rejected.`,
+      action: "Saving replaces it. Wrong lot? Change the lot code.",
     });
-  }
-
-  // A declared repeat pass has to say why, and has to actually follow a first.
-  if ((draft.pass ?? 1) > 1) {
-    if (!draft.passReason || !draft.passReason.trim()) {
-      blocks.push({
-        code: "pass-needs-reason",
-        severity: "block",
-        message: `This lot is marked as coming through ${station} again (pass ${draft.pass}).`,
-        action: "Type why below — a re-inspection or a split run. If this is the first time at this station, it is not a second pass.",
-      });
-    }
-    const first = ledger.get(identityKey({ ...identity, pass: 1 }));
-    if (!first) {
-      warnings.push({
-        code: "pass-without-first",
-        severity: "warn",
-        message: `This is marked as a repeat at ${station}, but this lot has not been through ${station} yet.`,
-        action: "Treat it as the first time at this station.",
-      });
-    }
   }
 
   // ── Same numbers under a different lot code ─────────────────────────────
@@ -296,7 +271,12 @@ export function checkEntry(
   // Two lot codes, same station, same three counts. The plant runs one lot per
   // size per day, so this is nearly always one lot typed twice with the code
   // mistyped the second time.
-  if (!draft.editing && draft.checked > 0) {
+  //
+  // Only where the counts actually discriminate. A quantity-only station
+  // (Hanging, Eye Punching) records ONE number, and that number is a round
+  // 1000 all day — matching it says nothing, so this fired on every second
+  // lot and taught operators to tick the box without reading it.
+  if (!draft.editing && draft.checked > 0 && draft.capturesRejected) {
     for (const other of ledger.values()) {
       if (other.identity.station !== identity.station) continue;
       if (other.identity.lot === identity.lot) continue;
@@ -310,9 +290,9 @@ export function checkEntry(
           code: "same-counts-different-lot",
           severity: "warn",
           message:
-            `Lot ${other.identity.lot} was recorded at ${station} on the same day with the ` +
-            `identical counts (${other.checked} / ${other.accepted} / ${other.rejected}).`,
-          action: "Check the lot code — this looks like the same lot entered twice.",
+            `Lot ${other.identity.lot} has the same counts at ${station} today ` +
+            `(${other.checked} / ${other.accepted} / ${other.rejected}).`,
+          action: "Check the lot code — this may be one lot entered twice.",
         });
         break;
       }

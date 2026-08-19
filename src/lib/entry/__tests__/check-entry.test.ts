@@ -156,23 +156,21 @@ describe("checkEntry — the lot already being at this station", () => {
   });
 });
 
-describe("checkEntry — declared repeat passes", () => {
+// The second-pass affordance is gone from the UI: re-entering a lot at a
+// station is a rewrite, full stop. `pass` survives in the identity so ledger
+// rows written while it existed still resolve to themselves — but nothing can
+// mint a pass > 1 entry any more, so the rules that policed one are deleted
+// rather than left as untriggerable code.
+describe("checkEntry — a pass already on the ledger still resolves", () => {
   const ledger = summariseLedger(saved("26H25-18", "visual", { checked: 700, accepted: 700 }));
 
-  it("a second pass needs a reason", () => {
+  it("an existing pass-2 row keeps its own identity, separate from pass 1", () => {
     const v = checkEntry(draft({ pass: 2 }), ledger, TODAY);
-    expect(v.blocks.map((b) => b.code)).toContain("pass-needs-reason");
-  });
-
-  it("a reasoned second pass saves, and does not collide with the first", () => {
-    const v = checkEntry(draft({ pass: 2, passReason: "Re-inspected after rework" }), ledger, TODAY);
-    expect(v.canSave).toBe(true);
+    expect(v.identity?.pass).toBe(2);
+    // Not a collision with the pass-1 row, and no leftover pass paperwork.
     expect(v.warnings.map((w) => w.code)).not.toContain("station-already-recorded");
-  });
-
-  it("warns when a second pass has no first pass behind it", () => {
-    const v = checkEntry(draft({ pass: 2, passReason: "Split run" }), EMPTY, TODAY);
-    expect(v.warnings.map((w) => w.code)).toContain("pass-without-first");
+    expect(v.blocks.map((b) => b.code)).not.toContain("pass-needs-reason");
+    expect(v.canSave).toBe(true);
   });
 });
 
@@ -187,6 +185,34 @@ describe("checkEntry — same counts under a different lot code", () => {
   it("stays quiet when the counts genuinely differ", () => {
     const v = checkEntry(draft({ checked: 1000, accepted: 900, hold: 61, rejected: 39 }), ledger, TODAY);
     expect(v.warnings.map((w) => w.code)).not.toContain("same-counts-different-lot");
+  });
+
+  it("stays quiet at a quantity-only station, where one round number proves nothing", () => {
+    // Hanging records a single Quantity. Every lot is 1000, so an "identical
+    // counts" match carries no information — this fired on nearly every
+    // second lot of the day and trained operators to tick past it.
+    const hanging = summariseLedger(
+      saved("26H19-16", "hanging", { checked: 1000, accepted: 0, rejected: 0 }),
+    );
+    const v = checkEntry(
+      draft({
+        lot: "26H19-20",
+        size: "20Fr",
+        station: "hanging",
+        checked: 1000,
+        accepted: 0,
+        hold: 0,
+        rejected: 0,
+        capturesAccepted: false,
+        capturesHold: false,
+        capturesRejected: false,
+        capturesDefects: false,
+      }),
+      hanging,
+      TODAY,
+    );
+    expect(v.warnings.map((w) => w.code)).not.toContain("same-counts-different-lot");
+    expect(v.canSave).toBe(true);
   });
 });
 
