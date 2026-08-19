@@ -7,7 +7,13 @@
  */
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
-import { describeProductType, CATHETER_CATEGORIES, PRODUCT_TYPES } from "@/lib/entry/disposafe-matrix";
+import {
+  describeProductType,
+  CATHETER_CATEGORIES,
+  CATHETER_TYPES,
+  categoryAndTypeFrom,
+  sizesFor,
+} from "@/lib/entry/disposafe-matrix";
 import { useEvents } from "@/components/app/EventsContext";
 import DatePicker from "@/components/ui/DatePicker";
 import { useConfirm } from "@/components/ui/ConfirmContext";
@@ -258,6 +264,54 @@ export default function AuditPage() {
   /** Offer only sizes that actually exist in range — never a dead option. */
   const sizeOptions = useMemo(() => listRowSizes(allRows), [allRows]);
 
+  /** Valid sizes allowed by the current Category and Type filter. */
+  const validSizesForSelection = useMemo(() => {
+    if (categoryFilter === "Female") return sizesFor("Female", "2 way");
+    if (categoryFilter === "Peadiatric") return sizesFor("Peadiatric", "2 way");
+    if (categoryFilter === "Male") {
+      return sizesFor("Male", typeStoredFilter === "3 way" ? "3 way" : "2 way");
+    }
+    if (typeStoredFilter === "3 way") return sizesFor("Male", "3 way");
+    return null;
+  }, [categoryFilter, typeStoredFilter]);
+
+  /** Filter the dropdown sizes to only valid ranges for the chosen Category/Type. */
+  const availableSizeOptions = useMemo(() => {
+    if (!validSizesForSelection) return sizeOptions;
+    return sizeOptions.filter((sz) => {
+      const canon = sz.endsWith("Fr") ? sz : `${sz}Fr`;
+      const noFr = sz.replace(/^Fr/i, "");
+      return (
+        validSizesForSelection.includes(canon as any) ||
+        validSizesForSelection.some((v) => v.replace(/^Fr/i, "") === noFr)
+      );
+    });
+  }, [sizeOptions, validSizesForSelection]);
+
+  // Reset size if invalid for new category
+  useEffect(() => {
+    if (sizeFilter !== "all" && availableSizeOptions.length > 0 && !availableSizeOptions.includes(sizeFilter)) {
+      setSizeFilter("all");
+    }
+  }, [availableSizeOptions, sizeFilter]);
+
+  // If Female or Peadiatric is selected, reset type if it was 3-way
+  useEffect(() => {
+    if ((categoryFilter === "Female" || categoryFilter === "Peadiatric") && typeStoredFilter === "3 way") {
+      setTypeStoredFilter("all");
+    }
+  }, [categoryFilter, typeStoredFilter]);
+
+  const typeOptions = useMemo(() => {
+    if (categoryFilter === "Female" || categoryFilter === "Peadiatric") {
+      return [{ value: "all", label: "2 way" }];
+    }
+    return [
+      { value: "all", label: "All types" },
+      ...CATHETER_TYPES.map((t) => ({ value: t, label: t })),
+    ];
+  }, [categoryFilter]);
+
   const entryRows = useMemo(
     () => {
       let rows = filterEntryRows(allRows, {
@@ -266,22 +320,13 @@ export default function AuditPage() {
         size: sizeFilter,
         search: searchQuery,
       });
-      if (categoryFilter !== "all") {
+      if (categoryFilter !== "all" || typeStoredFilter !== "all") {
         rows = rows.filter((r) => {
-          const pt = r.productType ?? "";
-          const desc = describeProductType(pt) ?? pt;
-          if (categoryFilter === "Male") return pt === "2 way" || pt === "3 way" || desc.startsWith("Male");
-          if (categoryFilter === "Female") return pt === "Female" || desc.includes("Female");
-          if (categoryFilter === "Peadiatric") return pt === "Peadiatric" || desc.includes("Peadiatric");
-          return desc.toLowerCase().includes(categoryFilter.toLowerCase());
+          const { category, type } = categoryAndTypeFrom(r.productType);
+          if (categoryFilter !== "all" && category !== categoryFilter) return false;
+          if (typeStoredFilter !== "all" && type !== typeStoredFilter) return false;
+          return true;
         });
-      }
-      if (typeStoredFilter !== "all") {
-        rows = rows.filter(
-          (r) =>
-            r.productType === typeStoredFilter ||
-            describeProductType(r.productType)?.includes(typeStoredFilter),
-        );
       }
       return rows;
     },
@@ -604,18 +649,6 @@ export default function AuditPage() {
               ]}
               ariaLabel="Filter by stage"
             />
-            {sizeOptions.length > 0 && (
-              <Select
-                value={sizeFilter}
-                onChange={setSizeFilter}
-                options={[
-                  { value: "all", label: "All sizes" },
-                  ...sizeOptions.map((sz) => ({ value: sz, label: sz })),
-                ]}
-                mono
-                ariaLabel="Filter by size"
-              />
-            )}
             <Select
               value={categoryFilter}
               onChange={setCategoryFilter}
@@ -628,12 +661,21 @@ export default function AuditPage() {
             <Select
               value={typeStoredFilter}
               onChange={setTypeStoredFilter}
-              options={[
-                { value: "all", label: "All product types" },
-                ...PRODUCT_TYPES.map((pt) => ({ value: pt, label: pt })),
-              ]}
+              options={typeOptions}
               ariaLabel="Filter by product type"
             />
+            {availableSizeOptions.length > 0 && (
+              <Select
+                value={sizeFilter}
+                onChange={setSizeFilter}
+                options={[
+                  { value: "all", label: "All sizes" },
+                  ...availableSizeOptions.map((sz) => ({ value: sz, label: sz })),
+                ]}
+                mono
+                ariaLabel="Filter by size"
+              />
+            )}
             <Select
               value={sortOrder}
               onChange={(v) => setSortOrder(v as any)}

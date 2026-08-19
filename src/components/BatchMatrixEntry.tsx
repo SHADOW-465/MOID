@@ -19,6 +19,7 @@ import {
   PRODUCT_TYPES,
   PRODUCT_TYPE_STORAGE_KEY,
   CATHETER_CATEGORIES,
+  CATHETER_TYPES,
   describeProductType,
   defectEntryTitle,
   sizesFor,
@@ -170,9 +171,6 @@ export default function BatchMatrixEntry({
     setCategory(c);
     setCatheterType(ty);
   }, []);
-  const [typeFilter, setTypeFilter] = useState<string>("All Type");
-  const [categoryFilter, setCategoryFilter] = useState<string>("all");
-  const [savedSortOrder, setSavedSortOrder] = useState<"newest" | "oldest" | "batch-asc" | "batch-desc" | "volume-desc" | "rejection-desc">("newest");
   const [operator, setOperator] = useState<string>(ENTRY_ROLES[0]);
   const [shift, setShift] = useState("Day Shift");
   const [batchId, setBatchId] = useState(() => buildBatchId(today(), "14Fr") ?? "");
@@ -204,20 +202,36 @@ export default function BatchMatrixEntry({
   /** Filter over the defect tiles — 21 codes is a lot to scan on a shop floor. */
   const [defectFilter, setDefectFilter] = useState("");
 
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [savedSortOrder, setSavedSortOrder] = useState<"newest" | "oldest" | "batch-asc" | "batch-desc" | "volume-desc" | "rejection-desc">("newest");
+
+  // Reset shift type filter if Female or Peadiatric is selected
+  useEffect(() => {
+    if ((categoryFilter === "Female" || categoryFilter === "Peadiatric") && typeFilter === "3 way") {
+      setTypeFilter("all");
+    }
+  }, [categoryFilter, typeFilter]);
+
+  const shiftTypeOptions = useMemo(() => {
+    if (categoryFilter === "Female" || categoryFilter === "Peadiatric") {
+      return [{ value: "all", label: "Type: 2 way" }];
+    }
+    return [
+      { value: "all", label: "Type: All" },
+      ...CATHETER_TYPES.map((t) => ({ value: t, label: `Type: ${t}` })),
+    ];
+  }, [categoryFilter]);
+
   const filteredSaved = useMemo(() => {
     let list = saved;
-    if (categoryFilter !== "all") {
+    if (categoryFilter !== "all" || typeFilter !== "all") {
       list = list.filter((b) => {
-        const pt = b.productType || "2 way";
-        const desc = describeProductType(pt) ?? pt;
-        if (categoryFilter === "Male") return pt === "2 way" || pt === "3 way" || desc.startsWith("Male");
-        if (categoryFilter === "Female") return pt === "Female" || desc.includes("Female");
-        if (categoryFilter === "Peadiatric") return pt === "Peadiatric" || desc.includes("Peadiatric");
-        return desc.toLowerCase().includes(categoryFilter.toLowerCase());
+        const { category, type } = categoryAndTypeFrom(b.productType || "2 way");
+        if (categoryFilter !== "all" && category !== categoryFilter) return false;
+        if (typeFilter !== "all" && type !== typeFilter) return false;
+        return true;
       });
-    }
-    if (typeFilter !== "All Type") {
-      list = list.filter((b) => (b.productType || "2 way") === typeFilter);
     }
     return [...list].sort((a, b) => {
       if (savedSortOrder === "newest") return new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime();
@@ -2484,6 +2498,7 @@ export default function BatchMatrixEntry({
             cursor: saveDisabled ? "not-allowed" : "pointer",
           }}
         >
+          {saveLabel}
         </button>
       </div>
 
@@ -2511,10 +2526,7 @@ export default function BatchMatrixEntry({
             <Select
               value={typeFilter}
               onChange={setTypeFilter}
-              options={[
-                { value: "All Type", label: "Type: All" },
-                ...[...PRODUCT_TYPES, "Peadiatric"].map((t) => ({ value: t, label: `Type: ${t}` })),
-              ]}
+              options={shiftTypeOptions}
               block={false}
               size="sm"
               ariaLabel="Filter by type"

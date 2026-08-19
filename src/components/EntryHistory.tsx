@@ -14,7 +14,7 @@
 // Erase deliberately lives on one screen. An operator saving a batch here must
 // not be able to un-save it; that is the Audit trail's job and the GM's call.
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { Grain } from "@/lib/analytics/scope";
 import {
   buildEntryRows,
@@ -34,11 +34,20 @@ import EntryRevisionHistory from "@/components/entry/EntryRevisionHistory";
 import Icon from "@/components/editorial/Icon";
 import { usePersona } from "@/components/app/PersonaContext";
 import Select from "@/components/ui/Select";
-import { CATHETER_CATEGORIES, PRODUCT_TYPES, describeProductType } from "@/lib/entry/disposafe-matrix";
+import {
+  CATHETER_CATEGORIES,
+  CATHETER_TYPES,
+  categoryAndTypeFrom,
+  describeProductType,
+  sizesFor,
+  type CatheterCategory,
+  type CatheterType,
+} from "@/lib/entry/disposafe-matrix";
 
 type SourceScope = "mine" | "all";
 type StatusScope = "all" | "open" | "complete";
 type SortOption = "newest" | "oldest" | "batch-asc" | "batch-desc" | "volume-desc" | "rejection-desc";
+
 
 
 const STAGE_LABEL: Record<string, string> = {
@@ -146,24 +155,63 @@ export default function EntryHistory({
 
   const sizeOptions = useMemo(() => listRowSizes(scopedRows), [scopedRows]);
 
+  /** Valid sizes allowed by the current Category and Type filter. */
+  const validSizesForSelection = useMemo(() => {
+    if (categoryFilter === "Female") return sizesFor("Female", "2 way");
+    if (categoryFilter === "Peadiatric") return sizesFor("Peadiatric", "2 way");
+    if (categoryFilter === "Male") {
+      return sizesFor("Male", productTypeFilter === "3 way" ? "3 way" : "2 way");
+    }
+    if (productTypeFilter === "3 way") return sizesFor("Male", "3 way");
+    return null;
+  }, [categoryFilter, productTypeFilter]);
+
+  /** Filter the dropdown sizes to only valid ranges for the chosen Category/Type. */
+  const availableSizeOptions = useMemo(() => {
+    if (!validSizesForSelection) return sizeOptions;
+    return sizeOptions.filter((sz) => {
+      const canon = sz.endsWith("Fr") ? sz : `${sz}Fr`;
+      const noFr = sz.replace(/^Fr/i, "");
+      return (
+        validSizesForSelection.includes(canon as any) ||
+        validSizesForSelection.some((v) => v.replace(/^Fr/i, "") === noFr)
+      );
+    });
+  }, [sizeOptions, validSizesForSelection]);
+
+  // Reset size to "all" if the currently picked size is invalid for the new category
+  useEffect(() => {
+    if (size !== "all" && availableSizeOptions.length > 0 && !availableSizeOptions.includes(size)) {
+      setSize("all");
+    }
+  }, [availableSizeOptions, size]);
+
+  // If Female or Peadiatric is selected, reset type if it was 3-way
+  useEffect(() => {
+    if ((categoryFilter === "Female" || categoryFilter === "Peadiatric") && productTypeFilter === "3 way") {
+      setProductTypeFilter("all");
+    }
+  }, [categoryFilter, productTypeFilter]);
+
+  const typeOptions = useMemo(() => {
+    if (categoryFilter === "Female" || categoryFilter === "Peadiatric") {
+      return [{ value: "all", label: "Type: 2 way" }];
+    }
+    return [
+      { value: "all", label: "Type: All" },
+      ...CATHETER_TYPES.map((t) => ({ value: t, label: `Type: ${t}` })),
+    ];
+  }, [categoryFilter]);
+
   const groups = useMemo(() => {
     let rows = filterEntryRows(scopedRows, { search, size });
-    if (categoryFilter !== "all") {
+    if (categoryFilter !== "all" || productTypeFilter !== "all") {
       rows = rows.filter((r) => {
-        const pt = r.productType ?? "";
-        const desc = describeProductType(pt) ?? pt;
-        if (categoryFilter === "Male") return pt === "2 way" || pt === "3 way" || desc.startsWith("Male");
-        if (categoryFilter === "Female") return pt === "Female" || desc.includes("Female");
-        if (categoryFilter === "Peadiatric") return pt === "Peadiatric" || desc.includes("Peadiatric");
-        return desc.toLowerCase().includes(categoryFilter.toLowerCase());
+        const { category, type } = categoryAndTypeFrom(r.productType);
+        if (categoryFilter !== "all" && category !== categoryFilter) return false;
+        if (productTypeFilter !== "all" && type !== productTypeFilter) return false;
+        return true;
       });
-    }
-    if (productTypeFilter !== "all") {
-      rows = rows.filter(
-        (r) =>
-          r.productType === productTypeFilter ||
-          describeProductType(r.productType)?.includes(productTypeFilter),
-      );
     }
     let all = groupByBatchThenStage(rows);
     if (status !== "all") {
@@ -304,21 +352,6 @@ export default function EntryHistory({
           block={false}
           ariaLabel="Status filter"
         />
-        {sizeOptions.length > 0 && (
-          <Select
-            value={size}
-            onChange={setSize}
-            options={[
-              { value: "all", label: "Size: All sizes" },
-              ...sizeOptions.map((sz) => ({ value: sz, label: `Size: ${sz}` })),
-            ]}
-            mono
-            variant="pill"
-            size="sm"
-            block={false}
-            ariaLabel="Size filter"
-          />
-        )}
         <Select
           value={categoryFilter}
           onChange={setCategoryFilter}
@@ -334,15 +367,27 @@ export default function EntryHistory({
         <Select
           value={productTypeFilter}
           onChange={setProductTypeFilter}
-          options={[
-            { value: "all", label: "Type: All" },
-            ...PRODUCT_TYPES.map((pt) => ({ value: pt, label: `Type: ${pt}` })),
-          ]}
+          options={typeOptions}
           variant="pill"
           size="sm"
           block={false}
           ariaLabel="Product type filter"
         />
+        {availableSizeOptions.length > 0 && (
+          <Select
+            value={size}
+            onChange={setSize}
+            options={[
+              { value: "all", label: "Size: All sizes" },
+              ...availableSizeOptions.map((sz) => ({ value: sz, label: `Size: ${sz}` })),
+            ]}
+            mono
+            variant="pill"
+            size="sm"
+            block={false}
+            ariaLabel="Size filter"
+          />
+        )}
         <Select
           value={sortOrder}
           onChange={(v) => setSortOrder(v as SortOption)}
